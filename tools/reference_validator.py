@@ -92,6 +92,12 @@ class ReferenceValidator:
     # Special keywords that are not entity IDs
     SPECIAL_KEYWORDS = {"all", "none"}
 
+    # Built-in entities that always exist in Home Assistant but may not be in the registry
+    BUILTIN_ENTITIES = {"sun.sun"}
+
+    # Entities defined in YAML configuration (templates, etc.) that won't appear in registry
+    YAML_DEFINED_ENTITIES: Set[str] = set()
+
     def __init__(self, config_dir: str = "config"):
         """Initialize the ReferenceValidator."""
         self.config_dir = Path(config_dir)
@@ -103,6 +109,58 @@ class ReferenceValidator:
         self._entities: Optional[Dict[str, Any]] = None
         self._devices: Optional[Dict[str, Any]] = None
         self._areas: Optional[Dict[str, Any]] = None
+        self._yaml_entities: Optional[Set[str]] = None
+
+    def load_yaml_defined_entities(self) -> Set[str]:
+        """Extract entities defined in YAML templates and automations."""
+        if self._yaml_entities is not None:
+            return self._yaml_entities
+
+        self._yaml_entities = set()
+
+        # Extract template entities from configuration.yaml
+        config_file = self.config_dir / "configuration.yaml"
+        if config_file.exists():
+            try:
+                with open(config_file, "r", encoding="utf-8") as f:
+                    data = yaml.load(f, Loader=HAYamlLoader)
+
+                if data and "template" in data:
+                    templates = data["template"]
+                    if isinstance(templates, list):
+                        for template_block in templates:
+                            if isinstance(template_block, dict):
+                                # Check for various entity types in templates
+                                for domain in ["binary_sensor", "sensor", "switch", "light"]:
+                                    if domain in template_block:
+                                        entities = template_block[domain]
+                                        if isinstance(entities, list):
+                                            for entity in entities:
+                                                if isinstance(entity, dict) and "name" in entity:
+                                                    # Convert name to entity_id format
+                                                    name = entity["name"]
+                                                    entity_id = f"{domain}.{name.lower().replace(' ', '_')}"
+                                                    self._yaml_entities.add(entity_id)
+            except Exception as e:
+                self.warnings.append(f"Failed to parse templates from configuration.yaml: {e}")
+
+        # Extract automation IDs from automations.yaml
+        automations_file = self.config_dir / "automations.yaml"
+        if automations_file.exists():
+            try:
+                with open(automations_file, "r", encoding="utf-8") as f:
+                    data = yaml.load(f, Loader=HAYamlLoader)
+
+                if isinstance(data, list):
+                    for automation in data:
+                        if isinstance(automation, dict) and "id" in automation:
+                            automation_id = automation["id"]
+                            entity_id = f"automation.{automation_id}"
+                            self._yaml_entities.add(entity_id)
+            except Exception as e:
+                self.warnings.append(f"Failed to parse automations.yaml: {e}")
+
+        return self._yaml_entities
 
     def load_entity_registry(self) -> Dict[str, Any]:
         """Load and cache entity registry."""
@@ -371,6 +429,15 @@ class ReferenceValidator:
         for entity_id in entity_refs:
             # Skip UUID-format entity IDs, they're handled separately
             if self.is_uuid_format(entity_id):
+                continue
+
+            # Skip built-in entities that are always present
+            if entity_id in self.BUILTIN_ENTITIES:
+                continue
+
+            # Skip entities defined in YAML templates
+            yaml_entities = self.load_yaml_defined_entities()
+            if entity_id in yaml_entities:
                 continue
 
             if entity_id not in entities:

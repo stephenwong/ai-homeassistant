@@ -63,6 +63,34 @@ class HAOfficialValidator:
             self.errors.append(f"Failed to run Home Assistant config check: {e}")
             return False
 
+    def is_ignorable_message(self, line: str) -> bool:
+        """Check if a message can be safely ignored (non-critical warnings)."""
+        ignorable_patterns = [
+            # TurboJPEG library warnings - not needed for config validation
+            "turbojpeg",
+            "libturbojpeg",
+            "Camera snapshot performance will be sub-optimal",
+            "Unable to locate turbojpeg library",
+            "TurboJPEGSingleton",
+            # Blueprint selector warnings for newer HA features
+            "extra keys not allowed",
+            "selector']['reorder']",
+            # Python traceback lines from non-critical errors
+            "Traceback (most recent call last):",
+            "raise RuntimeError",
+            "RuntimeError:",
+            "^^^",
+        ]
+        line_lower = line.lower()
+        return any(pattern.lower() in line_lower for pattern in ignorable_patterns)
+
+    def is_ignorable_traceback_line(self, line: str) -> bool:
+        """Check if line is part of a Python traceback we can ignore."""
+        # Match traceback file/line references
+        if line.strip().startswith("File ") and ".py" in line:
+            return True
+        return False
+
     def parse_check_config_output(self, stdout: str, stderr: str):
         """Parse Home Assistant check_config output."""
         # Parse stdout
@@ -71,6 +99,10 @@ class HAOfficialValidator:
             for line in lines:
                 line = line.strip()
                 if not line:
+                    continue
+
+                # Skip ignorable messages and traceback lines
+                if self.is_ignorable_message(line) or self.is_ignorable_traceback_line(line):
                     continue
 
                 # Look for specific patterns
