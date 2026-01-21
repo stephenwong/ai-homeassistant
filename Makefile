@@ -14,6 +14,10 @@ BACKUP_DIR ?= backups
 VENV_PATH ?= venv
 TOOLS_PATH ?= tools
 
+# Frigate configuration
+FRIGATE_REMOTE_PATH ?= /addon_configs/ccab4aaf_frigate-fa-beta/
+FRIGATE_LOCAL_PATH ?= frigate/
+
 # Colors for output
 GREEN = \033[0;32m
 YELLOW = \033[1;33m
@@ -44,6 +48,9 @@ help:
 pull: check-env
 	@echo "$(GREEN)Pulling configuration from Home Assistant...$(NC)"
 	@rsync -avz --delete --exclude-from=.rsync-excludes $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
+	@echo "$(GREEN)Pulling Frigate configuration...$(NC)"
+	@mkdir -p $(FRIGATE_LOCAL_PATH)
+	@rsync -avz $(HA_HOST):$(FRIGATE_REMOTE_PATH)config.yml $(FRIGATE_LOCAL_PATH)
 	@echo "$(GREEN)Configuration pulled successfully!$(NC)"
 	@echo "$(YELLOW)Running validation to ensure integrity...$(NC)"
 	@$(MAKE) validate
@@ -54,6 +61,12 @@ push: check-env
 	@$(MAKE) validate
 	@echo "$(GREEN)Validation passed! Pushing to Home Assistant...$(NC)"
 	@rsync -avz --delete --exclude-from=.rsync-excludes $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
+	@if [ -f "$(FRIGATE_LOCAL_PATH)config.yml" ]; then \
+		echo "$(GREEN)Pushing Frigate configuration...$(NC)"; \
+		rsync -avz $(FRIGATE_LOCAL_PATH)config.yml $(HA_HOST):$(FRIGATE_REMOTE_PATH); \
+		echo "$(GREEN)Copying Frigate config to HA config folder for backups...$(NC)"; \
+		rsync -avz $(FRIGATE_LOCAL_PATH)config.yml $(HA_HOST):$(HA_REMOTE_PATH)frigate_config.yml; \
+	fi
 	@echo "$(GREEN)Configuration pushed successfully!$(NC)"
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
 	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reload_config.py
@@ -73,7 +86,7 @@ backup:
 	@mkdir -p $(BACKUP_DIR)
 	@timestamp=$$(date +%Y%m%d_%H%M%S); \
 	backup_name="$(BACKUP_DIR)/ha_config_$$timestamp"; \
-	tar -czf "$$backup_name.tar.gz" $(LOCAL_CONFIG_PATH); \
+	tar -czf "$$backup_name.tar.gz" $(LOCAL_CONFIG_PATH) $(FRIGATE_LOCAL_PATH) 2>/dev/null || tar -czf "$$backup_name.tar.gz" $(LOCAL_CONFIG_PATH); \
 	echo "$(GREEN)Backup created: $$backup_name.tar.gz$(NC)"
 
 # Set up Python environment and dependencies
