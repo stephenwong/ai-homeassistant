@@ -1,0 +1,9 @@
+{
+  "name": "home-assistant",
+  "description": "Skills for managing Home Assistant configuration: backup workflows, automation creation, and entity validation",
+  "version": "1.0.0",
+  "author": {
+    "name": "Stephen"
+  },
+  "keywords": ["home-assistant", "automation", "backup", "smart-home", "iot"]
+}
