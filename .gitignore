@@ -24,6 +24,9 @@ config/glances/
 config/node-red/
 config/zigbee2mqtt/
 
+# Frigate configuration
+frigate/config.yml
+
 # Python
 venv/
 venv

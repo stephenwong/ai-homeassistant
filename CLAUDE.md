@@ -4,6 +4,11 @@ This repository manages Home Assistant configuration files with automated valida
 
 ## Project Structure
 
+- `config/automations.yaml` - **Primary file for automation work** (read this first for any automation tasks)
+- `config/scripts.yaml` - Reusable scripts (called from automations or dashboard buttons)
+- `config/configuration.yaml` - Main HA config (integrations, includes, helpers)
+- `config/.storage/core.entity_registry` - **Entity registry** (search here to find entity IDs, device IDs, and entity metadata)
+- `config/.storage/lovelace` - Dashboard configuration (JSON format)
 - `config/` - Contains all Home Assistant configuration files (synced from HA instance)
 - `tools/` - Validation and testing scripts
 - `venv/` - Python virtual environment with dependencies
@@ -18,7 +23,8 @@ This repository manages Home Assistant configuration files with automated valida
 ### Configuration Management
 - `make pull` - Pull latest config from Home Assistant instance
 - `make push` - Push local config to Home Assistant (with validation)
-- `make backup` - Create backup of current config
+- `make backup` - Create timestamped backup of current config
+- `python tools/prune_backups.py` - Prune old backups per retention rules
 - `make validate` - Run all validation tests
 
 ### Validation Tools
@@ -67,11 +73,23 @@ The system tracks entities across these domains:
 
 ## Development Workflow
 
-1. **Pull Latest**: `make pull` to sync from HA
-2. **Edit Locally**: Modify files in `config/` directory
-3. **Auto-Validation**: Hooks automatically validate on edits
-4. **Test Changes**: `make validate` for full test suite
-5. **Deploy**: `make push` to upload (blocked if validation fails)
+**IMPORTANT: Before starting any new feature work:**
+
+Use the `home-assistant-backup` skill (automated 3-step process):
+1. **Pull Latest**: `make pull` to sync latest config from Home Assistant
+2. **Create Backup**: `make backup` to create a timestamped backup
+3. **Prune Backups**: `python tools/prune_backups.py` to apply retention rules
+
+**Then proceed with development:**
+4. **Edit Locally**: Modify files in `config/` directory
+5. **Auto-Validation**: Hooks automatically validate on edits
+6. **Test Changes**: `make validate` for full test suite
+7. **Deploy**: `make push` to upload (blocked if validation fails)
+
+**Backup Retention:**
+- Backups stored in `backups/` directory (gitignored)
+- Format: `ha_config_YYYYMMDD_HHMMSS.tar.gz`
+- Automatic pruning: Keep all (0-7 days), one/day (7-30 days), one/week (30+ days)
 
 ## Key Features
 
@@ -156,8 +174,314 @@ vacuum.office_roborock
 - Vendor prefixes (aquanta_, august_, etc.) are replaced with descriptive device names
 
 ### **Claude Code Integration:**
+- **REQUIRED:** Use the `home-assistant-backup` skill when starting any feature work (pull + backup + prune retention)
+- **REQUIRED:** Use the `home-assistant-automation` skill when creating or modifying automations (discovery → clarify → design → implement → deploy)
+- **Check `config/.storage/core.entity_registry`** to find entity IDs, device IDs, and verify entities exist
+- **Check `config/configuration.yaml`** for integration setup, includes, and customizations
 - When creating automations, always ask the user for input if there are multiple choices for sensors or devices
 - Use the entity explorer tools to discover available entities before writing automations
 - Follow the naming convention when suggesting entity names in automations
+
+## Automation Structure
+
+### Basic Structure
+```yaml
+- id: unique_id
+  alias: Human-readable name
+  description: What it does
+  triggers:
+    - trigger: state|time|device|event|numeric_state|sun|zone
+  conditions: []
+  actions:
+    - action: domain.service
+      target:
+        entity_id: entity.name
+      data: {}
+  mode: single|queued|restart|parallel
+```
+
+### Trigger Types
+- `state` - Entity state changes
+- `numeric_state` - Above/below thresholds
+- `time` - Specific time or time pattern
+- `device` - Device-specific events (buttons, sensors)
+- `event` - HA events
+- `sun` - Sunrise/sunset
+- `zone` - Enter/leave zones
+
+### Automation Modes
+
+| Mode | Behavior |
+|------|----------|
+| `single` | Ignores new triggers while running (default) |
+| `queued` | Queues triggers, runs sequentially |
+| `restart` | Cancels current run, starts fresh |
+| `parallel` | Runs multiple instances simultaneously |
+
+## Template Syntax (Jinja2)
+
+### Common Functions
+- `states('entity_id')` - Get state value
+- `state_attr('entity_id', 'attribute')` - Get attribute
+- `is_state('entity_id', 'value')` - Boolean check
+- `now()` - Current datetime
+- `today_at('HH:MM')` - Time today
+- `this.state` - Current entity state (in template sensors)
+
+### Filters
+- `| float(default)` - Convert to float
+- `| int(default)` - Convert to integer
+- `| default(value)` - Fallback value
+- `| timestamp_custom('%H:%M')` - Format timestamp
+
+### Example
+```yaml
+state: >
+  {% set humidity = states('sensor.bathroom_humidity') | float(0) %}
+  {% if humidity > 70 %}on{% else %}off{% endif %}
+```
+
+## Helper Entities
+
+| Type | Purpose | Example Use |
+|------|---------|-------------|
+| `input_boolean` | Toggle switches | `input_boolean.alarm_toggle` |
+| `input_datetime` | Store date/time | Track when garage opened |
+| `input_select` | Dropdown options | Scene selection |
+| `input_number` | Numeric values | Threshold settings |
+| `timer` | Countdown timers | Motion-activated lights |
+| `counter` | Increment/decrement | Count events |
+
+**Important**: New helper entities defined in `configuration.yaml` require "Reload all YAML configuration" in HA (Developer Tools > YAML > All YAML Configuration) to appear in the entity registry. A simple `make push` reload is not sufficient.
+
+## Scripts
+
+Scripts are defined in `config/scripts.yaml`. They can accept parameters and be called from automations or dashboard buttons.
+
+```yaml
+# Example script with parameters
+disable_alarm_timed:
+  alias: Disable Alarm for Duration
+  fields:
+    duration:
+      description: How long to disable (HH:MM:SS format)
+      example: "01:00:00"
+  sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.alarm_toggle
+    - action: timer.start
+      target:
+        entity_id: timer.alarm_on_timer
+      data:
+        duration: "{{ duration }}"
+  mode: single
+```
+
+### Calling Scripts from Dashboard Buttons
+
+```json
+{
+  "type": "button",
+  "name": "1 hour",
+  "icon": "mdi:timer",
+  "tap_action": {
+    "action": "perform-action",
+    "perform_action": "script.disable_alarm_timed",
+    "data": {
+      "duration": "01:00:00"
+    }
+  }
+}
+```
+
+## Common Service Calls
+
+```yaml
+# Notifications
+- action: notify.mobile_devices
+  data:
+    title: "Alert"
+    message: "Something happened"
+
+# Lights
+- action: light.turn_on
+  target:
+    entity_id: light.living_room
+  data:
+    brightness_pct: 80
+    color_temp_kelvin: 3000
+
+# Switches
+- action: switch.turn_on
+  target:
+    entity_id: switch.device_name
+
+# Timers
+- action: timer.start
+  target:
+    entity_id: timer.bathroom_timer
+  data:
+    duration: "00:10:00"
+
+# Scenes
+- action: scene.turn_on
+  target:
+    entity_id: scene.movie_night
+
+# Scripts
+- action: script.turn_on
+  target:
+    entity_id: script.morning_routine
+```
+
+## Device Triggers
+
+Used for physical buttons, switches with firmware events:
+```yaml
+triggers:
+  - trigger: device
+    domain: mqtt
+    device_id: <device_id>
+    type: action
+    subtype: single|double|long_press
+```
+
+Note: Device IDs can be found using `python tools/entity_explorer.py --search "device name"`
+
+## Conditional Actions (Choose)
+
+```yaml
+actions:
+  - choose:
+    - conditions:
+      - condition: trigger
+        id: button_single
+      sequence:
+        - action: light.turn_on
+          target:
+            entity_id: light.room
+    - conditions:
+      - condition: state
+        entity_id: input_boolean.night_mode
+        state: 'on'
+      sequence:
+        - action: light.turn_off
+    default:
+      - action: notify.mobile_devices
+        data:
+          message: "Default action"
+```
+
+## Condition Types
+
+```yaml
+# State condition
+- condition: state
+  entity_id: input_boolean.away_mode
+  state: 'on'
+
+# Numeric state
+- condition: numeric_state
+  entity_id: sensor.temperature
+  above: 20
+  below: 30
+
+# Time condition
+- condition: time
+  after: '08:00:00'
+  before: '22:00:00'
+  weekday:
+    - mon
+    - tue
+    - wed
+
+# Sun condition
+- condition: sun
+  after: sunset
+  after_offset: '-01:00:00'
+
+# Template condition
+- condition: template
+  value_template: "{{ states('sensor.temperature') | float > 25 }}"
+```
+
+## Integrations in Use
+
+- **Zigbee2MQTT**: Config at `config/zigbee2mqtt/configuration.yaml`
+- **Frigate**: Camera notifications via automations
+- **Yeelight**: Custom effects defined in `configuration.yaml`
+- **Recorder**: Configured with 7-day retention, excludes energy sensors
+
+## Testing Automations
+
+1. **Trigger manually**: Developer Tools > Services > `automation.trigger`
+2. **Check traces**: Settings > Automations > [automation] > Traces
+3. **View logs**: `make pull` then check `config/home-assistant.log`
+4. **Dry run**: Use `make validate` before pushing
+
+## Common Patterns
+
+### Motion-Activated Light with Timer
+```yaml
+- id: motion_light
+  alias: Motion Light
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.motion
+      to: 'on'
+  actions:
+    - action: light.turn_on
+      target:
+        entity_id: light.room
+    - action: timer.start
+      target:
+        entity_id: timer.room_timer
+
+- id: motion_light_off
+  alias: Motion Light Off
+  triggers:
+    - trigger: event
+      event_type: timer.finished
+      event_data:
+        entity_id: timer.room_timer
+  actions:
+    - action: light.turn_off
+      target:
+        entity_id: light.room
+```
+
+### Button with Multiple Actions
+```yaml
+- id: button_control
+  alias: Button Control
+  triggers:
+    - trigger: device
+      device_id: <id>
+      type: action
+      subtype: single
+      id: single_press
+    - trigger: device
+      device_id: <id>
+      type: action
+      subtype: double
+      id: double_press
+  actions:
+    - choose:
+      - conditions:
+        - condition: trigger
+          id: single_press
+        sequence:
+          - action: light.toggle
+            target:
+              entity_id: light.room
+      - conditions:
+        - condition: trigger
+          id: double_press
+        sequence:
+          - action: scene.turn_on
+            target:
+              entity_id: scene.bright
+```
 
 - All python tools need to be run with  `source venv/bin/activate && python <tool_path>`
