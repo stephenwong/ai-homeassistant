@@ -9,6 +9,18 @@ description: Use when creating, modifying, or troubleshooting Home Assistant aut
 
 Structured workflow for creating and modifying Home Assistant automations with entity validation, user clarification, and safe deployment.
 
+## CRITICAL: Context Management
+
+**Large files that will exhaust context if read fully:**
+- `config/.storage/core.entity_registry` - 90k+ lines - **NEVER read directly**
+- `config/.storage/core.device_registry` - 7k+ lines - **NEVER read directly**
+- `config/automations.yaml` - 1600+ lines - **Use Grep to find specific automations**
+
+**Always use targeted searches:**
+- Use `Grep` with specific keywords, not `Read` on large files
+- Use `python tools/entity_explorer.py --search "keyword"` for entity lookups
+- When reading automations.yaml, use `Grep` to find the specific automation first, then `Read` with line offsets
+
 ## When to Use
 
 - Creating new automations
@@ -32,8 +44,8 @@ digraph automation_flow {
         label="1. DISCOVERY";
         style=filled;
         color=lightblue;
-        "Read automations.yaml" -> "Search entity registry";
-        "Search entity registry" -> "Identify candidate entities";
+        "Grep automations.yaml" -> "Search entities (entity_explorer)";
+        "Search entities (entity_explorer)" -> "Identify candidate entities";
     }
 
     subgraph cluster_clarify {
@@ -83,9 +95,9 @@ digraph automation_flow {
 
 | Phase | Tools/Commands | Purpose |
 |-------|----------------|---------|
-| Discovery | `Glob`, `Grep`, `Read` | Find entities, existing automations |
+| Discovery | `Grep`, `entity_explorer.py` | Find entities, existing automations |
 | Clarify | `AskUserQuestion` | Resolve ambiguity, confirm intent |
-| Design | `Read` registry files | Plan structure, identify helpers |
+| Design | `Read configuration.yaml` | Check helpers (small file, safe to read) |
 | Implement | `Edit` | Modify YAML files |
 | Deploy | `make validate`, `make push` | Test and deploy |
 
@@ -94,21 +106,25 @@ digraph automation_flow {
 **Always start here.** Before writing ANY automation:
 
 ```bash
-# 1. Read current automations to understand patterns
-Read config/automations.yaml
+# 1. Find similar automations by keyword (DO NOT read entire file)
+Grep "motion" config/automations.yaml  # Find automations mentioning "motion"
+Grep "- id:" config/automations.yaml   # List all automation IDs
 
-# 2. Search entity registry for relevant entities
-Grep "keyword" config/.storage/core.entity_registry
+# 2. Use entity explorer for entity lookups (preferred method)
+source venv/bin/activate && python tools/entity_explorer.py --search "bathroom"
+source venv/bin/activate && python tools/entity_explorer.py --domain light
 
-# 3. Use entity explorer for complex searches
-source venv/bin/activate && python tools/entity_explorer.py --search "motion"
+# 3. For specific entity validation, use targeted Grep
+Grep "bathroom_motion" config/.storage/core.entity_registry
 ```
 
-**Key files to check:**
-- `config/automations.yaml` - Existing automations (patterns, IDs)
-- `config/.storage/core.entity_registry` - All entities and IDs
-- `config/.storage/core.device_registry` - Device IDs for triggers
-- `config/configuration.yaml` - Helpers, integrations, templates
+**DO NOT read these files directly (too large):**
+- `config/.storage/core.entity_registry` - Use entity_explorer or Grep
+- `config/.storage/core.device_registry` - Use Grep with device name
+- `config/automations.yaml` - Use Grep to find specific sections first
+
+**Safe to read directly:**
+- `config/configuration.yaml` - Small, contains helpers/integrations
 
 **Entity naming convention:** `location_room_device_sensor`
 - Example: `binary_sensor.home_basement_motion_battery`
@@ -248,17 +264,19 @@ make push
 
 | Mistake | Fix |
 |---------|-----|
-| Using entity without verifying existence | Always check registry first |
+| Reading entire entity_registry (90k lines) | Use `entity_explorer.py` or `Grep` |
+| Reading entire automations.yaml | Use `Grep` to find specific sections |
+| Using entity without verifying existence | Use entity_explorer to validate |
 | Assuming which sensor to use | Ask user when multiple options |
-| Creating automation before reading existing | Read automations.yaml first |
 | Large wholesale file rewrites | Use targeted Edit calls |
 | Skipping validation | Always run `make validate` |
 | Not checking for needed helpers | Review if timers/toggles needed |
 
 ## Red Flags - You're Doing It Wrong
 
-- Writing automation without reading automations.yaml first
-- Not searching entity registry before using entity IDs
+- **Reading entire entity_registry or device_registry** - Use Grep/entity_explorer
+- **Reading entire automations.yaml** - Use Grep to find specific automations first
+- Writing automation without searching automations.yaml first
 - Assuming entity exists without verification
 - Not asking when multiple sensors/devices could work
 - Pushing without validation
@@ -291,15 +309,15 @@ make push
 ## Finding Entity/Device IDs
 
 ```bash
-# Search by name
-python tools/entity_explorer.py --search "bathroom"
+# PREFERRED: Use entity explorer (formatted output, context-efficient)
+source venv/bin/activate && python tools/entity_explorer.py --search "bathroom"
+source venv/bin/activate && python tools/entity_explorer.py --domain binary_sensor
 
-# List domain
-python tools/entity_explorer.py --domain binary_sensor
-
-# Device IDs (for device triggers)
-Grep "device_id" config/.storage/core.entity_registry
-
-# Or search by device name
+# For device IDs (device triggers), search by device name
 Grep "Bathroom Button" config/.storage/core.device_registry
+
+# Validate specific entity exists
+Grep "bathroom_motion" config/.storage/core.entity_registry
 ```
+
+**Never read registry files directly - always use Grep or entity_explorer.**
