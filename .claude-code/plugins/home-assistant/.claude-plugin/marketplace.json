@@ -1,0 +1,18 @@
+{
+  "name": "home-assistant-local",
+  "description": "Local marketplace for Home Assistant configuration management skills",
+  "owner": {
+    "name": "Stephen"
+  },
+  "plugins": [
+    {
+      "name": "home-assistant",
+      "description": "Skills for managing Home Assistant configuration: backup workflows, automation creation, debugging, and entity validation",
+      "version": "1.0.0",
+      "source": "./",
+      "author": {
+        "name": "Stephen"
+      }
+    }
+  ]
+}

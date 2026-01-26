@@ -91,6 +91,46 @@ Use the `home-assistant-backup` skill (automated 3-step process):
 - Format: `ha_config_YYYYMMDD_HHMMSS.tar.gz`
 - Automatic pruning: Keep all (0-7 days), one/day (7-30 days), one/week (30+ days)
 
+## Learning from Mistakes
+
+When a mistake is identified (by you or the user), use the `learning-from-mistakes` skill to:
+
+1. **Reflect**: Identify the root cause and failed assumption
+2. **Abstract**: Generalize the specific error into a pattern
+3. **Document**: Update the relevant skill or CLAUDE.md to prevent recurrence
+
+**When to invoke:**
+- After catching an error in work
+- When user points out a mistake
+- After failed deployment or validation
+- When a better approach becomes apparent
+
+**Documentation targets:**
+- Workflow-specific learnings → Add to relevant skill's "Common Mistakes" or "Red Flags"
+- Project-wide practices → Add to CLAUDE.md
+- New processes needed → Consider creating a new skill
+
+### Writing Effective Guidelines
+
+When adding new rules to this document, follow these principles:
+
+**Core Principles (Always Apply):**
+1. Use absolute directives - Start with "NEVER" or "ALWAYS"
+2. Lead with why - Explain the problem before the solution (1-3 bullets max)
+3. Be concrete - Include actual commands/code
+4. Minimize examples - One clear point per code block
+5. Bullets over paragraphs - Keep explanations concise
+
+**Optional Enhancements (Use Strategically):**
+- ❌/✅ examples: Only when the antipattern is subtle
+- "Warning Signs" section: Only for gradual mistakes
+- "General Principle": Only when abstraction is non-obvious
+
+**Anti-Bloat Rules:**
+- ❌ Don't add "Warning Signs" to obvious rules
+- ❌ Don't show bad examples for trivial mistakes
+- ❌ Don't write paragraphs explaining what bullets can convey
+
 ## Key Features
 
 - ✅ **Safe Deployments**: Pre-push validation prevents broken configs
@@ -108,6 +148,21 @@ Use the `home-assistant-backup` skill (automated 3-step process):
 - **Secrets are skipped** during validation for security
 - **SSH access required** for pull/push operations
 - **Python venv required** for validation tools
+
+### Rsync Safety
+
+**NEVER use rsync `--delete` without `--filter='protect'` for excluded directories.**
+
+- Directories excluded from `pull` don't exist locally
+- `--delete` on `push` removes anything not local → deletes excluded dirs on server
+- `.storage/` deletion breaks HACS, auth, entity registry
+- Always pair excludes with protect filters:
+```bash
+rsync --delete --exclude-from=.rsync-excludes \
+  --filter='protect .storage/' \
+  --filter='protect custom_components/' \
+  ...
+```
 
 ## Troubleshooting
 
@@ -240,6 +295,23 @@ state: >
   {% set humidity = states('sensor.bathroom_humidity') | float(0) %}
   {% if humidity > 70 %}on{% else %}off{% endif %}
 ```
+
+### Template Whitespace Warning
+
+**NEVER use multi-line templates for values that need exact formatting (URLs, entity IDs, etc.).**
+
+Multi-line Jinja templates add whitespace that breaks URLs and identifiers:
+```yaml
+# BAD - adds whitespace around the value
+stream_name: >
+  {% if condition %}front_door{% else %}driveway{% endif %}
+# Results in: "  front_door  " (with newlines/spaces)
+
+# GOOD - single line, no extra whitespace
+stream_name: "{% if condition %}front_door{% else %}driveway{% endif %}"
+```
+
+Use multi-line templates only for display text where whitespace doesn't matter.
 
 ## Helper Entities
 
@@ -413,12 +485,78 @@ actions:
 - **Yeelight**: Custom effects defined in `configuration.yaml`
 - **Recorder**: Configured with 7-day retention, excludes energy sensors
 
+## Streaming Frigate Cameras to Cast/Nest Displays
+
+**NEVER use `camera.play_stream`** - it doesn't work with Frigate cameras and returns 500 errors.
+
+### Prerequisites
+1. **Expose go2rtc port 1984** in Frigate addon settings (Settings → Add-ons → Frigate → Network)
+2. go2rtc streams must be defined in `frigate/config.yml` under `go2rtc.streams`
+
+### Streaming to Cast devices
+Use `media_player.play_media` with go2rtc's MP4 stream:
+```yaml
+- action: media_player.play_media
+  target:
+    entity_id: media_player.nest_hub
+  data:
+    media_content_id: "http://192.168.1.10:1984/api/stream.mp4?src=front_door_rmtp"
+    media_content_type: "video/mp4"
+```
+
+### Stopping streams / returning to ambient mode
+```yaml
+# BAD - leaves blank screen with cast icon
+- action: media_player.media_stop
+
+# GOOD - returns to ambient/photo frame mode
+- action: media_player.turn_off
+  target:
+    entity_id: media_player.nest_hub
+```
+
+### Checking if display is available (not playing content)
+```yaml
+- condition: state
+  entity_id: media_player.nest_hub
+  state:
+    - idle
+    - 'off'
+```
+
 ## Testing Automations
 
 1. **Trigger manually**: Developer Tools > Services > `automation.trigger`
 2. **Check traces**: Settings > Automations > [automation] > Traces
 3. **View logs**: `make pull` then check `config/home-assistant.log`
 4. **Dry run**: Use `make validate` before pushing
+
+## Direct HA API Access for Debugging
+
+Use the HA API directly for real-time debugging. Requires `.env` with `HA_URL` and `HA_TOKEN`.
+
+```bash
+source .env
+
+# Check entity state
+curl -s "${HA_URL}/api/states/sensor.entity_name" -H "Authorization: Bearer ${HA_TOKEN}"
+
+# Test service call directly
+curl -s -X POST "${HA_URL}/api/services/light/turn_on" \
+  -H "Authorization: Bearer ${HA_TOKEN}" -H "Content-Type: application/json" \
+  -d '{"entity_id": "light.room"}'
+
+# Reload specific domains (when make push blocked by new entities)
+curl -s -X POST "${HA_URL}/api/services/automation/reload" -H "Authorization: Bearer ${HA_TOKEN}" -H "Content-Type: application/json"
+curl -s -X POST "${HA_URL}/api/services/timer/reload" -H "Authorization: Bearer ${HA_TOKEN}" -H "Content-Type: application/json"
+curl -s -X POST "${HA_URL}/api/services/template/reload" -H "Authorization: Bearer ${HA_TOKEN}" -H "Content-Type: application/json"
+```
+
+**Bypassing validation for new entities:** When validation fails because new helpers/templates don't exist yet (they're created on reload), push directly with rsync if official HA validation passed:
+```bash
+source .env && rsync -avz config/ ${HA_HOST}:/config/
+# Then reload the specific domains
+```
 
 ## Common Patterns
 

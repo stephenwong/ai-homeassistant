@@ -271,6 +271,9 @@ make push
 | Large wholesale file rewrites | Use targeted Edit calls |
 | Skipping validation | Always run `make validate` |
 | Not checking for needed helpers | Review if timers/toggles needed |
+| Using `camera.play_stream` for Frigate | Use `media_player.play_media` with go2rtc (see CLAUDE.md) |
+| Multi-line Jinja for URLs/IDs | Use single-line templates to avoid whitespace |
+| Using `media_player.media_stop` for Cast | Use `turn_off` to return to ambient mode |
 
 ## Red Flags - You're Doing It Wrong
 

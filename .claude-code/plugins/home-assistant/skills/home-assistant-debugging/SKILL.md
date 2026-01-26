@@ -241,3 +241,100 @@ HA restart causes all entities to transition: `unavailable` → first reading
 | `sensor.device_name` (integration) | Integration | No* |
 
 *Integration entities can only be modified via integration config (e.g., Zigbee2MQTT config).
+
+## Direct HA API Access for Debugging
+
+When you need real-time state checks or to test services without full deployment, use the HA API directly.
+
+**Prerequisites:** `.env` file with `HA_URL` and `HA_TOKEN` configured.
+
+### Check Entity State
+```bash
+source .env
+curl -s "${HA_URL}/api/states/sensor.entity_name" \
+  -H "Authorization: Bearer ${HA_TOKEN}"
+```
+
+### Check Automation Status (was it triggered?)
+```bash
+source .env
+curl -s "${HA_URL}/api/states/automation.automation_name" \
+  -H "Authorization: Bearer ${HA_TOKEN}"
+# Look for "last_triggered" in attributes
+```
+
+### Test Service Calls Directly
+```bash
+source .env
+curl -s -X POST "${HA_URL}/api/services/light/turn_on" \
+  -H "Authorization: Bearer ${HA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"entity_id": "light.room_light"}'
+```
+
+### Reload Specific Domains
+When `make push` validation blocks due to new entities that will exist after reload:
+
+```bash
+source .env
+# Reload automations
+curl -s -X POST "${HA_URL}/api/services/automation/reload" \
+  -H "Authorization: Bearer ${HA_TOKEN}" -H "Content-Type: application/json"
+
+# Reload timers
+curl -s -X POST "${HA_URL}/api/services/timer/reload" \
+  -H "Authorization: Bearer ${HA_TOKEN}" -H "Content-Type: application/json"
+
+# Reload template entities
+curl -s -X POST "${HA_URL}/api/services/template/reload" \
+  -H "Authorization: Bearer ${HA_TOKEN}" -H "Content-Type: application/json"
+```
+
+### Push Directly When Validation Blocks on New Entities
+
+When validation fails because new helpers/templates don't exist yet (expected - they're created on reload):
+
+```bash
+# Check official HA validation passed (most important)
+# If only entity reference validation fails for NEW entities, push directly:
+source .env
+rsync -avz config/ ${HA_HOST}:/config/
+
+# Then reload the specific domains
+```
+
+**Only bypass validation when:**
+- Official HA validation passed
+- Entity reference errors are for NEW entities defined in the same change
+- You understand why validation is failing
+
+## Debugging Workflow for Service Failures
+
+When a service call doesn't work as expected:
+
+1. **Test the service directly** via API to isolate automation vs service issue
+2. **Check entity states** - is the target in expected state?
+3. **Check automation traces** - did the automation run?
+4. **Check HA logs** - `config/home-assistant.log` after `make pull`
+
+### Example: Debugging camera streaming failure
+
+```bash
+# 1. Test service directly
+curl -s -X POST "${HA_URL}/api/services/camera/play_stream" \
+  -H "Authorization: Bearer ${HA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"entity_id": "camera.front_door", "media_player": "media_player.nest_hub"}'
+# If 500 error → service doesn't work with this camera type
+
+# 2. Try alternative service
+curl -s -X POST "${HA_URL}/api/services/media_player/play_media" \
+  -H "Authorization: Bearer ${HA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"entity_id": "media_player.nest_hub", "media_content_id": "http://...", "media_content_type": "video/mp4"}'
+```
+
+This isolates whether the problem is:
+- The service itself (500 error, not supported)
+- The automation logic (service works manually but not via automation)
+- Entity state conditions (automation not triggering)

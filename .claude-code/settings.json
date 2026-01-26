@@ -1,4 +1,7 @@
 {
+  "extraKnownMarketplaces": [
+    "./.claude-code/plugins/home-assistant/.claude-plugin/marketplace.json"
+  ],
   "hooks": {
     "enabled": true,
     "posttooluse": [
