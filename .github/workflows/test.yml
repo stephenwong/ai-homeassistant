@@ -1,0 +1,52 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rsync-excludes-tests:
+    name: Rsync Exclude Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify rsync is available
+        run: rsync --version
+
+      - name: Install test dependencies
+        run: pip install pytest pytest-cov
+
+      - name: Run rsync exclude tests
+        run: python -m pytest tests/test_rsync_excludes.py -o addopts=
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linters
+        run: pip install ruff
+
+      - name: Check formatting with ruff
+        run: ruff format --check tools/
+
+      - name: Lint with ruff
+        run: ruff check tools/

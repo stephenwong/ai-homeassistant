@@ -45,12 +45,17 @@ Implications: Frigate can use aggressive detection (Hailo), streams use hardware
 
 ## Critical Gotchas
 
-### Rsync Safety
-**NEVER use rsync `--delete` without `--filter='protect'` for excluded directories.**
-```bash
-rsync --delete --exclude-from=.rsync-excludes \
-  --filter='protect .storage/' --filter='protect custom_components/'
-```
+### Rsync Architecture
+This project uses **separate exclude files** for pull vs push:
+
+| File | Used By | Purpose |
+|------|---------|---------|
+| `.rsync-excludes-pull` | `make pull` | Less restrictive - allows pulling `.storage/` for local reference |
+| `.rsync-excludes-push` | `make push` | More restrictive - protects HA runtime state |
+
+**What this repo can manage (YAML files):** `automations.yaml`, `scripts.yaml`, `scenes.yaml`, `configuration.yaml`, `secrets.yaml`
+
+**Never modify locally (runtime state):** `.storage/` files are managed by HA at runtime. Use the HA UI for entity/device changes.
 
 ### Template Whitespace
 **NEVER use multi-line templates for URLs/entity IDs** - they add whitespace:
