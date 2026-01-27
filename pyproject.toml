@@ -18,6 +18,7 @@ dependencies = [
     "voluptuous",
     "pyyaml>=6.0.0",
     "jsonschema",
+    "requests",
 ]
 
 [project.optional-dependencies]
@@ -36,7 +37,7 @@ dev = [
 
 [tool.black]
 line-length = 88
-target-version = ['py311']
+target-version = ['py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -72,7 +73,7 @@ extend_skip_glob = ["venv/*", "config/*", "temp/*"]
 # Note: flake8 configuration is in .flake8 file (doesn't support pyproject.toml)
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_unused_configs = true
 # Relaxed settings for existing codebase
 disallow_untyped_defs = false

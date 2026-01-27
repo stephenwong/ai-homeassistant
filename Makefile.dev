@@ -5,9 +5,7 @@
 include Makefile
 
 # Development-specific variables
-PYTHON = python3.11
-PIP = pip
-VENV_ACTIVATE = source venv/bin/activate
+UV_RUN ?= uv run
 TEST_DIR = tests
 COVERAGE_DIR = htmlcov
 
@@ -56,31 +54,29 @@ dev-setup: dev-install dev-pre-commit
 # Install development dependencies
 dev-install:
 	@echo "$(GREEN)Installing development dependencies...$(NC)"
-	@if [ ! -L "venv" ]; then echo "$(RED)Error: venv symlink not found$(NC)"; exit 1; fi
-	@$(VENV_ACTIVATE) && $(PIP) install --upgrade pip
-	@$(VENV_ACTIVATE) && $(PIP) install -r requirements-dev.txt
+	@uv sync --extra dev
 	@echo "$(GREEN)Development dependencies installed!$(NC)"
 
 # Format code
 dev-format:
 	@echo "$(GREEN)Formatting code with black and isort...$(NC)"
-	@$(VENV_ACTIVATE) && black . --extend-exclude 'venv/|\.venv/|config/|temp/' --line-length 88
-	@$(VENV_ACTIVATE) && isort . --extend-skip-glob 'venv/*,config/*,temp/*' --profile black
+	@$(UV_RUN) black . --extend-exclude '.venv/|config/|temp/' --line-length 88
+	@$(UV_RUN) isort . --extend-skip-glob '.venv/*,config/*,temp/*' --profile black
 	@echo "$(GREEN)Code formatting complete!$(NC)"
 
 # Run linters
 dev-lint:
 	@echo "$(GREEN)Running linters...$(NC)"
 	@echo "$(CYAN)Running flake8...$(NC)"
-	@$(VENV_ACTIVATE) && flake8 tools/
+	@$(UV_RUN) flake8 tools/
 	@echo "$(CYAN)Running pylint...$(NC)"
-	@$(VENV_ACTIVATE) && pylint tools/
+	@$(UV_RUN) pylint tools/
 	@echo "$(GREEN)Linting complete!$(NC)"
 
 # Type checking
 dev-type-check:
 	@echo "$(GREEN)Running mypy type checking...$(NC)"
-	@$(VENV_ACTIVATE) && mypy tools/
+	@$(UV_RUN) mypy tools/
 	@echo "$(GREEN)Type checking complete!$(NC)"
 
 # Run all code quality checks
@@ -90,31 +86,31 @@ dev-check-all: dev-format dev-lint dev-type-check
 # Run tests
 dev-test:
 	@echo "$(GREEN)Running pytest tests...$(NC)"
-	@$(VENV_ACTIVATE) && pytest $(TEST_DIR) -v
+	@$(UV_RUN) pytest $(TEST_DIR) -v
 	@echo "$(GREEN)Tests complete!$(NC)"
 
 # Run tests with coverage
 dev-test-coverage:
 	@echo "$(GREEN)Running tests with coverage...$(NC)"
-	@$(VENV_ACTIVATE) && pytest $(TEST_DIR) --cov=tools --cov-report=html --cov-report=term-missing
+	@$(UV_RUN) pytest $(TEST_DIR) --cov=tools --cov-report=html --cov-report=term-missing
 	@echo "$(GREEN)Coverage report generated in $(COVERAGE_DIR)/$(NC)"
 
 # Run tests with verbose output
 dev-test-verbose:
 	@echo "$(GREEN)Running verbose tests...$(NC)"
-	@$(VENV_ACTIVATE) && pytest $(TEST_DIR) -v -s
+	@$(UV_RUN) pytest $(TEST_DIR) -v -s
 	@echo "$(GREEN)Verbose tests complete!$(NC)"
 
 # Install and run pre-commit
 dev-pre-commit:
 	@echo "$(GREEN)Setting up pre-commit hooks...$(NC)"
-	@$(VENV_ACTIVATE) && pre-commit install
+	@$(UV_RUN) pre-commit install
 	@echo "$(GREEN)Pre-commit hooks installed!$(NC)"
 
 # Run pre-commit on all files
 dev-pre-commit-all:
 	@echo "$(GREEN)Running pre-commit on all files...$(NC)"
-	@$(VENV_ACTIVATE) && pre-commit run --all-files
+	@$(UV_RUN) pre-commit run --all-files
 	@echo "$(GREEN)Pre-commit checks complete!$(NC)"
 
 # Clean development artifacts
@@ -132,8 +128,7 @@ dev-clean-dev: clean
 # Update development dependencies
 dev-update-deps:
 	@echo "$(GREEN)Updating development dependencies...$(NC)"
-	@$(VENV_ACTIVATE) && $(PIP) install --upgrade pip
-	@$(VENV_ACTIVATE) && $(PIP) install --upgrade -r requirements-dev.txt
+	@uv sync --extra dev --upgrade
 	@echo "$(GREEN)Dependencies updated!$(NC)"
 
 # Create test directory structure if it doesn't exist
@@ -156,5 +151,5 @@ dev-workflow: dev-format dev-lint dev-type-check dev-test
 # Watch mode for development (requires entr)
 dev-watch:
 	@echo "$(GREEN)Starting development watch mode...$(NC)"
-	@echo "$(CYAN)Install 'entr' first: brew install entr$(NC)"
+	@echo "$(CYAN)Install 'entr' first: sudo apt install entr$(NC)"
 	@find tools/ -name "*.py" | entr -c make dev-workflow

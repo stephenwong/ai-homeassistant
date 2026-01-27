@@ -41,12 +41,10 @@ This directory contains a complete Python development environment with modern to
 ## File Structure
 
 ```
-public/
-├── venv/                    # Symlinked to ../venv/
 ├── tools/                   # Python validation scripts
+├── tests/                   # Test files
 ├── config/                  # Home Assistant configuration
 ├── pyproject.toml          # Python project configuration
-├── requirements-dev.txt    # Development dependencies
 ├── .pre-commit-config.yaml # Pre-commit hook configuration
 ├── .yamllint.yml          # YAML linting rules
 ├── Makefile               # Main project commands
@@ -96,7 +94,7 @@ make -f Makefile.dev dev-clean-dev
 
 ### Black (Code Formatting)
 - Line length: 88 characters
-- Target Python version: 3.11+
+- Target Python version: 3.12+
 - Automatically formats all Python files
 
 ### isort (Import Sorting)
@@ -168,15 +166,6 @@ Automatically runs on git commits:
    ```
 
 ## Troubleshooting
-
-### Virtual Environment Issues
-```bash
-# Recreate symlink if needed
-rm venv && ln -sf ../venv venv
-
-# Verify symlink works
-ls -la venv
-```
 
 ### Dependency Issues
 ```bash

@@ -47,7 +47,7 @@ help:
 # Pull configuration from Home Assistant
 pull: check-env
 	@echo "$(GREEN)Pulling configuration from Home Assistant...$(NC)"
-	@rsync -avz --delete --exclude-from=.rsync-excludes $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
+	@rsync -avz --delete --exclude-from=.rsync-excludes --filter='protect .storage/' --filter='protect custom_components/' $(HA_HOST):$(HA_REMOTE_PATH) $(LOCAL_CONFIG_PATH)
 	@echo "$(GREEN)Pulling Frigate configuration...$(NC)"
 	@mkdir -p $(FRIGATE_LOCAL_PATH)
 	@rsync -avz $(HA_HOST):$(FRIGATE_REMOTE_PATH)config.yml $(FRIGATE_LOCAL_PATH)
@@ -60,7 +60,7 @@ push: check-env
 	@echo "$(GREEN)Validating configuration before push...$(NC)"
 	@$(MAKE) validate
 	@echo "$(GREEN)Validation passed! Pushing to Home Assistant...$(NC)"
-	@rsync -avz --delete --exclude-from=.rsync-excludes $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
+	@rsync -avz --delete --exclude-from=.rsync-excludes --filter='protect .storage/' --filter='protect custom_components/' $(LOCAL_CONFIG_PATH) $(HA_HOST):$(HA_REMOTE_PATH)
 	@if [ -f "$(FRIGATE_LOCAL_PATH)config.yml" ]; then \
 		echo "$(GREEN)Pushing Frigate configuration...$(NC)"; \
 		rsync -avz $(FRIGATE_LOCAL_PATH)config.yml $(HA_HOST):$(FRIGATE_REMOTE_PATH); \

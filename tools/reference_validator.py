@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional, Set, TypedDict
 
 import yaml
 
+from tools.common import HAYamlLoader
+
 
 class DomainSummary(TypedDict):
     """Type definition for domain summary dictionary."""
@@ -20,70 +22,6 @@ class DomainSummary(TypedDict):
     enabled: int
     disabled: int
     examples: List[str]
-
-
-class HAYamlLoader(yaml.SafeLoader):
-    """Custom YAML loader that handles Home Assistant specific tags."""
-
-    pass
-
-
-def include_constructor(loader, node):
-    """Handle !include tag."""
-    filename = loader.construct_scalar(node)
-    return f"!include {filename}"
-
-
-def include_dir_named_constructor(loader, node):
-    """Handle !include_dir_named tag."""
-    dirname = loader.construct_scalar(node)
-    return f"!include_dir_named {dirname}"
-
-
-def include_dir_merge_named_constructor(loader, node):
-    """Handle !include_dir_merge_named tag."""
-    dirname = loader.construct_scalar(node)
-    return f"!include_dir_merge_named {dirname}"
-
-
-def include_dir_merge_list_constructor(loader, node):
-    """Handle !include_dir_merge_list tag."""
-    dirname = loader.construct_scalar(node)
-    return f"!include_dir_merge_list {dirname}"
-
-
-def include_dir_list_constructor(loader, node):
-    """Handle !include_dir_list tag."""
-    dirname = loader.construct_scalar(node)
-    return f"!include_dir_list {dirname}"
-
-
-def input_constructor(loader, node):
-    """Handle !input tag for blueprints."""
-    input_name = loader.construct_scalar(node)
-    return f"!input {input_name}"
-
-
-def secret_constructor(loader, node):
-    """Handle !secret tag."""
-    secret_name = loader.construct_scalar(node)
-    return f"!secret {secret_name}"
-
-
-# Register custom constructors
-HAYamlLoader.add_constructor("!include", include_constructor)
-HAYamlLoader.add_constructor(
-    "!include_dir_named", include_dir_named_constructor
-)
-HAYamlLoader.add_constructor(
-    "!include_dir_merge_named", include_dir_merge_named_constructor
-)
-HAYamlLoader.add_constructor(
-    "!include_dir_merge_list", include_dir_merge_list_constructor
-)
-HAYamlLoader.add_constructor("!include_dir_list", include_dir_list_constructor)
-HAYamlLoader.add_constructor("!input", input_constructor)
-HAYamlLoader.add_constructor("!secret", secret_constructor)
 
 
 class ReferenceValidator:

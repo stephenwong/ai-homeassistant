@@ -71,7 +71,7 @@ This repository provides a complete framework for managing Home Assistant config
 ```bash
 git clone git@github.com:philippb/claude-homeassistant.git
 cd claude-homeassistant
-make setup  # Creates Python venv and installs dependencies
+make setup  # Installs dependencies via uv
 ```
 
 #### 2. Configure Connection
@@ -94,7 +94,6 @@ HA_REMOTE_PATH=/config/
 # Local Configuration (optional - defaults provided)
 LOCAL_CONFIG_PATH=config/
 BACKUP_DIR=backups
-VENV_PATH=venv
 TOOLS_PATH=tools
 ```
 
@@ -242,7 +241,6 @@ xcode-select --install  # Installs Command Line Tools including make
 │   ├── hooks/            # Automated validation hooks
 │   └── settings.json     # Project configuration
 ├── .env.example          # Environment configuration template
-├── venv/                 # Python virtual environment
 ├── Makefile              # Management commands
 └── CLAUDE.md             # Claude Code instructions
 ```
@@ -268,10 +266,9 @@ make entities ARGS='--full'            # Complete detailed output
 
 ### Individual Validators
 ```bash
-. venv/bin/activate
-python tools/yaml_validator.py         # YAML syntax only
-python tools/reference_validator.py    # Entity references only
-python tools/ha_official_validator.py  # Official HA validation
+uv run python tools/yaml_validator.py         # YAML syntax only
+uv run python tools/reference_validator.py    # Entity references only
+uv run python tools/ha_official_validator.py  # Official HA validation
 ```
 
 ## 🔧 Validation System
@@ -350,13 +347,13 @@ The entity explorer helps you understand what's available:
 
 ```bash
 # Find all motion sensors
-. venv/bin/activate && python tools/entity_explorer.py --search motion
+uv run python tools/entity_explorer.py --search motion
 
 # Show all climate controls
-. venv/bin/activate && python tools/entity_explorer.py --domain climate
+uv run python tools/entity_explorer.py --domain climate
 
 # Kitchen devices only
-. venv/bin/activate && python tools/entity_explorer.py --area kitchen
+uv run python tools/entity_explorer.py --area kitchen
 ```
 
 ## 🔒 Security & Best Practices
@@ -370,8 +367,8 @@ The entity explorer helps you understand what's available:
 ## 🐛 Troubleshooting
 
 ### Validation Errors
-1. Check YAML syntax first: `. venv/bin/activate && python tools/yaml_validator.py`
-2. Verify entity references: `. venv/bin/activate && python tools/reference_validator.py`
+1. Check YAML syntax first: `uv run python tools/yaml_validator.py`
+2. Verify entity references: `uv run python tools/reference_validator.py`
 3. Check HA logs if official validation fails
 
 ### SSH Connection Issues
@@ -442,8 +439,7 @@ rsync -avz --dry-run homeassistant:/config/ ./test/
 
 ### Missing Dependencies
 ```bash
-. venv/bin/activate
-pip install homeassistant voluptuous pyyaml jsonschema requests
+uv sync
 ```
 
 ## 🔧 Configuration
@@ -468,7 +464,6 @@ HA_REMOTE_PATH=/config/                  # Remote config path
 # Local Configuration (optional - defaults provided)
 LOCAL_CONFIG_PATH=config/                # Local config directory
 BACKUP_DIR=backups                       # Backup directory
-VENV_PATH=venv                          # Python virtual environment path
 TOOLS_PATH=tools                        # Tools directory
 ```
 

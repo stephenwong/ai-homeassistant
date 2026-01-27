@@ -75,25 +75,18 @@ echo "✅ SSH found"
 echo ""
 echo "🐍 Setting up Python environment..."
 
-# Create virtual environment
-if [ ! -d "venv" ]; then
-    echo "Creating Python virtual environment..."
-    python3 -m venv venv
-else
-    echo "Virtual environment already exists"
+# Check if uv is available
+if ! command_exists uv; then
+    echo "Installing uv (Python package manager)..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# Activate virtual environment
-echo "Activating virtual environment..."
-source venv/bin/activate
-
-# Upgrade pip
-echo "Upgrading pip..."
-pip install --upgrade pip
+echo "✅ uv found"
 
 # Install dependencies
 echo "Installing Python dependencies..."
-pip install homeassistant voluptuous pyyaml jsonschema requests
+uv sync
 
 echo ""
 echo "🔍 Verifying Python environment..."
@@ -101,16 +94,15 @@ echo "🔍 Verifying Python environment..."
 # Verify critical dependencies are importable
 VERIFY_FAILED=false
 
-python3 -c "import yaml" 2>/dev/null || { echo "❌ PyYAML not installed correctly"; VERIFY_FAILED=true; }
-python3 -c "import voluptuous" 2>/dev/null || { echo "❌ Voluptuous not installed correctly"; VERIFY_FAILED=true; }
-python3 -c "import jsonschema" 2>/dev/null || { echo "❌ jsonschema not installed correctly"; VERIFY_FAILED=true; }
-python3 -c "import requests" 2>/dev/null || { echo "❌ requests not installed correctly"; VERIFY_FAILED=true; }
+uv run python3 -c "import yaml" 2>/dev/null || { echo "❌ PyYAML not installed correctly"; VERIFY_FAILED=true; }
+uv run python3 -c "import voluptuous" 2>/dev/null || { echo "❌ Voluptuous not installed correctly"; VERIFY_FAILED=true; }
+uv run python3 -c "import jsonschema" 2>/dev/null || { echo "❌ jsonschema not installed correctly"; VERIFY_FAILED=true; }
+uv run python3 -c "import requests" 2>/dev/null || { echo "❌ requests not installed correctly"; VERIFY_FAILED=true; }
 
 if [ "$VERIFY_FAILED" = true ]; then
     echo ""
     echo "⚠️  Some dependencies failed to install. Try running:"
-    echo "   source venv/bin/activate"
-    echo "   pip install --force-reinstall homeassistant voluptuous pyyaml jsonschema requests"
+    echo "   uv sync"
     echo ""
 else
     echo "✅ All Python dependencies verified"

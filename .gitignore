@@ -148,7 +148,6 @@ dmypy.json
 
 # Development tools
 .pre-commit-cache/
-.flake8
 .pylint.d/
 .tox/
 .nox/
@@ -161,5 +160,3 @@ coverage.xml
 .python_check.log
 *.log
 
-# Virtual Environment symlink (points to ../venv)
-# Note: Both venv/ and venv symlink are ignored above
