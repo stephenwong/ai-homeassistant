@@ -80,6 +80,19 @@ if errorlevel 1 (
     set MAKE_OK=1
 )
 
+REM --- Check uv (Python package manager) ---
+set UV_OK=0
+uv --version >nul 2>&1
+if errorlevel 1 (
+    echo [MISSING] uv - REQUIRED for Python dependency management
+    set MISSING_REQUIRED=1
+    set "MISSING_LIST=!MISSING_LIST!  - uv: https://docs.astral.sh/uv/getting-started/installation/\n"
+) else (
+    for /f "tokens=2 delims= " %%i in ('uv --version 2^>nul') do set UV_VERSION=%%i
+    echo [OK] uv !UV_VERSION!
+    set UV_OK=1
+)
+
 REM --- Check Node.js (needed for Claude Code CLI) ---
 set NODE_OK=0
 node --version >nul 2>&1
@@ -135,6 +148,12 @@ if %MISSING_REQUIRED%==1 (
         echo       Option 3: Install WSL: wsl --install
         echo.
     )
+    if %UV_OK%==0 (
+        echo   [X] uv
+        echo       Install: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+        echo       Or: pip install uv
+        echo.
+    )
     if %NODE_OK%==0 (
         echo   [X] Node.js
         echo       Download: https://nodejs.org/en/download/
@@ -186,62 +205,17 @@ REM Phase 4: Project Setup
 REM ===============================
 echo Setting up Python environment...
 
-REM Create virtual environment
-if not exist "venv" (
-    echo Creating Python virtual environment...
-    python -m venv venv
-) else (
-    echo Virtual environment already exists
-)
-
-REM Activate virtual environment
-echo Activating virtual environment...
-call venv\Scripts\activate.bat
-
-REM Upgrade pip
-echo Upgrading pip...
-python -m pip install --upgrade pip
-
-REM Install dependencies
-echo Installing Python dependencies...
-pip install homeassistant voluptuous pyyaml jsonschema requests
+REM Install dependencies using uv
+echo Installing Python dependencies with uv...
+uv sync
 
 echo.
 echo Verifying Python environment...
 
-REM Verify critical dependencies are importable
-set VERIFY_FAILED=0
-
-python -c "import yaml" >nul 2>&1
+REM Verify uv sync succeeded
+uv run python -c "import yaml; import voluptuous; import jsonschema; import requests" >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] PyYAML not installed correctly
-    set VERIFY_FAILED=1
-)
-
-python -c "import voluptuous" >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Voluptuous not installed correctly
-    set VERIFY_FAILED=1
-)
-
-python -c "import jsonschema" >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] jsonschema not installed correctly
-    set VERIFY_FAILED=1
-)
-
-python -c "import requests" >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] requests not installed correctly
-    set VERIFY_FAILED=1
-)
-
-if %VERIFY_FAILED%==1 (
-    echo.
-    echo [WARNING] Some dependencies failed to install. Try running:
-    echo    venv\Scripts\activate
-    echo    pip install --force-reinstall homeassistant voluptuous pyyaml jsonschema requests
-    echo.
+    echo [WARNING] Some dependencies failed to install. Try running: uv sync
 ) else (
     echo [OK] All Python dependencies verified
 )

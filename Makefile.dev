@@ -25,8 +25,8 @@ dev-help:
 	@echo "  $(YELLOW)dev-install$(NC)      - Install development dependencies"
 	@echo ""
 	@echo "$(CYAN)Code Quality:$(NC)"
-	@echo "  $(YELLOW)dev-format$(NC)       - Format code with black and isort"
-	@echo "  $(YELLOW)dev-lint$(NC)         - Run all linters (flake8, pylint)"
+	@echo "  $(YELLOW)dev-format$(NC)       - Format code with ruff"
+	@echo "  $(YELLOW)dev-lint$(NC)         - Run ruff linter"
 	@echo "  $(YELLOW)dev-type-check$(NC)   - Run mypy type checking"
 	@echo "  $(YELLOW)dev-check-all$(NC)    - Run all code quality checks"
 	@echo ""
@@ -59,18 +59,15 @@ dev-install:
 
 # Format code
 dev-format:
-	@echo "$(GREEN)Formatting code with black and isort...$(NC)"
-	@$(UV_RUN) black . --extend-exclude '.venv/|config/|temp/' --line-length 88
-	@$(UV_RUN) isort . --extend-skip-glob '.venv/*,config/*,temp/*' --profile black
+	@echo "$(GREEN)Formatting code with ruff...$(NC)"
+	@$(UV_RUN) ruff format .
+	@$(UV_RUN) ruff check --fix .
 	@echo "$(GREEN)Code formatting complete!$(NC)"
 
 # Run linters
 dev-lint:
-	@echo "$(GREEN)Running linters...$(NC)"
-	@echo "$(CYAN)Running flake8...$(NC)"
-	@$(UV_RUN) flake8 tools/
-	@echo "$(CYAN)Running pylint...$(NC)"
-	@$(UV_RUN) pylint tools/
+	@echo "$(GREEN)Running ruff linter...$(NC)"
+	@$(UV_RUN) ruff check .
 	@echo "$(GREEN)Linting complete!$(NC)"
 
 # Type checking
