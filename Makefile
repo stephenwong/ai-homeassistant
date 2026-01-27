@@ -11,7 +11,7 @@ HA_HOST ?= your_homeassistant_host
 HA_REMOTE_PATH ?= /config/
 LOCAL_CONFIG_PATH ?= config/
 BACKUP_DIR ?= backups
-VENV_PATH ?= venv
+UV_RUN ?= uv run
 TOOLS_PATH ?= tools
 
 # Frigate configuration
@@ -69,13 +69,13 @@ push: check-env
 	fi
 	@echo "$(GREEN)Configuration pushed successfully!$(NC)"
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reload_config.py
+	@$(UV_RUN) python $(TOOLS_PATH)/reload_config.py
 	@echo "$(GREEN)Configuration deployment complete!$(NC)"
 
 # Run all validation tests
 validate: check-setup
 	@echo "$(GREEN)Running Home Assistant configuration validation...$(NC)"
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/run_tests.py
+	@$(UV_RUN) python $(TOOLS_PATH)/run_tests.py
 
 # Alias for validate
 test: validate
@@ -92,9 +92,7 @@ backup:
 # Set up Python environment and dependencies
 setup:
 	@echo "$(GREEN)Setting up Python environment...$(NC)"
-	@python3 -m venv $(VENV_PATH)
-	@. $(VENV_PATH)/bin/activate && pip install --upgrade pip
-	@. $(VENV_PATH)/bin/activate && pip install homeassistant voluptuous pyyaml jsonschema requests
+	@uv sync
 	@echo "$(GREEN)Setup complete!$(NC)"
 
 # Show configuration status
@@ -116,7 +114,7 @@ status: check-setup
 	fi
 	@echo ""
 	@echo "$(YELLOW)Entity Summary:$(NC)"
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reference_validator.py 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
+	@$(UV_RUN) python $(TOOLS_PATH)/reference_validator.py 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
 
 # Explore available Home Assistant entities
 entities: check-setup
@@ -128,12 +126,12 @@ entities: check-setup
 	@echo "  make entities ARGS='--search temp'     - Search for temperature entities"
 	@echo "  make entities ARGS='--full'            - Show complete detailed output"
 	@echo ""
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/entity_explorer.py $(ARGS)
+	@$(UV_RUN) python $(TOOLS_PATH)/entity_explorer.py $(ARGS)
 
 # Reload Home Assistant configuration via API
 reload: check-setup
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reload_config.py
+	@$(UV_RUN) python $(TOOLS_PATH)/reload_config.py
 
 # Format YAML files (specific files or all in config directory)
 format-yaml:
@@ -169,8 +167,8 @@ clean:
 
 # Check if setup is complete
 check-setup:
-	@if [ ! -d "$(VENV_PATH)" ]; then \
-		echo "$(RED)Python environment not found. Run 'make setup' first.$(NC)"; \
+	@if ! command -v uv >/dev/null 2>&1; then \
+		echo "$(RED)uv not found. Install it: curl -LsSf https://astral.sh/uv/install.sh | sh$(NC)"; \
 		exit 1; \
 	fi
 	@if [ ! -f "$(TOOLS_PATH)/run_tests.py" ]; then \
@@ -198,13 +196,13 @@ pull-storage:
 
 # Individual validation targets
 validate-yaml: check-setup
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/yaml_validator.py
+	@$(UV_RUN) python $(TOOLS_PATH)/yaml_validator.py
 
 validate-references: check-setup
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/reference_validator.py
+	@$(UV_RUN) python $(TOOLS_PATH)/reference_validator.py
 
 validate-ha: check-setup
-	@. $(VENV_PATH)/bin/activate && python $(TOOLS_PATH)/ha_official_validator.py
+	@$(UV_RUN) python $(TOOLS_PATH)/ha_official_validator.py
 
 # SSH connectivity test
 test-ssh:

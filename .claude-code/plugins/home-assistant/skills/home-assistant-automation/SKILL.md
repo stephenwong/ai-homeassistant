@@ -118,8 +118,8 @@ Grep "motion" config/automations.yaml  # Find automations mentioning "motion"
 Grep "- id:" config/automations.yaml   # List all automation IDs
 
 # 2. Use entity explorer for entity lookups (preferred method)
-source venv/bin/activate && python tools/entity_explorer.py --search "bathroom"
-source venv/bin/activate && python tools/entity_explorer.py --domain light
+uv run python tools/entity_explorer.py --search "bathroom"
+uv run python tools/entity_explorer.py --domain light
 
 # 3. For specific entity validation, use targeted Grep
 Grep "bathroom_motion" config/.storage/core.entity_registry
@@ -320,8 +320,8 @@ make push
 
 ```bash
 # PREFERRED: Use entity explorer (formatted output, context-efficient)
-source venv/bin/activate && python tools/entity_explorer.py --search "bathroom"
-source venv/bin/activate && python tools/entity_explorer.py --domain binary_sensor
+uv run python tools/entity_explorer.py --search "bathroom"
+uv run python tools/entity_explorer.py --domain binary_sensor
 
 # For device IDs (device triggers), search by device name
 Grep "Bathroom Button" config/.storage/core.device_registry

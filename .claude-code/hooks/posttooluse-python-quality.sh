@@ -34,8 +34,8 @@ fi
 echo -e "${BLUE}🐍 Running Python Code Quality Checks...${NC}"
 
 # Check if virtual environment exists
-if [[ ! -L "venv" ]] && [[ ! -d "venv" ]]; then
-    echo -e "${YELLOW}⚠️  Virtual environment not found. Skipping Python checks.${NC}"
+if ! command -v uv >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠️  uv not found. Skipping Python checks.${NC}"
     exit 0
 fi
 
@@ -76,14 +76,14 @@ if [[ "$FORCE_RUN" == "true" ]] || [[ "$PYTHON_FILES_EXIST" -gt 0 ]] && [[ -d to
 
     # 2. Style Checking (flake8)
     echo -e "\n${BLUE}📏 Style Checking${NC}"
-    if ! run_check "Flake8 style check" "source venv/bin/activate && flake8 $TOOLS_DIR/ --config .flake8" "🔍"; then
+    if ! run_check "Flake8 style check" "uv run flake8 $TOOLS_DIR/ --config .flake8" "🔍"; then
         FAILED=1
     fi
 
     # 3. Code Analysis (pylint) - Allow to fail but show results
     echo -e "\n${BLUE}🔬 Code Analysis${NC}"
     echo -e "${BLUE}🧹 Running pylint...${NC}"
-    if source venv/bin/activate && pylint $TOOLS_DIR/ --rcfile=pyproject.toml > /tmp/pylint.log 2>&1; then
+    if uv run pylint $TOOLS_DIR/ --rcfile=pyproject.toml > /tmp/pylint.log 2>&1; then
         # Extract score from output
         SCORE=$(grep "Your code has been rated" /tmp/pylint.log | tail -1 || echo "No score found")
         echo -e "${GREEN}✅ Pylint completed: ${SCORE}${NC}"
@@ -96,7 +96,7 @@ if [[ "$FORCE_RUN" == "true" ]] || [[ "$PYTHON_FILES_EXIST" -gt 0 ]] && [[ -d to
     # 4. Type Checking (mypy) - Allow to fail but show results
     echo -e "\n${BLUE}🔧 Type Checking${NC}"
     echo -e "${BLUE}🔍 Running mypy...${NC}"
-    if source venv/bin/activate && mypy $TOOLS_DIR/ > /tmp/mypy.log 2>&1; then
+    if uv run mypy $TOOLS_DIR/ > /tmp/mypy.log 2>&1; then
         echo -e "${GREEN}✅ Mypy type checking passed${NC}"
     else
         ERROR_COUNT=$(grep -c "error:" /tmp/mypy.log 2>/dev/null || echo "0")

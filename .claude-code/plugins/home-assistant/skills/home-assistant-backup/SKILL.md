@@ -69,7 +69,7 @@ make pull
 make backup
 
 # 3. Prune old backups
-source venv/bin/activate && python tools/prune_backups.py
+uv run python tools/prune_backups.py
 ```
 
 ### What Happens

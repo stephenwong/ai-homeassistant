@@ -105,8 +105,8 @@ digraph debug_flow {
 
 ```bash
 # Find the entity and its metadata
-source venv/bin/activate && python tools/entity_explorer.py --search "shower"
-source venv/bin/activate && python tools/entity_explorer.py --search "occupancy"
+uv run python tools/entity_explorer.py --search "shower"
+uv run python tools/entity_explorer.py --search "occupancy"
 ```
 
 **Note:**

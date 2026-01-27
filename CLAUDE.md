@@ -27,7 +27,7 @@ This repository manages Home Assistant configuration files with automated valida
 | `make entities` | Explore available entities |
 | `python tools/entity_explorer.py --search TERM` | Search entities |
 
-All python tools: `source venv/bin/activate && python <tool_path>`
+All python tools: `uv run python <tool_path>`
 
 ## Hardware
 
@@ -161,4 +161,4 @@ triggers:
 
 1. **Validation fails**: Check YAML syntax first, then entity references
 2. **SSH issues**: `chmod 600 ~/.ssh/key`, test with `ssh homeassistant`
-3. **Missing deps**: `source venv/bin/activate && pip install homeassistant voluptuous pyyaml`
+3. **Missing deps**: `uv sync`
