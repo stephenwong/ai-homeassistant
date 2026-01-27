@@ -11,15 +11,12 @@ Structured workflow for creating and modifying Home Assistant automations with e
 
 ## CRITICAL: Context Management
 
-**Large files that will exhaust context if read fully:**
-- `config/.storage/core.entity_registry` - 90k+ lines - **NEVER read directly**
-- `config/.storage/core.device_registry` - 7k+ lines - **NEVER read directly**
-- `config/automations.yaml` - 1600+ lines - **Use Grep to find specific automations**
+**NEVER read these files directly:**
+- `config/.storage/core.entity_registry` (90k+ lines)
+- `config/.storage/core.device_registry` (7k+ lines)
+- `config/automations.yaml` (1600+ lines)
 
-**Always use targeted searches:**
-- Use `Grep` with specific keywords, not `Read` on large files
-- Use `python tools/entity_explorer.py --search "keyword"` for entity lookups
-- When reading automations.yaml, use `Grep` to find the specific automation first, then `Read` with line offsets
+**Instead:** Use `Grep` or `python tools/entity_explorer.py --search "keyword"`
 
 ## When to Use
 
@@ -86,7 +83,16 @@ digraph automation_flow {
         "Validation passed?" -> "make push" [label="yes"];
         "Validation passed?" -> "Fix errors" [label="no"];
         "Fix errors" -> "make validate";
-        "make push" -> "Done";
+        "make push" -> "Issues found?";
+    }
+
+    subgraph cluster_reflect {
+        label="6. REFLECT";
+        style=filled;
+        color=lavender;
+        "Issues found?" -> "Use learning-from-mistakes skill" [label="yes"];
+        "Issues found?" -> "Done" [label="no"];
+        "Use learning-from-mistakes skill" -> "Done";
     }
 }
 ```
@@ -100,6 +106,7 @@ digraph automation_flow {
 | Design | `Read configuration.yaml` | Check helpers (small file, safe to read) |
 | Implement | `Edit` | Modify YAML files |
 | Deploy | `make validate`, `make push` | Test and deploy |
+| Reflect | `learning-from-mistakes` skill | Document learnings if any |
 
 ## Phase 1: Discovery
 
@@ -324,3 +331,12 @@ Grep "bathroom_motion" config/.storage/core.entity_registry
 ```
 
 **Never read registry files directly - always use Grep or entity_explorer.**
+
+## Phase 6: Reflect & Learn
+
+After deployment, if you encountered issues or learned something new, use the `learning-from-mistakes` skill to document it.
+
+**Quick self-check before completing:**
+- [ ] Automation deployed and validated
+- [ ] User confirmed behavior is correct
+- [ ] Any learnings documented (if applicable)

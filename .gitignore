@@ -26,6 +26,7 @@ config/zigbee2mqtt/
 
 # Frigate configuration
 frigate/config.yml
+config/frigate_config.yml
 
 # Python
 venv/
