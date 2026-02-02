@@ -16,7 +16,7 @@ Structured workflow for creating and modifying Home Assistant automations with e
 - `config/.storage/core.device_registry` (7k+ lines)
 - `config/automations.yaml` (1600+ lines)
 
-**Instead:** Use `Grep` or `python tools/entity_explorer.py --search "keyword"`
+**Instead:** Use `Grep` or `uv run python tools/entity_explorer.py --search "keyword"`
 
 ## When to Use
 
@@ -101,7 +101,7 @@ digraph automation_flow {
 
 | Phase | Tools/Commands | Purpose |
 |-------|----------------|---------|
-| Discovery | `Grep`, `entity_explorer.py` | Find entities, existing automations |
+| Discovery | `Grep`, `uv run python tools/entity_explorer.py` | Find entities, existing automations |
 | Clarify | `AskUserQuestion` | Resolve ambiguity, confirm intent |
 | Design | `Read configuration.yaml` | Check helpers (small file, safe to read) |
 | Implement | `Edit` | Modify YAML files |

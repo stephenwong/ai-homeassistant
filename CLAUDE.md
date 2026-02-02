@@ -12,10 +12,18 @@ This repository manages Home Assistant configuration files with automated valida
 
 - `config/automations.yaml` - **Primary file for automation work**
 - `config/scripts.yaml` - Reusable scripts
+- `config/scripts/` - Shell helper scripts (e.g., `debug_log.sh`)
 - `config/configuration.yaml` - Main HA config (integrations, includes, helpers)
 - `config/.storage/core.entity_registry` - **Entity registry** (search for entity IDs, device IDs)
 - `tools/` - Validation and testing scripts
 - `Makefile` - Commands for pulling/pushing configuration
+
+## Environment Setup
+
+Copy `.env.example` to `.env` and configure:
+- `HA_TOKEN` - Long-lived access token (Profile → Security → Create Token)
+- `HA_URL` - e.g., `http://homeassistant.local:8123`
+- `HA_HOST` - SSH host for rsync (must match `~/.ssh/config`)
 
 ## Commands
 
@@ -25,10 +33,13 @@ This repository manages Home Assistant configuration files with automated valida
 | `make push` | Push config (with validation) |
 | `make backup` | Create timestamped backup |
 | `make validate` | Run all validation tests |
+| `make setup` | Install Python dependencies via uv |
+| `make status` | Show config status and entity counts |
+| `make reload` | Reload HA config (API call, no push) |
 | `make entities` | Explore available entities |
-| `python tools/entity_explorer.py --search TERM` | Search entities |
-
-All python tools: `uv run python <tool_path>`
+| `make entities ARGS='--search TERM'` | Search entities by name |
+| `make test-ssh` | Test SSH connection to HA |
+| `make clean` | Remove temp files and caches |
 
 ## Hardware
 
@@ -83,6 +94,34 @@ required_zones:
 ### Helper Entity Reload
 New helpers in `configuration.yaml` require "Reload all YAML configuration" (Developer Tools > YAML), not just `make push`.
 
+### Script Parameter Names
+**Parameter names must match exactly between automation and script.** With `| default(omit)` patterns, mismatches silently fail:
+```yaml
+# automation calls with:
+data:
+  forced_mode: day   # WRONG - typo
+
+# script expects:
+fields:
+  force_mode:        # RIGHT - no 'd'
+```
+**Debug tip:** If automation triggers and script runs but doesn't produce expected result, compare parameter names immediately.
+
+### Shell Commands
+HA's `shell_command` doesn't run through a shell by default - it executes directly via subprocess. To use shell features (`>>`, `&&`, `$()`), either:
+- Wrap with `/bin/sh -c "..."`
+- Use a helper script file (preferred for complex commands)
+
+**BusyBox limitations:** HA uses BusyBox, so `date +%N` (nanoseconds) doesn't work. Use `date +%H:%M:%S` only.
+
+### Helper Scripts Location
+Shell scripts in `config/scripts/` must exist in the local repo, not just on the server. Rsync push will **delete** server files that don't exist locally.
+
+### Lovelace Storage Changes
+`.storage/lovelace` is excluded from rsync push. To add Lovelace views:
+1. SSH to HA and edit `/config/.storage/lovelace` directly
+2. Restart HA (required for storage changes)
+
 ## Entity Naming Convention
 
 Format: `location_room_device_sensor`
@@ -105,7 +144,7 @@ Prerequisites: Expose go2rtc port 1984 in Frigate addon settings.
   target:
     entity_id: media_player.nest_hub
   data:
-    media_content_id: "http://192.168.1.10:1984/api/stream.mp4?src=front_door_rmtp"
+    media_content_id: "http://192.168.50.10:1984/api/stream.mp4?src=front_door_rmtp"
     media_content_type: "video/mp4"
 
 # Stop stream (use turn_off, not media_stop)
@@ -157,6 +196,17 @@ triggers:
     subtype: single|double|long_press
 ```
 
+### Debug Logging
+Use `script.debug_log` to add timestamped entries to the Debug tab in Lovelace:
+```yaml
+- action: script.debug_log
+  data:
+    message: "Camera started streaming"
+    severity: info  # info (default), warn, error
+    entity: camera.front_door  # optional context
+```
+Output: `ℹ️ 14:32:05 [camera.front_door] Camera started streaming` (emojis: ℹ️/⚠️/❌)
+
 ## Integrations
 
 - **Zigbee2MQTT**: `config/zigbee2mqtt/configuration.yaml`
@@ -166,5 +216,6 @@ triggers:
 ## Troubleshooting
 
 1. **Validation fails**: Check YAML syntax first, then entity references
-2. **SSH issues**: `chmod 600 ~/.ssh/key`, test with `ssh homeassistant`
+2. **SSH issues**: `chmod 600 ~/.ssh/key`, test with `make test-ssh`
 3. **Missing deps**: `uv sync`
+4. **Run tests**: `uv run pytest tests/`

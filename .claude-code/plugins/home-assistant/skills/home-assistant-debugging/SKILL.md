@@ -18,7 +18,7 @@ Systematic approach to debugging Home Assistant issues. Find root cause before p
 - `config/.storage/core.device_registry` (7k+ lines)
 - `config/automations.yaml` (1600+ lines)
 
-**Instead:** Use `Grep` or `python tools/entity_explorer.py --search "keyword"`
+**Instead:** Use `Grep` or `uv run python tools/entity_explorer.py --search "keyword"`
 
 ## When to Use
 
@@ -95,8 +95,8 @@ digraph debug_flow {
 
 | Phase | Tools/Commands | Purpose |
 |-------|----------------|---------|
-| Identify | `entity_explorer.py --search` | Find entity, note domain/class |
-| Locate | `Grep`, `bash grep -r` | Find where entity is defined |
+| Identify | `uv run python tools/entity_explorer.py --search` | Find entity, note domain/class |
+| Locate | `Grep` | Find where entity is defined |
 | Analyze | `Read` (targeted lines) | Understand template/automation logic |
 | Fix | `Edit`, `make validate`, `make push` | Apply and deploy fix |
 | Reflect | `learning-from-mistakes` skill | Document patterns if any |
@@ -275,7 +275,7 @@ When you need real-time state checks or to test services without full deployment
 Read .env file to find HA_URL and HA_TOKEN values
 
 # Step 2: Use the actual values in curl (replace with real values from .env)
-curl -s "http://192.168.1.10:8123/api/states/sensor.entity_name" \
+curl -s "http://192.168.50.10:8123/api/states/sensor.entity_name" \
   -H "Authorization: Bearer eyJhbG..."
 ```
 

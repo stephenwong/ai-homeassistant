@@ -43,7 +43,7 @@ digraph backup_flow {
 |------|---------|---------|
 | 1. Pull | `make pull` | Get latest config from HA instance |
 | 2. Backup | `make backup` | Create timestamped backup |
-| 3. Prune | `python tools/prune_backups.py` | Apply retention rules |
+| 3. Prune | `uv run python tools/prune_backups.py` | Apply retention rules |
 
 ## Retention Rules
 
