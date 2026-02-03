@@ -118,9 +118,52 @@ HA's `shell_command` doesn't run through a shell by default - it executes direct
 Shell scripts in `config/scripts/` must exist in the local repo, not just on the server. Rsync push will **delete** server files that don't exist locally.
 
 ### Lovelace Storage Changes
-`.storage/lovelace` is excluded from rsync push. To add Lovelace views:
+`.storage/lovelace` is excluded from rsync push. To edit Lovelace views:
 1. SSH to HA and edit `/config/.storage/lovelace` directly
 2. Restart HA (required for storage changes)
+
+### DashCast Login Screen Issue
+If DashCast shows HA login screen instead of dashboard, you need `trusted_users` (not just `allow_bypass_login`) when multiple HA users exist:
+```yaml
+auth_providers:
+  - type: homeassistant
+  - type: trusted_networks
+    trusted_networks:
+      - 192.168.50.0/24
+    trusted_users:
+      192.168.50.0/24:
+        - USER_ID_HERE  # Find in .storage/auth
+    allow_bypass_login: true
+```
+**Find user IDs:** `grep -A5 '"name":' config/.storage/auth | grep -E '"id"|"name"'`
+
+### HACS Custom Card "Configuration error"
+When a Lovelace card shows "Configuration error":
+1. **Verify card is installed** (not just known to HACS):
+   ```bash
+   ssh homeassistant 'python3 -c "import json; d=json.load(open(\"/config/.storage/hacs.repositories\")); print([(v[\"full_name\"],v.get(\"installed\",False)) for v in d[\"data\"].values() if \"card-name\" in v.get(\"full_name\",\"\").lower()])"'
+   ```
+2. **Test with minimal config first**, then add options back incrementally
+3. **Check browser console** (F12) for specific error messages
+
+### advanced-camera-card + go2rtc
+Keep config simple - avoid unnecessary options:
+```yaml
+# GOOD - minimal working config
+type: custom:advanced-camera-card
+cameras:
+  - camera_entity: camera.front_door
+    live_provider: go2rtc
+    go2rtc:
+      stream: front_door_rmtp
+      url: http://192.168.50.10:1984  # No trailing slash
+
+# BAD - over-complicated, can cause errors
+go2rtc:
+  modes: [webrtc, mse, mp4]  # Skip this
+  stream: front_door_rmtp
+  url: http://192.168.50.10:1984/  # No trailing slash
+```
 
 ## Entity Naming Convention
 
@@ -219,3 +262,6 @@ Output: `ℹ️ 14:32:05 [camera.front_door] Camera started streaming` (emojis: 
 2. **SSH issues**: `chmod 600 ~/.ssh/key`, test with `make test-ssh`
 3. **Missing deps**: `uv sync`
 4. **Run tests**: `uv run pytest tests/`
+5. **DashCast shows login**: Add `trusted_users` mapping (see gotcha above)
+6. **Lovelace "Configuration error"**: Verify HACS card is installed, test minimal config
+7. **Camera card not loading**: Check `installed: True` in `.storage/hacs.repositories`
