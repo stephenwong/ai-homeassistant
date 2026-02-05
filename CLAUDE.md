@@ -225,6 +225,42 @@ Prerequisites: Expose go2rtc port 1984 in Frigate addon settings.
     entity_id: media_player.nest_hub
 ```
 
+## Frigate Sensor Naming & False Positive Tuning
+
+### Sensor Naming Convention
+Frigate creates two types of count/occupancy sensors:
+
+| Pattern | Example | Meaning |
+|---------|---------|---------|
+| `sensor.<camera>_<zone>_<object>_count` | `sensor.driveway_driveway_car_count` | Objects in **specific zone** |
+| `sensor.<camera>_<object>_count` | `sensor.driveway_car_count` | Objects **anywhere on camera** |
+
+**Important:** Alert automations typically use **zoned** sensors (e.g., `sensor.anyone_outside` sums zoned counts). An object detected on camera but outside the zone won't trigger zoned sensors.
+
+### Zone Tuning Parameters
+When getting false alerts from brief detections (cars passing, detection jitter):
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `inertia` | 1 | Frames object must be in zone before counting (higher = more filtering) |
+| `loitering_time` | 0 | Seconds object must remain in zone before triggering (higher = more filtering) |
+
+```yaml
+# frigate/config.yml - Example zone with filtering
+zones:
+  driveway_driveway:
+    coordinates: ...
+    inertia: 3           # Must be detected for 3 frames
+    loitering_time: 3    # Must stay for 3 seconds
+```
+
+### When to Adjust
+- **Brief false alerts (passing cars):** Increase `inertia` and `loitering_time`
+- **Alerts at zone edges:** Adjust zone coordinates to exclude problem areas
+- **Missing real detections:** Decrease values or expand zone
+
+After changes: `make push` then restart Frigate addon.
+
 ## Automation Quick Reference
 
 ### Structure
@@ -294,3 +330,4 @@ Output: `ℹ️ 14:32:05 [camera.front_door] Camera started streaming` (emojis: 
 5. **DashCast shows login**: Add `trusted_users` mapping (see gotcha above)
 6. **Lovelace "Configuration error"**: Verify HACS card is installed, test minimal config
 7. **Camera card not loading**: Check `installed: True` in `.storage/hacs.repositories`
+8. **False Frigate alerts**: Check zoned vs unzoned sensors, increase `inertia`/`loitering_time` in zone config
