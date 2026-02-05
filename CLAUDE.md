@@ -40,6 +40,21 @@ Copy `.env.example` to `.env` and configure:
 | `make entities ARGS='--search TERM'` | Search entities by name |
 | `make test-ssh` | Test SSH connection to HA |
 | `make clean` | Remove temp files and caches |
+| `tools/ha-curl.sh` | Curl wrapper with auto-auth (see below) |
+
+### HA API Curl Wrapper
+Use `tools/ha-curl.sh` for HA API calls - it auto-loads credentials from `.env`:
+```bash
+# GET request
+tools/ha-curl.sh /api/states/sensor.test
+
+# POST request
+tools/ha-curl.sh -X POST /api/states/sensor.test -d '{"state": "on"}'
+
+# With extra curl options
+tools/ha-curl.sh -X POST /api/services/light/turn_on -d '{"entity_id": "light.kitchen"}'
+```
+This wrapper auto-approves in Claude Code (compound commands with `&&` require manual approval).
 
 ## Hardware
 
@@ -136,6 +151,20 @@ auth_providers:
     allow_bypass_login: true
 ```
 **Find user IDs:** `grep -A5 '"name":' config/.storage/auth | grep -E '"id"|"name"'`
+
+### Stopping DashCast on Nest Hub
+`media_player.turn_off` does NOT reliably close DashCast on Google Nest Hubs. Use `homeassistant.turn_off` instead:
+```yaml
+# BAD - doesn't close DashCast
+- action: media_player.turn_off
+  target:
+    entity_id: media_player.nesthubmax805d_3
+
+# GOOD - reliably closes DashCast
+- action: homeassistant.turn_off
+  target:
+    entity_id: media_player.nesthubmax805d_3
+```
 
 ### HACS Custom Card "Configuration error"
 When a Lovelace card shows "Configuration error":
