@@ -70,6 +70,15 @@ Implications: Frigate can use aggressive detection (Hailo), streams use hardware
 **Debugging issues:** Use `home-assistant-debugging` skill
 **After mistakes:** Use `learning-from-mistakes` skill
 
+## Backups as Version History
+
+Config changes are often **not in git history** - they get pushed to HA and pulled back without commits. The `backups/` directory is the real historical record.
+
+- **Backup format:** `ha_config_YYYYMMDD_HHMMSS.tar.gz`
+- **Extract a specific file:** `tar -xzOf backups/ha_config_<timestamp>.tar.gz config/automations.yaml`
+- **Find when a change was introduced:** Compare sequential backup timestamps
+- **When reverting:** Don't blindly restore - ask about individual settings (e.g., timer durations) that may have been tuned independently of the change being reverted
+
 ## Critical Gotchas
 
 ### Rsync Architecture
