@@ -43,6 +43,8 @@ Copy `.env.example` to `.env` and configure:
 | `make changelog BACKUP='path'` | Generate changelog for a specific backup |
 | `make changelog-all` | Backfill changelogs for all backups |
 | `make format-yaml` | Format YAML files (`FILES='...'` for specific files) |
+| `make lint` | Run Python linting and format checks (ruff) |
+| `make lint-fix` | Auto-fix Python lint and formatting issues |
 | `make test-ssh` | Test SSH connection to HA |
 | `make clean` | Remove temp files and caches |
 | `tools/ha-curl.sh` | Curl wrapper with auto-auth (see below) |
@@ -75,6 +77,7 @@ Implications: Frigate can use aggressive detection (Hailo), streams use hardware
 **Before feature work:** Use `home-assistant-backup` skill (pull → backup → prune)
 **Creating automations:** Use `home-assistant-automation` skill
 **Debugging issues:** Use `home-assistant-debugging` skill
+**Before committing Python changes:** Run `make lint` (or `make lint-fix` to auto-fix)
 **Before committing/finishing:** Use `reflect` skill to capture learnings (gotchas, corrections, new patterns)
 
 ## Backups as Version History
@@ -305,6 +308,8 @@ is_state('entity_id', 'value')   # Boolean check
 GitHub Actions (`.github/workflows/test.yml`) runs on push/PR:
 - **rsync-excludes-tests**: Validates rsync exclude file consistency
 - **lint**: Runs `ruff format --check` and `ruff check`
+
+Run `make lint` locally before pushing to catch CI failures early. Use `make lint-fix` to auto-fix issues.
 
 ## Integrations
 

@@ -24,7 +24,7 @@ YELLOW = \033[1;33m
 RED = \033[0;31m
 NC = \033[0m # No Color
 
-.PHONY: help pull push validate backup backup-search changelog changelog-all clean setup test status entities reload format-yaml check-env
+.PHONY: help pull push validate backup backup-search changelog changelog-all clean setup test status entities reload format-yaml lint check-env
 
 # Default target
 help:
@@ -45,6 +45,7 @@ help:
 	@echo "  $(YELLOW)backup-search$(NC) - Search backups for a pattern (usage: make backup-search PATTERN='text')"
 	@echo "  $(YELLOW)changelog$(NC) - Generate changelog for a backup (usage: make changelog BACKUP='path')"
 	@echo "  $(YELLOW)changelog-all$(NC) - Generate changelogs for all backups"
+	@echo "  $(YELLOW)lint$(NC)     - Run Python linting and format checks (ruff)"
 	@echo "  $(YELLOW)clean$(NC)    - Clean up temporary files and caches"
 
 # Pull configuration from Home Assistant
@@ -173,6 +174,22 @@ format-yaml:
 		done; \
 	fi
 	@echo "$(GREEN)YAML formatting complete!$(NC)"
+
+# Run Python linting and format checks
+lint: check-setup
+	@echo "$(GREEN)Checking Python formatting...$(NC)"
+	@$(UV_RUN) ruff format --check $(TOOLS_PATH)/
+	@echo "$(GREEN)Running Python linter...$(NC)"
+	@$(UV_RUN) ruff check $(TOOLS_PATH)/
+	@echo "$(GREEN)All lint checks passed!$(NC)"
+
+# Auto-fix Python lint and formatting issues
+lint-fix: check-setup
+	@echo "$(GREEN)Fixing Python formatting...$(NC)"
+	@$(UV_RUN) ruff format $(TOOLS_PATH)/
+	@echo "$(GREEN)Fixing Python lint issues...$(NC)"
+	@$(UV_RUN) ruff check --fix $(TOOLS_PATH)/
+	@echo "$(GREEN)Lint fixes applied!$(NC)"
 
 # Clean up temporary files
 clean:
