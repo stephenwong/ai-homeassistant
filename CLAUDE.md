@@ -4,7 +4,6 @@ This repository manages Home Assistant configuration files with automated valida
 
 ## User Preferences
 
-- **Git:** NEVER run `git push` in this repository. The user handles pushing manually.
 - **Timezone:** AEST/AEDT (Australian Eastern Time). Always interpret user times as AEST/AEDT.
   - AEST = UTC+10, AEDT = UTC+11 (Oct-Apr). Example: "7:15am AEDT" = 20:15 UTC previous day
 
