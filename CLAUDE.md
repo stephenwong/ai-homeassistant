@@ -163,9 +163,9 @@ auth_providers:
   - type: homeassistant
   - type: trusted_networks
     trusted_networks:
-      - 192.168.50.0/24
+      - 192.168.1.0/24
     trusted_users:
-      192.168.50.0/24:
+      192.168.1.0/24:
         - USER_ID_HERE  # Find in .storage/auth
     allow_bypass_login: true
 ```
@@ -177,12 +177,12 @@ auth_providers:
 # BAD - doesn't close DashCast
 - action: media_player.turn_off
   target:
-    entity_id: media_player.nesthubmax805d_3
+    entity_id: media_player.nest_hub
 
 # GOOD - reliably closes DashCast
 - action: homeassistant.turn_off
   target:
-    entity_id: media_player.nesthubmax805d_3
+    entity_id: media_player.nest_hub
 ```
 
 ### HACS Custom Card "Configuration error"
@@ -204,13 +204,13 @@ cameras:
     live_provider: go2rtc
     go2rtc:
       stream: front_door_rmtp
-      url: http://192.168.50.10:1984  # No trailing slash
+      url: http://192.168.1.100:1984  # No trailing slash
 
 # BAD - over-complicated, can cause errors
 go2rtc:
   modes: [webrtc, mse, mp4]  # Skip this
   stream: front_door_rmtp
-  url: http://192.168.50.10:1984/  # No trailing slash
+  url: http://192.168.1.100:1984/  # No trailing slash
 ```
 
 ## Entity Naming Convention
@@ -235,7 +235,7 @@ Prerequisites: Expose go2rtc port 1984 in Frigate addon settings.
   target:
     entity_id: media_player.nest_hub
   data:
-    media_content_id: "http://192.168.50.10:1984/api/stream.mp4?src=front_door_rmtp"
+    media_content_id: "http://192.168.1.100:1984/api/stream.mp4?src=front_door_rmtp"
     media_content_type: "video/mp4"
 
 # Stop stream (use turn_off, not media_stop)
