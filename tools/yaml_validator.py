@@ -3,7 +3,6 @@
 
 import sys
 from pathlib import Path
-from typing import List
 
 import yaml
 
@@ -16,13 +15,13 @@ class YAMLValidator:
     def __init__(self, config_dir: str = "config"):
         """Initialize the YAMLValidator."""
         self.config_dir = Path(config_dir)
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def validate_yaml_syntax(self, file_path: Path) -> bool:
         """Validate YAML syntax of a single file."""
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 yaml.load(f, Loader=HAYamlLoader)
             return True
         except yaml.YAMLError as e:
@@ -38,7 +37,7 @@ class YAMLValidator:
     def validate_file_encoding(self, file_path: Path) -> bool:
         """Ensure file is UTF-8 encoded as required by Home Assistant."""
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 f.read()
             return True
         except UnicodeDecodeError:
@@ -51,7 +50,7 @@ class YAMLValidator:
             return True
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 config = yaml.load(f, Loader=HAYamlLoader)
 
             if not isinstance(config, dict):
@@ -79,7 +78,7 @@ class YAMLValidator:
             return True
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 automations = yaml.load(f, Loader=HAYamlLoader)
 
             if automations is None:
@@ -117,7 +116,7 @@ class YAMLValidator:
                 # Check for alias (recommended)
                 if "alias" not in automation:
                     self.warnings.append(
-                        f"{file_path}: Automation {i} missing 'alias' " f"(recommended)"
+                        f"{file_path}: Automation {i} missing 'alias' (recommended)"
                     )
 
             return all_valid
@@ -133,7 +132,7 @@ class YAMLValidator:
             return True
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 scripts = yaml.load(f, Loader=HAYamlLoader)
 
             if scripts is None:
@@ -147,7 +146,7 @@ class YAMLValidator:
             for script_name, script_config in scripts.items():
                 if not isinstance(script_config, dict):
                     self.errors.append(
-                        f"{file_path}: Script '{script_name}' must be a " f"dictionary"
+                        f"{file_path}: Script '{script_name}' must be a dictionary"
                     )
                     all_valid = False
                     continue
@@ -171,9 +170,9 @@ class YAMLValidator:
             )
             return False
 
-    def get_yaml_files(self) -> List[Path]:
+    def get_yaml_files(self) -> list[Path]:
         """Get all YAML files in the config directory."""
-        yaml_files: List[Path] = []
+        yaml_files: list[Path] = []
         for pattern in ["*.yaml", "*.yml"]:
             yaml_files.extend(self.config_dir.glob(pattern))
 

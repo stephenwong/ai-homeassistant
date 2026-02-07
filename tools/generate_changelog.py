@@ -10,24 +10,31 @@ Usage:
 import argparse
 import difflib
 import tarfile
-from datetime import datetime
 from pathlib import Path
 
 from prune_backups import BACKUP_DIR, get_backups
 
 # Files/directories to skip (noisy runtime state)
 SKIP_PATTERNS = [
-    '.storage/',
-    'zigbee2mqtt/state.json',
-    'zigbee2mqtt/log/',
-    '.db',
-    '__pycache__/',
-    '.pyc',
+    ".storage/",
+    "zigbee2mqtt/state.json",
+    "zigbee2mqtt/log/",
+    ".db",
+    "__pycache__/",
+    ".pyc",
 ]
 
 # File extensions considered "interesting"
 INTERESTING_EXTENSIONS = {
-    '.yaml', '.yml', '.sh', '.py', '.json', '.conf', '.cfg', '.ini', '.txt',
+    ".yaml",
+    ".yml",
+    ".sh",
+    ".py",
+    ".json",
+    ".conf",
+    ".cfg",
+    ".ini",
+    ".txt",
 }
 
 
@@ -38,16 +45,14 @@ def should_include(name):
             return False
     # Include files with interesting extensions or no extension (likely config)
     ext = Path(name).suffix.lower()
-    if ext in INTERESTING_EXTENSIONS or ext == '':
-        return True
-    return False
+    return ext in INTERESTING_EXTENSIONS or ext == ""
 
 
 def extract_files(backup_path):
     """Extract interesting text files from a backup archive. Returns {name: content}."""
     files = {}
     try:
-        with tarfile.open(backup_path, 'r:gz') as tar:
+        with tarfile.open(backup_path, "r:gz") as tar:
             for member in tar.getmembers():
                 if not member.isfile():
                     continue
@@ -57,7 +62,7 @@ def extract_files(backup_path):
                     f = tar.extractfile(member)
                     if f is None:
                         continue
-                    files[member.name] = f.read().decode('utf-8')
+                    files[member.name] = f.read().decode("utf-8")
                 except (UnicodeDecodeError, KeyError):
                     continue
     except (tarfile.TarError, OSError) as e:
@@ -78,7 +83,7 @@ def generate_changelog(backup, previous_backup):
     lines.append(f"Date: {backup['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("")
 
-    current_files = extract_files(backup['path'])
+    current_files = extract_files(backup["path"])
 
     if not previous_backup:
         # First backup - list all files
@@ -86,9 +91,9 @@ def generate_changelog(backup, previous_backup):
         for name in sorted(current_files.keys()):
             line_count = len(current_files[name].splitlines())
             lines.append(f"  A {name} ({line_count} lines)")
-        return '\n'.join(lines) + '\n'
+        return "\n".join(lines) + "\n"
 
-    previous_files = extract_files(previous_backup['path'])
+    previous_files = extract_files(previous_backup["path"])
 
     all_names = sorted(set(list(current_files.keys()) + list(previous_files.keys())))
 
@@ -104,40 +109,56 @@ def generate_changelog(backup, previous_backup):
             line_count = len(current_files[name].splitlines())
             changed_files.append(f"  A {name} (+{line_count})")
             diff = difflib.unified_diff(
-                [], current_files[name].splitlines(),
-                fromfile=f"a/{name}", tofile=f"b/{name}",
-                lineterm='',
+                [],
+                current_files[name].splitlines(),
+                fromfile=f"a/{name}",
+                tofile=f"b/{name}",
+                lineterm="",
             )
-            diffs.append('\n'.join(diff))
+            diffs.append("\n".join(diff))
         elif not in_current and in_previous:
             # Deleted
             line_count = len(previous_files[name].splitlines())
             changed_files.append(f"  D {name} (-{line_count})")
             diff = difflib.unified_diff(
-                previous_files[name].splitlines(), [],
-                fromfile=f"a/{name}", tofile=f"b/{name}",
-                lineterm='',
+                previous_files[name].splitlines(),
+                [],
+                fromfile=f"a/{name}",
+                tofile=f"b/{name}",
+                lineterm="",
             )
-            diffs.append('\n'.join(diff))
+            diffs.append("\n".join(diff))
         elif in_current and in_previous:
             if current_files[name] != previous_files[name]:
                 # Modified
                 old_lines = previous_files[name].splitlines()
                 new_lines = current_files[name].splitlines()
-                diff_lines = list(difflib.unified_diff(
-                    old_lines, new_lines,
-                    fromfile=f"a/{name}", tofile=f"b/{name}",
-                    lineterm='',
-                ))
+                diff_lines = list(
+                    difflib.unified_diff(
+                        old_lines,
+                        new_lines,
+                        fromfile=f"a/{name}",
+                        tofile=f"b/{name}",
+                        lineterm="",
+                    )
+                )
                 if diff_lines:
-                    added = sum(1 for l in diff_lines if l.startswith('+') and not l.startswith('+++'))
-                    removed = sum(1 for l in diff_lines if l.startswith('-') and not l.startswith('---'))
+                    added = sum(
+                        1
+                        for line in diff_lines
+                        if line.startswith("+") and not line.startswith("+++")
+                    )
+                    removed = sum(
+                        1
+                        for line in diff_lines
+                        if line.startswith("-") and not line.startswith("---")
+                    )
                     changed_files.append(f"  M {name} (+{added}, -{removed})")
-                    diffs.append('\n'.join(diff_lines))
+                    diffs.append("\n".join(diff_lines))
 
     if not changed_files:
         lines.append("No changes detected.")
-        return '\n'.join(lines) + '\n'
+        return "\n".join(lines) + "\n"
 
     lines.append("Changed files:")
     lines.extend(changed_files)
@@ -149,12 +170,12 @@ def generate_changelog(backup, previous_backup):
             lines.append(diff)
             lines.append("")
 
-    return '\n'.join(lines) + '\n'
+    return "\n".join(lines) + "\n"
 
 
 def changelog_path_for(backup):
     """Get the changelog path for a backup."""
-    return BACKUP_DIR / backup['filename'].replace('.tar.gz', '.changelog')
+    return BACKUP_DIR / backup["filename"].replace(".tar.gz", ".changelog")
 
 
 def generate_for_backup(backup, backups_list):
@@ -162,7 +183,7 @@ def generate_for_backup(backup, backups_list):
     # Find previous backup
     previous = None
     for i, b in enumerate(backups_list):
-        if b['filename'] == backup['filename']:
+        if b["filename"] == backup["filename"]:
             if i > 0:
                 previous = backups_list[i - 1]
             break
@@ -177,9 +198,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate changelogs for Home Assistant backups"
     )
-    parser.add_argument('backup', nargs='?', help="Path to a specific backup")
-    parser.add_argument('--generate-all', action='store_true',
-                        help="Generate changelogs for all backups missing one")
+    parser.add_argument("backup", nargs="?", help="Path to a specific backup")
+    parser.add_argument(
+        "--generate-all",
+        action="store_true",
+        help="Generate changelogs for all backups missing one",
+    )
     args = parser.parse_args()
 
     backups = get_backups()  # sorted oldest first
@@ -209,7 +233,7 @@ def main():
     backup_path = Path(args.backup)
     target = None
     for b in backups:
-        if b['path'] == backup_path or b['filename'] == backup_path.name:
+        if b["path"] == backup_path or b["filename"] == backup_path.name:
             target = b
             break
 

@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, TypedDict
+from typing import Any, TypedDict
 
 import yaml
 
@@ -21,7 +21,7 @@ class DomainSummary(TypedDict):
     count: int
     enabled: int
     disabled: int
-    examples: List[str]
+    examples: list[str]
 
 
 class ReferenceValidator:
@@ -30,26 +30,26 @@ class ReferenceValidator:
     # Special keywords that are not entity IDs
     SPECIAL_KEYWORDS = {"all", "none"}
 
-    # Built-in entities that always exist in Home Assistant but may not be in the registry
+    # Built-in entities that always exist in HA but may not be in the registry
     BUILTIN_ENTITIES = {"sun.sun"}
 
-    # Entities defined in YAML configuration (templates, etc.) that won't appear in registry
-    YAML_DEFINED_ENTITIES: Set[str] = set()
+    # Entities defined in YAML config (templates, etc.) won't appear in registry
+    YAML_DEFINED_ENTITIES: set[str] = set()
 
     def __init__(self, config_dir: str = "config"):
         """Initialize the ReferenceValidator."""
         self.config_dir = Path(config_dir)
         self.storage_dir = self.config_dir / ".storage"
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
         # Cache for loaded registries
-        self._entities: Optional[Dict[str, Any]] = None
-        self._devices: Optional[Dict[str, Any]] = None
-        self._areas: Optional[Dict[str, Any]] = None
-        self._yaml_entities: Optional[Set[str]] = None
+        self._entities: dict[str, Any] | None = None
+        self._devices: dict[str, Any] | None = None
+        self._areas: dict[str, Any] | None = None
+        self._yaml_entities: set[str] | None = None
 
-    def load_yaml_defined_entities(self) -> Set[str]:
+    def load_yaml_defined_entities(self) -> set[str]:
         """Extract entities defined in YAML templates and automations."""
         if self._yaml_entities is not None:
             return self._yaml_entities
@@ -60,7 +60,7 @@ class ReferenceValidator:
         config_file = self.config_dir / "configuration.yaml"
         if config_file.exists():
             try:
-                with open(config_file, "r", encoding="utf-8") as f:
+                with open(config_file, encoding="utf-8") as f:
                     data = yaml.load(f, Loader=HAYamlLoader)
 
                 if data and "template" in data:
@@ -69,24 +69,36 @@ class ReferenceValidator:
                         for template_block in templates:
                             if isinstance(template_block, dict):
                                 # Check for various entity types in templates
-                                for domain in ["binary_sensor", "sensor", "switch", "light"]:
+                                for domain in [
+                                    "binary_sensor",
+                                    "sensor",
+                                    "switch",
+                                    "light",
+                                ]:
                                     if domain in template_block:
                                         entities = template_block[domain]
                                         if isinstance(entities, list):
                                             for entity in entities:
-                                                if isinstance(entity, dict) and "name" in entity:
-                                                    # Convert name to entity_id format
-                                                    name = entity["name"]
-                                                    entity_id = f"{domain}.{name.lower().replace(' ', '_')}"
+                                                if (
+                                                    isinstance(entity, dict)
+                                                    and "name" in entity
+                                                ):
+                                                    # Convert name to entity_id
+                                                    ent_name = entity["name"]
+                                                    slug = ent_name.lower()
+                                                    slug = slug.replace(" ", "_")
+                                                    entity_id = f"{domain}.{slug}"
                                                     self._yaml_entities.add(entity_id)
             except Exception as e:
-                self.warnings.append(f"Failed to parse templates from configuration.yaml: {e}")
+                self.warnings.append(
+                    f"Failed to parse templates from configuration.yaml: {e}"
+                )
 
         # Extract automation IDs from automations.yaml
         automations_file = self.config_dir / "automations.yaml"
         if automations_file.exists():
             try:
-                with open(automations_file, "r", encoding="utf-8") as f:
+                with open(automations_file, encoding="utf-8") as f:
                     data = yaml.load(f, Loader=HAYamlLoader)
 
                 if isinstance(data, list):
@@ -100,7 +112,7 @@ class ReferenceValidator:
 
         return self._yaml_entities
 
-    def load_entity_registry(self) -> Dict[str, Any]:
+    def load_entity_registry(self) -> dict[str, Any]:
         """Load and cache entity registry."""
         if self._entities is None:
             registry_file = self.storage_dir / "core.entity_registry"
@@ -109,7 +121,7 @@ class ReferenceValidator:
                 return {}
 
             try:
-                with open(registry_file, "r") as f:
+                with open(registry_file) as f:
                     data = json.load(f)
                     self._entities = {
                         entity["entity_id"]: entity
@@ -121,7 +133,7 @@ class ReferenceValidator:
 
         return self._entities
 
-    def load_device_registry(self) -> Dict[str, Any]:
+    def load_device_registry(self) -> dict[str, Any]:
         """Load and cache device registry."""
         if self._devices is None:
             registry_file = self.storage_dir / "core.device_registry"
@@ -130,7 +142,7 @@ class ReferenceValidator:
                 return {}
 
             try:
-                with open(registry_file, "r") as f:
+                with open(registry_file) as f:
                     data = json.load(f)
                     self._devices = {
                         device["id"]: device
@@ -142,7 +154,7 @@ class ReferenceValidator:
 
         return self._devices
 
-    def load_area_registry(self) -> Dict[str, Any]:
+    def load_area_registry(self) -> dict[str, Any]:
         """Load and cache area registry."""
         if self._areas is None:
             registry_file = self.storage_dir / "core.area_registry"
@@ -151,7 +163,7 @@ class ReferenceValidator:
                 return {}
 
             try:
-                with open(registry_file, "r") as f:
+                with open(registry_file) as f:
                     data = json.load(f)
                     self._areas = {
                         area["id"]: area
@@ -183,7 +195,7 @@ class ReferenceValidator:
             or value in self.SPECIAL_KEYWORDS  # Special keywords like "all", "none"
         )
 
-    def extract_entity_references(self, data: Any, path: str = "") -> Set[str]:
+    def extract_entity_references(self, data: Any, path: str = "") -> set[str]:
         """Extract entity references from configuration data."""
         entities = set()
 
@@ -234,7 +246,7 @@ class ReferenceValidator:
 
         return entities
 
-    def extract_entities_from_template(self, template: str) -> Set[str]:
+    def extract_entities_from_template(self, template: str) -> set[str]:
         """Extract entity references from Jinja2 templates."""
         entities = set()
 
@@ -259,7 +271,7 @@ class ReferenceValidator:
 
         return entities
 
-    def extract_device_references(self, data: Any) -> Set[str]:
+    def extract_device_references(self, data: Any) -> set[str]:
         """Extract device references from configuration data."""
         devices = set()
 
@@ -272,7 +284,11 @@ class ReferenceValidator:
                             devices.add(value)
                     elif isinstance(value, list):
                         for device in value:
-                            if isinstance(device, str) and not device.startswith("!") and not self.is_template(device):
+                            if (
+                                isinstance(device, str)
+                                and not device.startswith("!")
+                                and not self.is_template(device)
+                            ):
                                 devices.add(device)
                 else:
                     devices.update(self.extract_device_references(value))
@@ -283,7 +299,7 @@ class ReferenceValidator:
 
         return devices
 
-    def extract_area_references(self, data: Any) -> Set[str]:
+    def extract_area_references(self, data: Any) -> set[str]:
         """Extract area references from configuration data."""
         areas = set()
 
@@ -307,7 +323,7 @@ class ReferenceValidator:
 
         return areas
 
-    def extract_entity_registry_ids(self, data: Any) -> Set[str]:
+    def extract_entity_registry_ids(self, data: Any) -> set[str]:
         """Extract entity registry UUID references from configuration data."""
         entity_registry_ids = set()
 
@@ -325,7 +341,7 @@ class ReferenceValidator:
 
         return entity_registry_ids
 
-    def get_entity_registry_id_mapping(self) -> Dict[str, str]:
+    def get_entity_registry_id_mapping(self) -> dict[str, str]:
         """Get mapping from entity registry ID to entity_id."""
         entities = self.load_entity_registry()
         return {
@@ -340,7 +356,7 @@ class ReferenceValidator:
             return True  # Skip secrets file
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = yaml.load(f, Loader=HAYamlLoader)
         except Exception as e:
             self.errors.append(f"{file_path}: Failed to load YAML - {e}")
@@ -388,7 +404,7 @@ class ReferenceValidator:
 
                 if entity_id in disabled_entities:
                     self.warnings.append(
-                        f"{file_path}: References disabled entity " f"'{entity_id}'"
+                        f"{file_path}: References disabled entity '{entity_id}'"
                     )
                 else:
                     self.errors.append(f"{file_path}: Unknown entity '{entity_id}'")
@@ -425,9 +441,9 @@ class ReferenceValidator:
 
         return all_valid
 
-    def get_yaml_files(self) -> List[Path]:
+    def get_yaml_files(self) -> list[Path]:
         """Get all YAML files to validate."""
-        yaml_files: List[Path] = []
+        yaml_files: list[Path] = []
         for pattern in ["*.yaml", "*.yml"]:
             yaml_files.extend(self.config_dir.glob(pattern))
 
@@ -453,11 +469,11 @@ class ReferenceValidator:
 
         return all_valid
 
-    def get_entity_summary(self) -> Dict[str, DomainSummary]:
+    def get_entity_summary(self) -> dict[str, DomainSummary]:
         """Get summary of available entities by domain."""
         entities = self.load_entity_registry()
 
-        summary: Dict[str, DomainSummary] = {}
+        summary: dict[str, DomainSummary] = {}
         for entity_id, entity_data in entities.items():
             domain = entity_id.split(".")[0]
             if domain not in summary:
@@ -501,10 +517,7 @@ class ReferenceValidator:
             for domain, info in sorted(summary.items()):
                 enabled_count = info["enabled"]
                 disabled_count = info["disabled"]
-                print(
-                    f"  {domain}: {enabled_count} enabled, "
-                    f"{disabled_count} disabled"
-                )
+                print(f"  {domain}: {enabled_count} enabled, {disabled_count} disabled")
                 if info["examples"]:
                     print(f"    Examples: {', '.join(info['examples'])}")
             print()

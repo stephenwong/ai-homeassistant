@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
 
 class ValidationTestRunner:
@@ -19,7 +19,7 @@ class ValidationTestRunner:
         self.config_dir = Path(config_dir).resolve()
         self.tools_dir = Path(__file__).parent
         self.venv_dir = self.tools_dir.parent / ".venv"
-        self.results: Dict[str, Dict[str, Any]] = {}
+        self.results: dict[str, dict[str, Any]] = {}
 
     def get_python_executable(self) -> str:
         """Get the Python executable from venv if available."""
@@ -30,7 +30,7 @@ class ValidationTestRunner:
 
     def run_validator(
         self, script_name: str, description: str
-    ) -> Tuple[bool, str, str, float]:
+    ) -> tuple[bool, str, str, float]:
         """Run a single validator script."""
         script_path = self.tools_dir / script_name
         if not script_path.exists():
@@ -155,8 +155,7 @@ class ValidationTestRunner:
             print("\n🎉 All tests passed! Your Home Assistant configuration is valid.")
         else:
             print(
-                f"\n⚠️  {failed_tests} test(s) failed. "
-                "Please review the errors above."
+                f"\n⚠️  {failed_tests} test(s) failed. Please review the errors above."
             )
 
         print()

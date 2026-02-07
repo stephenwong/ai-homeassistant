@@ -11,10 +11,9 @@ import json
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional
 
 
-def load_entity_registry(config_path: Path) -> Optional[Dict]:
+def load_entity_registry(config_path: Path) -> dict | None:
     """Load and parse the entity registry file."""
     registry_path = config_path / ".storage" / "core.entity_registry"
 
@@ -23,21 +22,21 @@ def load_entity_registry(config_path: Path) -> Optional[Dict]:
         return None
 
     try:
-        with open(registry_path, "r") as f:
+        with open(registry_path) as f:
             return json.load(f)
     except Exception as e:
         print(f"Error reading entity registry: {e}")
         return None
 
 
-def load_area_registry(config_path: Path) -> Dict[str, str]:
+def load_area_registry(config_path: Path) -> dict[str, str]:
     """Load area names from area registry."""
     area_path = config_path / ".storage" / "core.area_registry"
     area_names = {}
 
     if area_path.exists():
         try:
-            with open(area_path, "r") as f:
+            with open(area_path) as f:
                 area_data = json.load(f)
                 for area in area_data.get("data", {}).get("areas", []):
                     area_names[area["id"]] = area["name"]
@@ -47,7 +46,7 @@ def load_area_registry(config_path: Path) -> Dict[str, str]:
     return area_names
 
 
-def get_entity_display_name(entity: Dict) -> str:
+def get_entity_display_name(entity: dict) -> str:
     """Get the best display name for an entity."""
     if entity.get("name"):
         return entity["name"]
@@ -58,7 +57,7 @@ def get_entity_display_name(entity: Dict) -> str:
         return entity["entity_id"].split(".")[-1].replace("_", " ").title()
 
 
-def categorize_entities(entities: List[Dict], area_names: Dict[str, str]) -> Dict:
+def categorize_entities(entities: list[dict], area_names: dict[str, str]) -> dict:
     """Categorize entities by domain and area."""
     by_domain = defaultdict(list)
     by_area = defaultdict(list)
@@ -134,7 +133,7 @@ def categorize_entities(entities: List[Dict], area_names: Dict[str, str]) -> Dic
     }
 
 
-def print_summary(categorized: Dict):
+def print_summary(categorized: dict):
     """Print a summary of available entities."""
     print("=" * 80)
     print("HOME ASSISTANT ENTITY REGISTRY SUMMARY")
@@ -169,7 +168,7 @@ def print_summary(categorized: Dict):
         print()
 
 
-def print_detailed_by_domain(categorized: Dict, domain_filter: Optional[str] = None):
+def print_detailed_by_domain(categorized: dict, domain_filter: str | None = None):
     """Print detailed breakdown by domain."""
     print("\n" + "=" * 80)
     print("ENTITIES BY DOMAIN")
@@ -194,10 +193,10 @@ def print_detailed_by_domain(categorized: Dict, domain_filter: Optional[str] = N
                 f" ({entity['device_class']})" if entity.get("device_class") else ""
             )
 
-            print(f"   {entity['entity_id']}{device_class_str}" f"{unit_str}{area_str}")
+            print(f"   {entity['entity_id']}{device_class_str}{unit_str}{area_str}")
 
 
-def print_by_area(categorized: Dict, area_filter: Optional[str] = None):
+def print_by_area(categorized: dict, area_filter: str | None = None):
     """Print entities organized by area."""
     print("\n" + "=" * 80)
     print("ENTITIES BY AREA")
@@ -230,7 +229,7 @@ def print_by_area(categorized: Dict, area_filter: Optional[str] = None):
             print(f"   {domain}: {entity_ids}")
 
 
-def search_entities(categorized: Dict, query: str):
+def search_entities(categorized: dict, query: str):
     """Search for entities matching a query."""
     print(f"\n🔍 SEARCH RESULTS for '{query}':")
     print("=" * 50)
@@ -261,7 +260,7 @@ def search_entities(categorized: Dict, query: str):
             f" ({entity['device_class']})" if entity.get("device_class") else ""
         )
 
-        print(f"   {entity['entity_id']}{device_class_str}" f"{unit_str}{area_str}")
+        print(f"   {entity['entity_id']}{device_class_str}{unit_str}{area_str}")
 
 
 def main():

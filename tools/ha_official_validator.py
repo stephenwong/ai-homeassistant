@@ -8,7 +8,6 @@ accurate results.
 import subprocess
 import sys
 from pathlib import Path
-from typing import List
 
 
 class HAOfficialValidator:
@@ -17,9 +16,9 @@ class HAOfficialValidator:
     def __init__(self, config_dir: str = "config"):
         """Initialize the HAOfficialValidator."""
         self.config_dir = Path(config_dir).resolve()
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
-        self.info: List[str] = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
+        self.info: list[str] = []
 
     def run_ha_check_config(self) -> bool:
         """Run Home Assistant's official check_config script."""
@@ -87,9 +86,7 @@ class HAOfficialValidator:
     def is_ignorable_traceback_line(self, line: str) -> bool:
         """Check if line is part of a Python traceback we can ignore."""
         # Match traceback file/line references
-        if line.strip().startswith("File ") and ".py" in line:
-            return True
-        return False
+        return line.strip().startswith("File ") and ".py" in line
 
     def parse_check_config_output(self, stdout: str, stderr: str):
         """Parse Home Assistant check_config output."""
@@ -102,13 +99,16 @@ class HAOfficialValidator:
                     continue
 
                 # Skip ignorable messages and traceback lines
-                if self.is_ignorable_message(line) or self.is_ignorable_traceback_line(line):
+                if self.is_ignorable_message(line) or self.is_ignorable_traceback_line(
+                    line
+                ):
                     continue
 
                 # Look for specific patterns
-                if "Testing configuration at" in line:
-                    self.info.append(f"HA Check: {line}")
-                elif "Configuration check successful!" in line:
+                if (
+                    "Testing configuration at" in line
+                    or "Configuration check successful!" in line
+                ):
                     self.info.append(f"HA Check: {line}")
                 elif "errors" in line.lower() and "found" in line.lower():
                     if "0 errors" in line.lower():

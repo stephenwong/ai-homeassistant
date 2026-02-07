@@ -7,12 +7,10 @@ Combines functionality from multiple diagnostic scripts.
 
 import json
 import os
-from pathlib import Path
 
 import requests
 
 from tools.common import load_env_file
-
 
 # Load .env file
 load_env_file()

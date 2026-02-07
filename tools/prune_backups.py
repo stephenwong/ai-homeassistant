@@ -8,11 +8,10 @@ Retention rules:
 - Keep one backup per week for backups older than 30 days (latest each week)
 """
 
-import os
 import re
-from datetime import datetime, timedelta
-from pathlib import Path
 from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
 
 BACKUP_DIR = Path(__file__).parent.parent / "backups"
 BACKUP_PATTERN = re.compile(r"ha_config_(\d{8})_(\d{6})\.tar\.gz")
@@ -42,37 +41,35 @@ def get_backups():
     for file in BACKUP_DIR.glob("*.tar.gz"):
         timestamp = parse_backup_filename(file.name)
         if timestamp:
-            backups.append({
-                'path': file,
-                'filename': file.name,
-                'timestamp': timestamp
-            })
+            backups.append(
+                {"path": file, "filename": file.name, "timestamp": timestamp}
+            )
 
-    return sorted(backups, key=lambda x: x['timestamp'])
+    return sorted(backups, key=lambda x: x["timestamp"])
 
 
 def group_by_retention_period(backups, now):
     """Group backups into retention periods."""
     groups = {
-        'keep_all': [],      # Last 7 days
-        'daily': defaultdict(list),     # 7-30 days, one per day
-        'weekly': defaultdict(list),    # 30+ days, one per week
+        "keep_all": [],  # Last 7 days
+        "daily": defaultdict(list),  # 7-30 days, one per day
+        "weekly": defaultdict(list),  # 30+ days, one per week
     }
 
     for backup in backups:
-        age = now - backup['timestamp']
+        age = now - backup["timestamp"]
 
         if age.days < 7:
             # Keep all from last 7 days
-            groups['keep_all'].append(backup)
+            groups["keep_all"].append(backup)
         elif age.days < 30:
             # Group by day (YYYY-MM-DD)
-            day_key = backup['timestamp'].strftime("%Y-%m-%d")
-            groups['daily'][day_key].append(backup)
+            day_key = backup["timestamp"].strftime("%Y-%m-%d")
+            groups["daily"][day_key].append(backup)
         else:
             # Group by week (YYYY-WW where WW is ISO week number)
-            week_key = backup['timestamp'].strftime("%Y-W%W")
-            groups['weekly'][week_key].append(backup)
+            week_key = backup["timestamp"].strftime("%Y-W%W")
+            groups["weekly"][week_key].append(backup)
 
     return groups
 
@@ -83,21 +80,25 @@ def apply_retention(groups):
     to_delete = []
 
     # Keep all recent backups (0-7 days)
-    to_keep.extend(groups['keep_all'])
+    to_keep.extend(groups["keep_all"])
 
     # Keep one per day (7-30 days) - latest from each day
-    for day_backups in groups['daily'].values():
+    for day_backups in groups["daily"].values():
         if day_backups:
             # Sort by timestamp, keep latest
-            sorted_backups = sorted(day_backups, key=lambda x: x['timestamp'], reverse=True)
+            sorted_backups = sorted(
+                day_backups, key=lambda x: x["timestamp"], reverse=True
+            )
             to_keep.append(sorted_backups[0])
             to_delete.extend(sorted_backups[1:])
 
     # Keep one per week (30+ days) - latest from each week
-    for week_backups in groups['weekly'].values():
+    for week_backups in groups["weekly"].values():
         if week_backups:
             # Sort by timestamp, keep latest
-            sorted_backups = sorted(week_backups, key=lambda x: x['timestamp'], reverse=True)
+            sorted_backups = sorted(
+                week_backups, key=lambda x: x["timestamp"], reverse=True
+            )
             to_keep.append(sorted_backups[0])
             to_delete.extend(sorted_backups[1:])
 
@@ -106,7 +107,7 @@ def apply_retention(groups):
 
 def format_size(bytes):
     """Format bytes as human-readable size."""
-    for unit in ['B', 'KB', 'MB', 'GB']:
+    for unit in ["B", "KB", "MB", "GB"]:
         if bytes < 1024.0:
             return f"{bytes:.1f}{unit}"
         bytes /= 1024.0
@@ -129,25 +130,27 @@ def main():
     groups = group_by_retention_period(backups, now)
     to_keep, to_delete = apply_retention(groups)
 
-    print(f"\nRetention Summary:")
+    print("\nRetention Summary:")
     print(f"  - Keeping {len(to_keep)} backup(s)")
     print(f"  - Deleting {len(to_delete)} backup(s)")
 
     if to_delete:
-        print(f"\nBackups to delete:")
+        print("\nBackups to delete:")
         total_size = 0
-        for backup in sorted(to_delete, key=lambda x: x['timestamp']):
-            size = backup['path'].stat().st_size
+        for backup in sorted(to_delete, key=lambda x: x["timestamp"]):
+            size = backup["path"].stat().st_size
             total_size += size
-            age_days = (now - backup['timestamp']).days
-            print(f"  - {backup['filename']} ({format_size(size)}, {age_days} days old)")
+            age_days = (now - backup["timestamp"]).days
+            print(
+                f"  - {backup['filename']} ({format_size(size)}, {age_days} days old)"
+            )
 
         print(f"\nTotal space to free: {format_size(total_size)}")
 
         # Delete files
         for backup in to_delete:
-            backup['path'].unlink()
-            changelog_name = backup['filename'].replace('.tar.gz', '.changelog')
+            backup["path"].unlink()
+            changelog_name = backup["filename"].replace(".tar.gz", ".changelog")
             changelog_path = BACKUP_DIR / changelog_name
             if changelog_path.exists():
                 changelog_path.unlink()
@@ -158,10 +161,10 @@ def main():
         print("\n✓ No backups need to be deleted")
 
     if to_keep:
-        print(f"\nRetained backups:")
-        for backup in sorted(to_keep, key=lambda x: x['timestamp'], reverse=True):
-            age_days = (now - backup['timestamp']).days
-            size = backup['path'].stat().st_size
+        print("\nRetained backups:")
+        for backup in sorted(to_keep, key=lambda x: x["timestamp"], reverse=True):
+            age_days = (now - backup["timestamp"]).days
+            size = backup["path"].stat().st_size
             if age_days == 0:
                 age_str = "today"
             elif age_days == 1:

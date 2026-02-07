@@ -8,11 +8,9 @@ configuration checking.
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import yaml
-
-from tools.common import HAYamlLoader
 
 
 class HAConfigValidator:
@@ -21,9 +19,9 @@ class HAConfigValidator:
     def __init__(self, config_dir: str = "config"):
         """Initialize the validator with config directory."""
         self.config_dir = Path(config_dir).resolve()
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
-        self.info: List[str] = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
+        self.info: list[str] = []
 
     def check_ha_installation(self) -> bool:
         """Check if Home Assistant is available for configuration checking."""
@@ -154,7 +152,7 @@ class HAConfigValidator:
 
         # Validate configuration.yaml syntax and basic structure
         try:
-            with open(config_file, "r") as f:
+            with open(config_file) as f:
                 config = yaml.safe_load(f)
 
             if not isinstance(config, dict):
@@ -184,7 +182,7 @@ class HAConfigValidator:
 
         return all_valid
 
-    def validate_basic_config_structure(self, config: Dict[str, Any]):
+    def validate_basic_config_structure(self, config: dict[str, Any]):
         """Validate basic configuration structure."""
         # Check homeassistant section
         if "homeassistant" in config:
@@ -211,41 +209,38 @@ class HAConfigValidator:
         # Check for common integration configurations
         self.check_integration_configs(config)
 
-    def check_integration_configs(self, config: Dict[str, Any]):
+    def check_integration_configs(self, config: dict[str, Any]):
         """Check common integration configurations."""
         # Check logger configuration
         if "logger" in config:
             logger_config = config["logger"]
-            if isinstance(logger_config, dict):
-                if "logs" in logger_config and not isinstance(
-                    logger_config["logs"], dict
-                ):
-                    self.errors.append("logger.logs must be a dictionary")
+            if isinstance(logger_config, dict) and (
+                "logs" in logger_config and not isinstance(logger_config["logs"], dict)
+            ):
+                self.errors.append("logger.logs must be a dictionary")
 
         # Check recorder configuration
         if "recorder" in config:
             recorder_config = config["recorder"]
-            if isinstance(recorder_config, dict):
-                if "db_url" in recorder_config:
-                    db_url = recorder_config["db_url"]
-                    if not isinstance(db_url, str) or not db_url.startswith(
-                        ("sqlite:///", "mysql://", "postgresql://")
-                    ):
-                        self.warnings.append("recorder.db_url format may be invalid")
+            if isinstance(recorder_config, dict) and "db_url" in recorder_config:
+                db_url = recorder_config["db_url"]
+                if not isinstance(db_url, str) or not db_url.startswith(
+                    ("sqlite:///", "mysql://", "postgresql://")
+                ):
+                    self.warnings.append("recorder.db_url format may be invalid")
 
         # Check HTTP configuration
         if "http" in config:
             http_config = config["http"]
-            if isinstance(http_config, dict):
-                if "ssl_certificate" in http_config or "ssl_key" in http_config:
-                    ssl_cert = http_config.get("ssl_certificate")
-                    ssl_key = http_config.get("ssl_key")
-                    if ssl_cert and not Path(ssl_cert).exists():
-                        self.errors.append(
-                            f"SSL certificate file not found: {ssl_cert}"
-                        )
-                    if ssl_key and not Path(ssl_key).exists():
-                        self.errors.append(f"SSL key file not found: {ssl_key}")
+            if isinstance(http_config, dict) and (
+                "ssl_certificate" in http_config or "ssl_key" in http_config
+            ):
+                ssl_cert = http_config.get("ssl_certificate")
+                ssl_key = http_config.get("ssl_key")
+                if ssl_cert and not Path(ssl_cert).exists():
+                    self.errors.append(f"SSL certificate file not found: {ssl_cert}")
+                if ssl_key and not Path(ssl_key).exists():
+                    self.errors.append(f"SSL key file not found: {ssl_key}")
 
     def validate_automations_file(self):
         """Validate automations.yaml file."""
@@ -254,7 +249,7 @@ class HAConfigValidator:
             return
 
         try:
-            with open(automations_file, "r") as f:
+            with open(automations_file) as f:
                 automations = yaml.safe_load(f)
 
             if automations is not None and not isinstance(automations, list):
@@ -291,7 +286,7 @@ class HAConfigValidator:
             return
 
         try:
-            with open(scripts_file, "r") as f:
+            with open(scripts_file) as f:
                 scripts = yaml.safe_load(f)
 
             if scripts is not None and not isinstance(scripts, dict):
@@ -328,7 +323,7 @@ class HAConfigValidator:
             return
 
         try:
-            with open(secrets_file, "r") as f:
+            with open(secrets_file) as f:
                 secrets = yaml.safe_load(f)
 
             if secrets is not None and not isinstance(secrets, dict):

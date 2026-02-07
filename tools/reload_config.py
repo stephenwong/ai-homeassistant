@@ -7,7 +7,6 @@ have been pushed to the instance.
 
 import os
 import sys
-from pathlib import Path
 
 import requests
 

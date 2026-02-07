@@ -20,20 +20,21 @@ def search_backup(backup, pattern, yaml_only=True, context_lines=0):
     """Search a single backup archive for a pattern. Returns list of matches."""
     matches = []
     try:
-        with tarfile.open(backup['path'], 'r:gz') as tar:
+        with tarfile.open(backup["path"], "r:gz") as tar:
             for member in tar.getmembers():
                 if not member.isfile():
                     continue
 
-                if yaml_only:
-                    if not (member.name.endswith('.yaml') or member.name.endswith('.yml')):
-                        continue
+                if yaml_only and not (
+                    member.name.endswith(".yaml") or member.name.endswith(".yml")
+                ):
+                    continue
 
                 try:
                     f = tar.extractfile(member)
                     if f is None:
                         continue
-                    content = f.read().decode('utf-8')
+                    content = f.read().decode("utf-8")
                 except (UnicodeDecodeError, KeyError):
                     continue
 
@@ -41,15 +42,15 @@ def search_backup(backup, pattern, yaml_only=True, context_lines=0):
                 for i, line in enumerate(lines):
                     if pattern.search(line):
                         match_entry = {
-                            'file': member.name,
-                            'line_num': i + 1,
-                            'line': line,
+                            "file": member.name,
+                            "line_num": i + 1,
+                            "line": line,
                         }
                         if context_lines > 0:
                             start = max(0, i - context_lines)
                             end = min(len(lines), i + context_lines + 1)
-                            match_entry['context_before'] = lines[start:i]
-                            match_entry['context_after'] = lines[i + 1:end]
+                            match_entry["context_before"] = lines[start:i]
+                            match_entry["context_after"] = lines[i + 1 : end]
                         matches.append(match_entry)
     except (tarfile.TarError, OSError) as e:
         print(f"  Warning: Could not read {backup['filename']}: {e}")
@@ -61,13 +62,23 @@ def main():
     parser = argparse.ArgumentParser(
         description="Search across Home Assistant backup archives"
     )
-    parser.add_argument('pattern', help="Text pattern to search for (regex)")
-    parser.add_argument('--all', '-a', action='store_true',
-                        help="Search all files, not just YAML")
-    parser.add_argument('--files-only', '-l', action='store_true',
-                        help="Only show backup filenames, not matching lines")
-    parser.add_argument('--context', '-C', type=int, default=0,
-                        help="Number of context lines around matches")
+    parser.add_argument("pattern", help="Text pattern to search for (regex)")
+    parser.add_argument(
+        "--all", "-a", action="store_true", help="Search all files, not just YAML"
+    )
+    parser.add_argument(
+        "--files-only",
+        "-l",
+        action="store_true",
+        help="Only show backup filenames, not matching lines",
+    )
+    parser.add_argument(
+        "--context",
+        "-C",
+        type=int,
+        default=0,
+        help="Number of context lines around matches",
+    )
     args = parser.parse_args()
 
     try:
@@ -90,9 +101,10 @@ def main():
 
     match_count = 0
     for backup in backups:
-        date_str = backup['timestamp'].strftime("%b %d")
-        matches = search_backup(backup, pattern, yaml_only=yaml_only,
-                                context_lines=args.context)
+        date_str = backup["timestamp"].strftime("%b %d")
+        matches = search_backup(
+            backup, pattern, yaml_only=yaml_only, context_lines=args.context
+        )
 
         if matches:
             match_count += 1
@@ -100,14 +112,14 @@ def main():
             if not args.files_only:
                 seen_files = set()
                 for m in matches:
-                    if m['file'] not in seen_files:
-                        seen_files.add(m['file'])
-                    if args.context > 0 and 'context_before' in m:
-                        for ctx_line in m['context_before']:
+                    if m["file"] not in seen_files:
+                        seen_files.add(m["file"])
+                    if args.context > 0 and "context_before" in m:
+                        for ctx_line in m["context_before"]:
                             print(f"           {m['file']}:     {ctx_line}")
                     print(f"         {m['file']}:{m['line_num']}:{m['line']}")
-                    if args.context > 0 and 'context_after' in m:
-                        for ctx_line in m['context_after']:
+                    if args.context > 0 and "context_after" in m:
+                        for ctx_line in m["context_after"]:
                             print(f"           {m['file']}:     {ctx_line}")
                 print()
         else:
