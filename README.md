@@ -498,6 +498,24 @@ Located in `.claude-code/settings.json`:
 }
 ```
 
+## Custom Claude Code Skills
+
+These are my own additions — Claude Code skills that guide workflows for common Home Assistant tasks. They live in `.claude-code/plugins/home-assistant/skills/` and are invoked via slash commands in Claude Code.
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| **Automation** | `/home-assistant-automation` | Structured workflow for creating and modifying automations — handles entity discovery, design, implementation, and validation |
+| **Backup** | `/home-assistant-backup` | Pulls latest config, creates a timestamped backup, and prunes old backups with smart retention (7-day keep-all, then daily, then weekly) |
+| **Debugging** | `/home-assistant-debugging` | Systematic approach to investigating HA issues — entity behavior problems, automation failures, template sensor bugs |
+| **Reflect** | `/reflect` | Captures learnings after completing work — records gotchas, corrections, and new patterns into CLAUDE.md, MEMORY.md, or skills to prevent recurrence |
+
+### Other Customizations
+
+- **Claude Code hooks** (`.claude-code/hooks/`): Auto-validation on YAML edits, pre-push config checking, Python quality checks, YAML formatting
+- **Backup tooling** (`tools/generate_changelog.py`, `tools/prune_backups.py`, `tools/search_backups.py`): Changelog generation, smart retention pruning, full-text search across backup history
+- **`make lint` / `make lint-fix`**: Local ruff linting to catch CI failures before pushing
+- **`CLAUDE.md`**: Extensive project context with HA-specific gotchas, entity naming conventions, streaming patterns, and debugging tips
+
 ## 🤝 Contributing
 
 1. Fork the repository
