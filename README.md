@@ -1,6 +1,7 @@
-# Home Assistant Configuration Management with Claude Code
+> [!NOTE]
+> This is a personal fork of [philippb/claude-homeassistant](https://github.com/philippb/claude-homeassistant). All original credit goes to philippb — this repo contains my own customizations, skills, and tooling built on top of their work.
 
-**Note:** This is a personal fork of [philippb/claude-homeassistant](https://github.com/philippb/claude-homeassistant). All original credit goes to [@philippb](https://github.com/philippb) — this repo contains my own customizations, skills, and tooling built on top of their work.
+# Home Assistant Configuration Management with Claude Code
 
 A comprehensive system for managing Home Assistant configurations with automated validation, testing, and deployment - all enhanced by Claude Code for natural language automation creation.
 
