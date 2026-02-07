@@ -114,8 +114,9 @@ uv run python tools/entity_explorer.py --search "occupancy"
 ## Phase 2: Locate the Definition
 
 ```bash
-# Search all config files for entity definition
-grep -r "entity_name" config/ 2>/dev/null
+# Search for entity definition in configuration files
+Grep "entity_name" config/configuration.yaml
+Grep "entity_name" config/automations.yaml
 
 # Common locations by type:
 # - Template sensors: config/configuration.yaml (template: section)

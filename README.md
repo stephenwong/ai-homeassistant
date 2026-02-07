@@ -230,18 +230,24 @@ xcode-select --install  # Installs Command Line Tools including make
 │   ├── configuration.yaml
 │   ├── automations.yaml
 │   ├── scripts.yaml
+│   ├── blueprints/        # HA blueprints (automation/, script/, template/)
 │   └── .storage/          # Entity registry (pulled from HA)
 ├── tools/                 # Validation scripts for Claude
 │   ├── run_tests.py       # Main test suite runner
 │   ├── yaml_validator.py  # YAML syntax validation
 │   ├── reference_validator.py # Entity reference validation
 │   ├── ha_official_validator.py # Official HA validation
-│   └── entity_explorer.py # Entity discovery tool
+│   ├── entity_explorer.py # Entity discovery tool
+│   ├── ha-curl.sh         # HA API curl wrapper with auto-auth
+│   ├── ha_api_diagnostic.py # Comprehensive API testing
+│   └── ha_config_validator.py # Deep validation via HA check_config
+├── backups/               # Timestamped config backups with changelogs
 ├── .claude-code/          # Claude Code project settings
 │   ├── hooks/            # Automated validation hooks
 │   └── settings.json     # Project configuration
 ├── .env.example          # Environment configuration template
 ├── Makefile              # Management commands
+├── Makefile.dev          # Development-specific commands (see README-DEV.md)
 └── CLAUDE.md             # Claude Code instructions
 ```
 
@@ -326,14 +332,14 @@ With Claude Code, you can:
    ```yaml
    - id: weekday_midnight_lights_off
      alias: "Weekday Midnight Lights Off"
-     trigger:
-       - platform: time
+     triggers:
+       - trigger: time
          at: "00:00:00"
-     condition:
+     conditions:
        - condition: time
          weekday: [mon, tue, wed, thu, fri]
-     action:
-       - service: light.turn_off
+     actions:
+       - action: light.turn_off
          target:
            entity_id: all
    ```
@@ -473,8 +479,14 @@ Located in `.claude-code/settings.json`:
 {
   "hooks": {
     "enabled": true,
-    "posttooluse": [".claude-code/hooks/posttooluse-ha-validation.sh"],
-    "pretooluse": [".claude-code/hooks/pretooluse-ha-push-validation.sh"]
+    "posttooluse": [
+      ".claude-code/hooks/yaml-formatter.sh",
+      ".claude-code/hooks/posttooluse-ha-validation.sh",
+      ".claude-code/hooks/posttooluse-python-quality.sh"
+    ],
+    "pretooluse": [
+      ".claude-code/hooks/pretooluse-ha-push-validation.sh"
+    ]
   },
   "validation": {
     "enabled": true,

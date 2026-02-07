@@ -23,10 +23,7 @@ This directory contains a complete Python development environment with modern to
 ## Development Tools Included
 
 ### Code Quality
-- **Black** - Automatic code formatting (PEP8 compliant)
-- **isort** - Import statement sorting
-- **flake8** - Style guide enforcement with additional plugins
-- **pylint** - Comprehensive code analysis
+- **Ruff** - Fast linter and formatter (replaces Black, isort, flake8, pylint)
 - **mypy** - Static type checking
 
 ### Testing
@@ -92,29 +89,17 @@ make -f Makefile.dev dev-clean-dev
 
 ## Configuration Details
 
-### Black (Code Formatting)
+### Ruff (Formatting & Linting)
 - Line length: 88 characters
 - Target Python version: 3.12+
-- Automatically formats all Python files
-
-### isort (Import Sorting)
-- Profile: black (compatible with Black formatter)
-- Sections: FUTURE, STDLIB, THIRDPARTY, FIRSTPARTY, LOCALFOLDER
-
-### flake8 (Style Checking)
-- Max line length: 88 characters
-- Ignores E203, W503, E501 (Black compatibility)
-- Additional plugins: flake8-docstrings, flake8-bugbear
+- Lint rules: pycodestyle (E/W), pyflakes (F), isort (I), pyupgrade (UP), bugbear (B), simplify (SIM)
+- Import sorting: first-party = `tools`
+- Config: `pyproject.toml` under `[tool.ruff]`
 
 ### mypy (Type Checking)
-- Strict type checking enabled
-- Ignores missing imports for third-party libraries
-- Excludes test files from strict checking
-
-### pylint (Code Analysis)
-- Configured for Home Assistant development
-- Disabled verbose warnings for cleaner output
-- Max line length: 88 characters
+- Relaxed settings for existing codebase (not strict mode)
+- Ignores missing imports for homeassistant/voluptuous
+- Excludes venv and build directories
 
 ### pytest (Testing)
 - Coverage target: 80% minimum
@@ -135,11 +120,10 @@ Automatically runs on git commits:
 - Trailing whitespace removal
 - End-of-file fixing
 - YAML syntax checking (HA-compatible)
-- Code formatting (Black + isort)
-- Style checking (flake8)
+- Code formatting and linting (Ruff)
 - Type checking (mypy)
-- Code analysis (pylint)
-- HA-specific validation
+- Spell checking (codespell)
+- HA-specific YAML validation
 
 ## Tips for Development
 

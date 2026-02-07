@@ -14,9 +14,11 @@ This repository manages Home Assistant configuration files with automated valida
 - `config/scripts.yaml` - Reusable scripts
 - `config/scripts/` - Shell helper scripts (e.g., `debug_log.sh`)
 - `config/configuration.yaml` - Main HA config (integrations, includes, helpers)
+- `config/blueprints/` - HA blueprints (automation/, script/, template/)
 - `config/.storage/core.entity_registry` - **Entity registry** (search for entity IDs, device IDs)
 - `tools/` - Validation and testing scripts
 - `Makefile` - Commands for pulling/pushing configuration
+- `Makefile.dev` - Dev-only commands (see `README-DEV.md`)
 
 ## Environment Setup
 
@@ -41,9 +43,12 @@ Copy `.env.example` to `.env` and configure:
 | `make backup-search PATTERN='text'` | Search all backups for a pattern |
 | `make changelog BACKUP='path'` | Generate changelog for a specific backup |
 | `make changelog-all` | Backfill changelogs for all backups |
+| `make format-yaml` | Format YAML files (`FILES='...'` for specific files) |
 | `make test-ssh` | Test SSH connection to HA |
 | `make clean` | Remove temp files and caches |
 | `tools/ha-curl.sh` | Curl wrapper with auto-auth (see below) |
+| `tools/ha_api_diagnostic.py` | Comprehensive HA API endpoint testing |
+| `tools/ha_config_validator.py` | Deep validation using HA's `check_config` |
 
 ### HA API Curl Wrapper
 Use `tools/ha-curl.sh` for HA API calls - it auto-loads credentials from `.env`:
@@ -295,6 +300,12 @@ is_state('entity_id', 'value')   # Boolean check
     severity: info  # info (default), warn, error
     entity: camera.front_door  # optional context
 ```
+
+## CI/CD
+
+GitHub Actions (`.github/workflows/test.yml`) runs on push/PR:
+- **rsync-excludes-tests**: Validates rsync exclude file consistency
+- **lint**: Runs `ruff format --check` and `ruff check`
 
 ## Integrations
 

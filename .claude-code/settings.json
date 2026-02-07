@@ -27,10 +27,9 @@
     "python": {
       "enabled": true,
       "tools": {
-        "formatter": "black",
-        "linter": ["flake8", "pylint"],
+        "formatter": "ruff format",
+        "linter": "ruff check",
         "type_checker": "mypy",
-        "import_sorter": "isort",
         "test_runner": "pytest"
       },
       "auto_format": true,
