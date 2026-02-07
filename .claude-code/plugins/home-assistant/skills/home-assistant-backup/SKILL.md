@@ -42,8 +42,16 @@ digraph backup_flow {
 | Step | Command | Purpose |
 |------|---------|---------|
 | 1. Pull | `make pull` | Get latest config from HA instance |
-| 2. Backup | `make backup` | Create timestamped backup |
-| 3. Prune | `uv run python tools/prune_backups.py` | Apply retention rules |
+| 2. Backup | `make backup` | Create timestamped backup + auto-generate changelog |
+| 3. Prune | `uv run python tools/prune_backups.py` | Apply retention rules (cleans up changelogs too) |
+
+### Related Tools
+
+| Command | Purpose |
+|---------|---------|
+| `make backup-search PATTERN='text'` | Search all backups for a pattern (find when a change was introduced) |
+| `make changelog BACKUP='path'` | Generate changelog for a specific backup |
+| `make changelog-all` | Backfill changelogs for all existing backups |
 
 ## Retention Rules
 
@@ -75,11 +83,11 @@ uv run python tools/prune_backups.py
 ### What Happens
 
 1. **Pull**: Syncs latest config from Home Assistant via rsync
-2. **Backup**: Creates `backups/ha_config_YYYYMMDD_HHMMSS.tar.gz`
+2. **Backup**: Creates `backups/ha_config_YYYYMMDD_HHMMSS.tar.gz` and auto-generates a `.changelog` file showing what changed since the previous backup
 3. **Prune**:
    - Groups backups by age
    - Applies retention rules
-   - Deletes excess backups
+   - Deletes excess backups and their changelogs
    - Reports what was kept/deleted
 
 ## Common Mistakes

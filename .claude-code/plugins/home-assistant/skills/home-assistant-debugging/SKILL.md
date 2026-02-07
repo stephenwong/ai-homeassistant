@@ -130,6 +130,18 @@ grep -r "entity_name" config/ 2>/dev/null
 
 **Template entities** are defined in `configuration.yaml` under `template:` section.
 
+### Finding When a Change Was Introduced
+
+If the user says "this worked before" or "this broke recently", use backup search to find when it changed:
+
+```bash
+# Search all backups for a specific pattern
+make backup-search PATTERN='media_player.play_media'
+
+# Check changelogs for what changed in each backup
+cat backups/ha_config_YYYYMMDD_HHMMSS.changelog
+```
+
 ## Phase 3: Analyze Root Cause
 
 ### Common Failure Patterns

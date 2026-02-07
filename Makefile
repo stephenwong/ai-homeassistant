@@ -24,7 +24,7 @@ YELLOW = \033[1;33m
 RED = \033[0;31m
 NC = \033[0m # No Color
 
-.PHONY: help pull push validate backup clean setup test status entities reload format-yaml check-env
+.PHONY: help pull push validate backup backup-search changelog changelog-all clean setup test status entities reload format-yaml check-env
 
 # Default target
 help:
@@ -42,6 +42,9 @@ help:
 	@echo "  $(YELLOW)reload$(NC)   - Reload Home Assistant configuration (without pushing)"
 	@echo "  $(YELLOW)format-yaml$(NC) - Format YAML files (usage: make format-yaml [FILES='file1.yaml file2.yaml'])"
 	@echo "  $(YELLOW)check-env$(NC) - Validate environment configuration (.env file)"
+	@echo "  $(YELLOW)backup-search$(NC) - Search backups for a pattern (usage: make backup-search PATTERN='text')"
+	@echo "  $(YELLOW)changelog$(NC) - Generate changelog for a backup (usage: make changelog BACKUP='path')"
+	@echo "  $(YELLOW)changelog-all$(NC) - Generate changelogs for all backups"
 	@echo "  $(YELLOW)clean$(NC)    - Clean up temporary files and caches"
 
 # Pull configuration from Home Assistant
@@ -87,7 +90,21 @@ backup:
 	@timestamp=$$(date +%Y%m%d_%H%M%S); \
 	backup_name="$(BACKUP_DIR)/ha_config_$$timestamp"; \
 	tar -czf "$$backup_name.tar.gz" $(LOCAL_CONFIG_PATH) $(FRIGATE_LOCAL_PATH) 2>/dev/null || tar -czf "$$backup_name.tar.gz" $(LOCAL_CONFIG_PATH); \
-	echo "$(GREEN)Backup created: $$backup_name.tar.gz$(NC)"
+	echo "$(GREEN)Backup created: $$backup_name.tar.gz$(NC)"; \
+	$(UV_RUN) python $(TOOLS_PATH)/generate_changelog.py "$$backup_name.tar.gz" 2>/dev/null && \
+	echo "$(GREEN)Changelog generated$(NC)" || true
+
+# Search backups for a pattern
+backup-search:
+	@$(UV_RUN) python $(TOOLS_PATH)/search_backups.py "$(PATTERN)"
+
+# Generate changelog for a specific backup
+changelog:
+	@$(UV_RUN) python $(TOOLS_PATH)/generate_changelog.py "$(BACKUP)"
+
+# Generate changelogs for all backups
+changelog-all:
+	@$(UV_RUN) python $(TOOLS_PATH)/generate_changelog.py --generate-all
 
 # Set up Python environment and dependencies
 setup:

@@ -31,13 +31,16 @@ Copy `.env.example` to `.env` and configure:
 |---------|---------|
 | `make pull` | Sync config from HA instance |
 | `make push` | Push config (with validation) |
-| `make backup` | Create timestamped backup |
+| `make backup` | Create timestamped backup (with auto-changelog) |
 | `make validate` | Run all validation tests |
 | `make setup` | Install Python dependencies via uv |
 | `make status` | Show config status and entity counts |
 | `make reload` | Reload HA config (API call, no push) |
 | `make entities` | Explore available entities |
 | `make entities ARGS='--search TERM'` | Search entities by name |
+| `make backup-search PATTERN='text'` | Search all backups for a pattern |
+| `make changelog BACKUP='path'` | Generate changelog for a specific backup |
+| `make changelog-all` | Backfill changelogs for all backups |
 | `make test-ssh` | Test SSH connection to HA |
 | `make clean` | Remove temp files and caches |
 | `tools/ha-curl.sh` | Curl wrapper with auto-auth (see below) |
@@ -74,9 +77,11 @@ Implications: Frigate can use aggressive detection (Hailo), streams use hardware
 
 Config changes are often **not in git history** - they get pushed to HA and pulled back without commits. The `backups/` directory is the real historical record.
 
-- **Backup format:** `ha_config_YYYYMMDD_HHMMSS.tar.gz`
+- **Backup format:** `ha_config_YYYYMMDD_HHMMSS.tar.gz` with matching `.changelog`
+- **Find when a change was introduced:** `make backup-search PATTERN='media_player.play_media'`
+- **See what changed in a backup:** `cat backups/ha_config_YYYYMMDD_HHMMSS.changelog`
 - **Extract a specific file:** `tar -xzOf backups/ha_config_<timestamp>.tar.gz config/automations.yaml`
-- **Find when a change was introduced:** Compare sequential backup timestamps
+- **Backfill changelogs:** `make changelog-all` (generates missing `.changelog` files)
 - **When reverting:** Don't blindly restore - ask about individual settings (e.g., timer durations) that may have been tuned independently of the change being reverted
 
 ## Critical Gotchas

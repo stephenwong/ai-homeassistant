@@ -147,6 +147,10 @@ def main():
         # Delete files
         for backup in to_delete:
             backup['path'].unlink()
+            changelog_name = backup['filename'].replace('.tar.gz', '.changelog')
+            changelog_path = BACKUP_DIR / changelog_name
+            if changelog_path.exists():
+                changelog_path.unlink()
             print(f"Deleted: {backup['filename']}")
 
         print(f"\n✓ Successfully deleted {len(to_delete)} backup(s)")
