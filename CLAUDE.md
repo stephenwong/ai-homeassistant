@@ -71,7 +71,7 @@ Implications: Frigate can use aggressive detection (Hailo), streams use hardware
 **Before feature work:** Use `home-assistant-backup` skill (pull → backup → prune)
 **Creating automations:** Use `home-assistant-automation` skill
 **Debugging issues:** Use `home-assistant-debugging` skill
-**After mistakes:** Use `learning-from-mistakes` skill
+**Before committing/finishing:** Use `reflect` skill to capture learnings (gotchas, corrections, new patterns)
 
 ## Backups as Version History
 
@@ -277,49 +277,17 @@ After changes: `make push` then restart Frigate addon.
 
 ## Automation Quick Reference
 
-### Structure
-```yaml
-- id: unique_id
-  alias: Human-readable name
-  triggers:
-    - trigger: state|time|device|event|numeric_state|sun|zone
-  conditions: []
-  actions:
-    - action: domain.service
-      target:
-        entity_id: entity.name
-  mode: single|queued|restart|parallel
-```
+For full automation reference (structure, modes, triggers, patterns), see the `home-assistant-automation` skill.
 
-### Modes
-| Mode | Behavior |
-|------|----------|
-| `single` | Ignores new triggers while running (default) |
-| `queued` | Queues triggers, runs sequentially |
-| `restart` | Cancels current run, starts fresh |
-| `parallel` | Runs multiple instances simultaneously |
-
-### Common Templates
+### Key Templates
 ```yaml
 states('entity_id')              # Get state
-state_attr('entity_id', 'attr')  # Get attribute
 is_state('entity_id', 'value')   # Boolean check
 | float(0)                       # Convert with default
 | default(omit)                  # Omit if undefined (for optional script params)
 ```
 
-### Device Triggers (buttons/switches)
-```yaml
-triggers:
-  - trigger: device
-    domain: mqtt
-    device_id: <id>  # Find via: python tools/entity_explorer.py --search "name"
-    type: action
-    subtype: single|double|long_press
-```
-
 ### Debug Logging
-Use `script.debug_log` to add timestamped entries to the Debug tab in Lovelace:
 ```yaml
 - action: script.debug_log
   data:
@@ -327,7 +295,6 @@ Use `script.debug_log` to add timestamped entries to the Debug tab in Lovelace:
     severity: info  # info (default), warn, error
     entity: camera.front_door  # optional context
 ```
-Output: `ℹ️ 14:32:05 [camera.front_door] Camera started streaming` (emojis: ℹ️/⚠️/❌)
 
 ## Integrations
 

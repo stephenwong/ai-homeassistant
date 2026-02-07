@@ -77,16 +77,14 @@ digraph debug_flow {
         "User approves?" -> "Edit configuration" [label="yes"];
         "Edit configuration" -> "make validate";
         "make validate" -> "make push";
-        "make push" -> "New pattern found?";
+        "make push" -> "Reflect (capture learnings)";
     }
 
     subgraph cluster_reflect {
         label="5. REFLECT";
         style=filled;
         color=lavender;
-        "New pattern found?" -> "Use learning-from-mistakes skill" [label="yes"];
-        "New pattern found?" -> "Done" [label="no"];
-        "Use learning-from-mistakes skill" -> "Done";
+        "Reflect (capture learnings)" -> "Done";
     }
 }
 ```
@@ -99,7 +97,7 @@ digraph debug_flow {
 | Locate | `Grep` | Find where entity is defined |
 | Analyze | `Read` (targeted lines) | Understand template/automation logic |
 | Fix | `Edit`, `make validate`, `make push` | Apply and deploy fix |
-| Reflect | `learning-from-mistakes` skill | Document patterns if any |
+| Reflect | `reflect` skill | Capture learnings (gotchas, corrections, patterns) |
 
 ## Phase 1: Identify the Entity
 
@@ -218,9 +216,6 @@ Grep "automation_name_or_keyword" config/automations.yaml
 | Fixing symptoms not cause | Ask "why does this happen?" |
 | Large rewrites | Minimal targeted changes only |
 | Not checking for unavailable states | Templates must handle unavailable |
-| Using `source .env` in Bash tool | Read .env first, use values directly in curl |
-| Piping curl to python inline | Save to file first, then parse with python |
-| Multi-line curl commands with `\` | Use single-line commands in Bash tool |
 
 ## Red Flags - You're Doing It Wrong
 
@@ -230,7 +225,6 @@ Grep "automation_name_or_keyword" config/automations.yaml
 - Changing multiple things at once
 - Skipping validation before push
 - Not explaining root cause to user
-- Getting `JSONDecodeError: Expecting value` from curl|python - empty response means .env vars not loaded
 
 **All of these mean: Go back to Phase 2 and trace the actual code.**
 
@@ -268,96 +262,39 @@ HA restart causes all entities to transition: `unavailable` → first reading
 
 ## Direct HA API Access for Debugging
 
-When you need real-time state checks or to test services without full deployment, use the HA API directly.
+Use `tools/ha-curl.sh` for all API calls - it auto-loads credentials from `.env`:
 
-**Prerequisites:** `.env` file with `HA_URL` and `HA_TOKEN` configured.
-
-### CRITICAL: Using .env in Claude Code's Bash Tool
-
-**`source .env` does NOT work reliably** in Claude Code's Bash tool because:
-- Each Bash call is a fresh shell
-- Variables aren't exported across command chains
-- Multi-line commands with `\` line continuation fail silently
-
-**Two reliable approaches:**
-
-**1. Read .env first, then use values directly (RECOMMENDED):**
 ```bash
-# Step 1: Read the .env file to get the values
-Read .env file to find HA_URL and HA_TOKEN values
+# Check entity state
+tools/ha-curl.sh /api/states/sensor.entity_name
 
-# Step 2: Use the actual values in curl (replace with real values from .env)
-curl -s "http://192.168.50.10:8123/api/states/sensor.entity_name" \
-  -H "Authorization: Bearer eyJhbG..."
+# Check automation status (look for "last_triggered" in attributes)
+tools/ha-curl.sh /api/states/automation.automation_name
+
+# Test service calls directly
+tools/ha-curl.sh -X POST /api/services/light/turn_on -d '{"entity_id": "light.room_light"}'
+
+# Query logbook (ISO 8601 format, UTC)
+tools/ha-curl.sh /api/logbook/2026-01-26T20:00:00Z?end_time=2026-01-26T21:00:00Z
+
+# Query entity history
+tools/ha-curl.sh /api/history/period/2026-01-26T00:00:00Z?filter_entity_id=sensor.name
+
+# Reload specific domains (when make push validation blocks on new entities)
+tools/ha-curl.sh -X POST /api/services/automation/reload
+tools/ha-curl.sh -X POST /api/services/timer/reload
+tools/ha-curl.sh -X POST /api/services/template/reload
 ```
 
-**2. Use set -a to auto-export (single-line commands only):**
-```bash
-set -a && source .env && set +a && curl -s "${HA_URL}/api/states/sensor.entity_name" -H "Authorization: Bearer ${HA_TOKEN}"
-```
+### Bypass Validation for New Entities
 
-### Check Entity State
-```bash
-# Read .env first, then use actual values:
-curl -s "http://YOUR_HA_IP:8123/api/states/sensor.entity_name" -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-### Check Automation Status (was it triggered?)
-```bash
-curl -s "http://YOUR_HA_IP:8123/api/states/automation.automation_name" -H "Authorization: Bearer YOUR_TOKEN"
-# Look for "last_triggered" in attributes
-```
-
-### Test Service Calls Directly
-```bash
-curl -s -X POST "http://YOUR_HA_IP:8123/api/services/light/turn_on" -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"entity_id": "light.room_light"}'
-```
-
-### Query History/Logbook API
-```bash
-# Get logbook entries for a time range (ISO 8601 format, UTC)
-curl -s "http://YOUR_HA_IP:8123/api/logbook/2026-01-26T20:00:00Z?end_time=2026-01-26T21:00:00Z" -H "Authorization: Bearer YOUR_TOKEN"
-
-# Get entity history
-curl -s "http://YOUR_HA_IP:8123/api/history/period/2026-01-26T00:00:00Z?filter_entity_id=sensor.name" -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-**Tip:** API responses can be large. Save to file and parse:
-```bash
-curl -s "http://..." -H "..." > /tmp/response.json && python3 -c "import json; data=json.load(open('/tmp/response.json')); [print(e) for e in data if 'keyword' in str(e)]"
-```
-
-### Reload Specific Domains
-When `make push` validation blocks due to new entities that will exist after reload:
+When validation fails because new helpers/templates don't exist yet (created on reload):
 
 ```bash
-# Reload automations
-curl -s -X POST "http://YOUR_HA_IP:8123/api/services/automation/reload" -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json"
-
-# Reload timers
-curl -s -X POST "http://YOUR_HA_IP:8123/api/services/timer/reload" -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json"
-
-# Reload template entities
-curl -s -X POST "http://YOUR_HA_IP:8123/api/services/template/reload" -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json"
-```
-
-### Push Directly When Validation Blocks on New Entities
-
-When validation fails because new helpers/templates don't exist yet (expected - they're created on reload):
-
-```bash
-# Check official HA validation passed (most important)
-# If only entity reference validation fails for NEW entities, push directly:
-# Read HA_HOST from .env, then:
+# Only if official HA validation passed and errors are for NEW entities:
 rsync -avz config/ homeassistant:/config/
-
-# Then reload the specific domains
+# Then reload the specific domains above
 ```
-
-**Only bypass validation when:**
-- Official HA validation passed
-- Entity reference errors are for NEW entities defined in the same change
-- You understand why validation is failing
 
 ## Debugging Workflow for Service Failures
 
@@ -371,12 +308,14 @@ When a service call doesn't work as expected:
 ### Example: Debugging camera streaming failure
 
 ```bash
-# 1. Test service directly (replace YOUR_HA_IP and YOUR_TOKEN with actual values from .env)
-curl -s -X POST "http://YOUR_HA_IP:8123/api/services/camera/play_stream" -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"entity_id": "camera.front_door", "media_player": "media_player.nest_hub"}'
+# 1. Test service directly
+tools/ha-curl.sh -X POST /api/services/camera/play_stream \
+  -d '{"entity_id": "camera.front_door", "media_player": "media_player.nest_hub"}'
 # If 500 error → service doesn't work with this camera type
 
 # 2. Try alternative service
-curl -s -X POST "http://YOUR_HA_IP:8123/api/services/media_player/play_media" -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"entity_id": "media_player.nest_hub", "media_content_id": "http://...", "media_content_type": "video/mp4"}'
+tools/ha-curl.sh -X POST /api/services/media_player/play_media \
+  -d '{"entity_id": "media_player.nest_hub", "media_content_id": "http://...", "media_content_type": "video/mp4"}'
 ```
 
 This isolates whether the problem is:
@@ -386,7 +325,7 @@ This isolates whether the problem is:
 
 ## Phase 5: Reflect & Learn
 
-After fixing the issue, if you discovered a new failure pattern or documentation gap, use the `learning-from-mistakes` skill to document it.
+After fixing the issue, use the `reflect` skill to capture any learnings — new failure patterns, documentation gaps, or gotchas discovered during debugging.
 
 **Quick self-check before completing:**
 - [ ] Root cause identified and explained to user

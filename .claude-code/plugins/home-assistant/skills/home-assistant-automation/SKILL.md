@@ -83,16 +83,14 @@ digraph automation_flow {
         "Validation passed?" -> "make push" [label="yes"];
         "Validation passed?" -> "Fix errors" [label="no"];
         "Fix errors" -> "make validate";
-        "make push" -> "Issues found?";
+        "make push" -> "Reflect (capture learnings)";
     }
 
     subgraph cluster_reflect {
         label="6. REFLECT";
         style=filled;
         color=lavender;
-        "Issues found?" -> "Use learning-from-mistakes skill" [label="yes"];
-        "Issues found?" -> "Done" [label="no"];
-        "Use learning-from-mistakes skill" -> "Done";
+        "Reflect (capture learnings)" -> "Done";
     }
 }
 ```
@@ -106,7 +104,7 @@ digraph automation_flow {
 | Design | `Read configuration.yaml` | Check helpers (small file, safe to read) |
 | Implement | `Edit` | Modify YAML files |
 | Deploy | `make validate`, `make push` | Test and deploy |
-| Reflect | `learning-from-mistakes` skill | Document learnings if any |
+| Reflect | `reflect` skill | Capture learnings (gotchas, corrections, patterns) |
 
 ## Phase 1: Discovery
 
@@ -152,26 +150,6 @@ Grep "bathroom_motion" config/.storage/core.entity_registry
 **DO NOT assume.** Even if one option seems obvious, confirm with user.
 
 ## Phase 3: Design
-
-### Automation Structure
-
-```yaml
-- id: unique_snake_case_id
-  alias: Human-Readable Name
-  description: What this automation does
-  triggers:
-    - trigger: state|device|time|numeric_state|sun|event|zone
-      # trigger-specific fields
-  conditions:
-    - condition: state|numeric_state|time|template
-      # condition-specific fields
-  actions:
-    - action: domain.service
-      target:
-        entity_id: entity.id
-      data: {}
-  mode: single|queued|restart|parallel
-```
 
 ### Common Patterns
 
@@ -294,28 +272,6 @@ make push
 
 **All of these mean: Go back to Phase 1 and follow the workflow.**
 
-## Trigger Types Quick Reference
-
-| Type | Use For | Key Fields |
-|------|---------|------------|
-| `state` | Entity state changes | `entity_id`, `to`, `from` |
-| `numeric_state` | Thresholds | `entity_id`, `above`, `below` |
-| `device` | Buttons, physical events | `device_id`, `type`, `subtype` |
-| `time` | Scheduled | `at` |
-| `time_pattern` | Recurring | `hours`, `minutes`, `seconds` |
-| `sun` | Sunrise/sunset | `event`, `offset` |
-| `event` | HA events | `event_type`, `event_data` |
-| `zone` | Location | `entity_id`, `zone`, `event` |
-
-## Automation Modes
-
-| Mode | When to Use |
-|------|-------------|
-| `single` | Default - ignore triggers while running |
-| `queued` | Process all triggers in order |
-| `restart` | Cancel current, start fresh on new trigger |
-| `parallel` | Run multiple instances simultaneously |
-
 ## Finding Entity/Device IDs
 
 ```bash
@@ -334,7 +290,7 @@ Grep "bathroom_motion" config/.storage/core.entity_registry
 
 ## Phase 6: Reflect & Learn
 
-After deployment, if you encountered issues or learned something new, use the `learning-from-mistakes` skill to document it.
+After deployment, use the `reflect` skill to capture any learnings — new gotchas, corrections, or patterns discovered during this work.
 
 **Quick self-check before completing:**
 - [ ] Automation deployed and validated
