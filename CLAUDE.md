@@ -15,6 +15,7 @@ This repository manages Home Assistant configuration files with automated valida
 - `config/configuration.yaml` - Main HA config (integrations, includes, helpers)
 - `config/blueprints/` - HA blueprints (automation/, script/, template/)
 - `config/.storage/core.entity_registry` - **Entity registry** (search for entity IDs, device IDs)
+- `frigate/config.yml` - Frigate NVR configuration (addon slug: `ccab4aaf_frigate-fa-beta`)
 - `tools/` - Validation and testing scripts
 - `Makefile` - Commands for pulling/pushing configuration
 - `Makefile.dev` - Dev-only commands (see `README-DEV.md`)
@@ -327,3 +328,4 @@ Run `make lint` locally before pushing to catch CI failures early. Use `make lin
 6. **Lovelace "Configuration error"**: Verify HACS card is installed, test minimal config
 7. **Camera card not loading**: Check `installed: True` in `.storage/hacs.repositories`
 8. **False Frigate alerts**: Check zoned vs unzoned sensors, increase `inertia`/`loitering_time` in zone config
+9. **Restart Frigate addon**: Use SSH: `ssh homeassistant "ha apps restart ccab4aaf_frigate-fa-beta"`. The Supervisor API (`/api/hassio/addons/...`) returns 401 with long-lived access tokens — use SSH instead.

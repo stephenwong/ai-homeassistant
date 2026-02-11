@@ -105,13 +105,13 @@ def apply_retention(groups):
     return to_keep, to_delete
 
 
-def format_size(bytes):
+def format_size(size_bytes):
     """Format bytes as human-readable size."""
     for unit in ["B", "KB", "MB", "GB"]:
-        if bytes < 1024.0:
-            return f"{bytes:.1f}{unit}"
-        bytes /= 1024.0
-    return f"{bytes:.1f}TB"
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f}{unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f}TB"
 
 
 def main():
@@ -122,7 +122,7 @@ def main():
 
     if not backups:
         print(f"No backups found in {BACKUP_DIR}")
-        return
+        return 0
 
     print(f"\nFound {len(backups)} backup(s)")
 
@@ -173,6 +173,8 @@ def main():
                 age_str = f"{age_days} days ago"
             print(f"  - {backup['filename']} ({format_size(size)}, {age_str})")
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

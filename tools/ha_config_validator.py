@@ -5,23 +5,20 @@ This script performs deep validation using Home Assistant's own
 configuration checking.
 """
 
+import argparse
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from tools.common import ValidatorBase
 
-class HAConfigValidator:
+
+class HAConfigValidator(ValidatorBase):
     """Validates Home Assistant configuration using HA's check_config tool."""
 
-    def __init__(self, config_dir: str = "config"):
-        """Initialize the validator with config directory."""
-        self.config_dir = Path(config_dir).resolve()
-        self.errors: list[str] = []
-        self.warnings: list[str] = []
-        self.info: list[str] = []
+    validator_name = "Home Assistant configuration"
 
     def check_ha_installation(self) -> bool:
         """Check if Home Assistant is available for configuration checking."""
@@ -152,8 +149,7 @@ class HAConfigValidator:
 
         # Validate configuration.yaml syntax and basic structure
         try:
-            with open(config_file) as f:
-                config = yaml.safe_load(f)
+            config = self.load_yaml(config_file)
 
             if not isinstance(config, dict):
                 self.errors.append("configuration.yaml must contain a dictionary")
@@ -180,7 +176,7 @@ class HAConfigValidator:
         self.validate_scripts_file()
         self.validate_secrets_file()
 
-        return all_valid
+        return all_valid and not self.errors
 
     def validate_basic_config_structure(self, config: dict[str, Any]):
         """Validate basic configuration structure."""
@@ -249,30 +245,12 @@ class HAConfigValidator:
             return
 
         try:
-            with open(automations_file) as f:
-                automations = yaml.safe_load(f)
+            automations = self.load_yaml(automations_file)
 
             if automations is not None and not isinstance(automations, list):
                 self.errors.append("automations.yaml must contain a list")
             elif isinstance(automations, list):
-                for i, automation in enumerate(automations):
-                    if not isinstance(automation, dict):
-                        self.errors.append(f"Automation {i} must be a dictionary")
-                        continue
-
-                    # Check required fields (both singular and plural forms are valid)
-                    # Blueprint automations use 'use_blueprint' instead of
-                    # direct triggers/actions
-                    if "use_blueprint" not in automation:
-                        if "trigger" not in automation and "triggers" not in automation:
-                            self.errors.append(
-                                f"Automation {i} missing required 'trigger' or "
-                                f"'triggers'"
-                            )
-                        if "action" not in automation and "actions" not in automation:
-                            self.errors.append(
-                                f"Automation {i} missing required 'action' or 'actions'"
-                            )
+                self.check_automations_structure(automations, "automations.yaml")
 
         except yaml.YAMLError as e:
             self.errors.append(f"YAML syntax error in automations.yaml: {e}")
@@ -286,29 +264,12 @@ class HAConfigValidator:
             return
 
         try:
-            with open(scripts_file) as f:
-                scripts = yaml.safe_load(f)
+            scripts = self.load_yaml(scripts_file)
 
             if scripts is not None and not isinstance(scripts, dict):
                 self.errors.append("scripts.yaml must contain a dictionary")
             elif isinstance(scripts, dict):
-                for script_name, script_config in scripts.items():
-                    if not isinstance(script_config, dict):
-                        self.errors.append(
-                            f"Script '{script_name}' must be a dictionary"
-                        )
-                        continue
-
-                    # Check required fields
-                    # Blueprint scripts use 'use_blueprint' instead of direct sequence
-                    if (
-                        "use_blueprint" not in script_config
-                        and "sequence" not in script_config
-                    ):
-                        self.errors.append(
-                            f"Script '{script_name}' missing required "
-                            f"'sequence' or 'use_blueprint'"
-                        )
+                self.check_scripts_structure(scripts, "scripts.yaml")
 
         except yaml.YAMLError as e:
             self.errors.append(f"YAML syntax error in scripts.yaml: {e}")
@@ -323,8 +284,7 @@ class HAConfigValidator:
             return
 
         try:
-            with open(secrets_file) as f:
-                secrets = yaml.safe_load(f)
+            secrets = self.load_yaml(secrets_file)
 
             if secrets is not None and not isinstance(secrets, dict):
                 self.errors.append("secrets.yaml must contain a dictionary")
@@ -345,43 +305,25 @@ class HAConfigValidator:
         # Try HA's built-in validation first
         return self.run_ha_check_config()
 
-    def print_results(self):
-        """Print validation results."""
-        if self.info:
-            print("INFO:")
-            for info in self.info:
-                print(f"  ℹ️  {info}")
-            print()
-
-        if self.errors:
-            print("ERRORS:")
-            for error in self.errors:
-                print(f"  ❌ {error}")
-            print()
-
-        if self.warnings:
-            print("WARNINGS:")
-            for warning in self.warnings:
-                print(f"  ⚠️  {warning}")
-            print()
-
-        if not self.errors and not self.warnings:
-            print("✅ Home Assistant configuration is valid!")
-        elif not self.errors:
-            print("✅ Home Assistant configuration is valid (with warnings)")
-        else:
-            print("❌ Home Assistant configuration validation failed")
-
 
 def main():
     """Run main function for command line usage."""
-    config_dir = sys.argv[1] if len(sys.argv) > 1 else "config"
+    parser = argparse.ArgumentParser(
+        description="Validate Home Assistant configuration using HA's built-in checks."
+    )
+    parser.add_argument(
+        "config_dir",
+        nargs="?",
+        default="config",
+        help="Path to the config directory (default: config)",
+    )
+    args = parser.parse_args()
 
-    validator = HAConfigValidator(config_dir)
+    validator = HAConfigValidator(args.config_dir)
     is_valid = validator.validate_all()
     validator.print_results()
 
-    sys.exit(0 if is_valid else 1)
+    raise SystemExit(0 if is_valid else 1)
 
 
 if __name__ == "__main__":

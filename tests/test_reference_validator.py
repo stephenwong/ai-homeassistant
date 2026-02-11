@@ -53,7 +53,7 @@ class TestReferenceValidatorUUID(unittest.TestCase):
                     },
                     {
                         "entity_id": "sensor.complex",
-                        "id": "complexsensoridfortest12345678900",
+                        "id": "complexsensoridfortest1234567890",
                         "platform": "test",
                         "unique_id": "complex_sensor",
                         "disabled_by": None,
@@ -175,7 +175,7 @@ class TestReferenceValidatorUUID(unittest.TestCase):
             "88a52f17bf43cb276836f06ac5c07444": "binary_sensor.test_motion_battery",
             "11223344556677889900aabbccddeeff": "sensor.disabled_sensor",
             "aabbccddeeff00112233445566778899": "sensor.normal_sensor",
-            "complexsensoridfortest12345678900": "sensor.complex",
+            "complexsensoridfortest1234567890": "sensor.complex",
         }
 
         self.assertEqual(mapping, expected_mapping)

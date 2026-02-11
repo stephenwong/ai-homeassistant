@@ -12,20 +12,22 @@ import requests
 
 from tools.common import load_env_file
 
-# Load .env file
-load_env_file()
 
-# Configuration
-HA_URL = os.getenv("HA_URL", "http://homeassistant.local:8123")
-TOKEN = os.getenv("HA_TOKEN", "")
+def get_config():
+    """Load configuration from environment."""
+    load_env_file()
+    return {
+        "ha_url": os.getenv("HA_URL", "http://homeassistant.local:8123"),
+        "token": os.getenv("HA_TOKEN", ""),
+    }
 
 
-def test_api_connection():
+def test_api_connection(ha_url, token):
     """Test basic API connection."""
     print("🔗 Testing API Connection...")
     try:
-        headers = {"Authorization": f"Bearer {TOKEN}"}
-        response = requests.get(f"{HA_URL}/api/", headers=headers, timeout=10)
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.get(f"{ha_url}/api/", headers=headers, timeout=10)
 
         print(f"   Status: {response.status_code}")
         if response.status_code == 200:
@@ -40,11 +42,11 @@ def test_api_connection():
         return False
 
 
-def test_api_endpoints():
+def test_api_endpoints(ha_url, token):
     """Test various API endpoints to find entity registry access."""
     print("\n🔍 Testing Various API Endpoints...")
 
-    headers = {"Authorization": f"Bearer {TOKEN}"}
+    headers = {"Authorization": f"Bearer {token}"}
 
     endpoints_to_test = [
         ("/api/config/entity_registry", "Entity Registry"),
@@ -61,7 +63,7 @@ def test_api_endpoints():
     for endpoint, description in endpoints_to_test:
         try:
             print(f"\n   Testing: {endpoint} ({description})")
-            response = requests.get(f"{HA_URL}{endpoint}", headers=headers, timeout=10)
+            response = requests.get(f"{ha_url}{endpoint}", headers=headers, timeout=10)
             print(f"   Status: {response.status_code}")
 
             if response.status_code == 200:
@@ -88,13 +90,13 @@ def test_api_endpoints():
     return successful_endpoints
 
 
-def test_entity_registry_read():
+def test_entity_registry_read(ha_url, token):
     """Test reading entity registry."""
     print("\n📋 Testing Entity Registry Read Access...")
     try:
-        headers = {"Authorization": f"Bearer {TOKEN}"}
+        headers = {"Authorization": f"Bearer {token}"}
         response = requests.get(
-            f"{HA_URL}/api/config/entity_registry", headers=headers, timeout=10
+            f"{ha_url}/api/config/entity_registry", headers=headers, timeout=10
         )
 
         print(f"   Status: {response.status_code}")
@@ -102,24 +104,16 @@ def test_entity_registry_read():
             data = response.json()
             print(f"   ✅ Found {len(data)} entities")
 
-            # Look for target entities
-            target_entities = [
-                "binary_sensor.basement",
-                "media_player.kitchen",
-                "camera.driveway_live_view",
-            ]
-            found_entities = []
-
-            for entity in data:
+            # Sample first 3 entities for inspection
+            sample_entities = data[:3]
+            for entity in sample_entities:
                 entity_id = entity.get("entity_id")
-                if entity_id in target_entities:
-                    found_entities.append(entity)
-                    print(f"   ✅ Found: {entity_id}")
-                    print(f"      Platform: {entity.get('platform')}")
-                    print(f"      Device ID: {entity.get('device_id')}")
-                    print(f"      Unique ID: {entity.get('unique_id')}")
+                print(f"   ✅ Sample: {entity_id}")
+                print(f"      Platform: {entity.get('platform')}")
+                print(f"      Device ID: {entity.get('device_id')}")
+                print(f"      Unique ID: {entity.get('unique_id')}")
 
-            return found_entities
+            return sample_entities
         else:
             print(f"   ❌ Error: {response.text}")
             return []
@@ -128,35 +122,26 @@ def test_entity_registry_read():
         return []
 
 
-def test_states_endpoint():
+def test_states_endpoint(ha_url, token):
     """Test the /api/states endpoint to see entity data."""
     print("\n📊 Testing States Endpoint for Entity Info...")
     try:
-        headers = {"Authorization": f"Bearer {TOKEN}"}
-        response = requests.get(f"{HA_URL}/api/states", headers=headers, timeout=10)
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.get(f"{ha_url}/api/states", headers=headers, timeout=10)
 
         print(f"   Status: {response.status_code}")
         if response.status_code == 200:
             states = response.json()
             print(f"   ✅ Found {len(states)} states")
 
-            # Look for our target entities
-            target_entities = [
-                "binary_sensor.basement",
-                "media_player.kitchen",
-                "camera.driveway_live_view",
-            ]
-            found_entities = []
-
-            for state in states:
+            # Sample first 3 entities for inspection
+            for state in states[:3]:
                 entity_id = state.get("entity_id")
-                if entity_id in target_entities:
-                    found_entities.append(entity_id)
-                    print(f"   ✅ Found: {entity_id}")
-                    attrs = list(state.get("attributes", {}).keys())[:5]
-                    print(f"      Attributes: {attrs}")
+                print(f"   ✅ Sample: {entity_id}")
+                attrs = list(state.get("attributes", {}).keys())[:5]
+                print(f"      Attributes: {attrs}")
 
-            return len(found_entities) == len(target_entities)
+            return len(states) > 0
         else:
             print(f"   ❌ Error: {response.text}")
             return False
@@ -165,7 +150,7 @@ def test_states_endpoint():
         return False
 
 
-def test_entity_rename(entity_data_list):
+def test_entity_rename(ha_url, token, entity_data_list):
     """Test renaming a single entity using multiple methods."""
     print("\n🔄 Testing Entity Rename Methods...")
 
@@ -173,14 +158,15 @@ def test_entity_rename(entity_data_list):
         print("   ❌ No entity data to test with")
         return False
 
-    entity_data = entity_data_list[0]  # Use first found entity
-    old_id = entity_data.get("entity_id", "binary_sensor.basement")
-    new_id = "binary_sensor.sf_basement_motion_test"
+    entity_data = entity_data_list[0]  # Use first discovered entity
+    old_id = entity_data.get("entity_id", "unknown")
+    domain = old_id.split(".")[0] if "." in old_id else "entity"
+    new_id = f"{domain}.rename_test_temp"
 
     print(f"   Testing rename: {old_id} → {new_id}")
 
     headers = {
-        "Authorization": f"Bearer {TOKEN}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
 
@@ -189,7 +175,7 @@ def test_entity_rename(entity_data_list):
         print("\n   Method 1: Direct registry update...")
         data = {"new_entity_id": new_id}
         response = requests.post(
-            f"{HA_URL}/api/config/entity_registry/{old_id}",
+            f"{ha_url}/api/config/entity_registry/{old_id}",
             headers=headers,
             json=data,
             timeout=10,
@@ -209,7 +195,7 @@ def test_entity_rename(entity_data_list):
     try:
         print("\n   Method 2: Update endpoint...")
         response = requests.post(
-            f"{HA_URL}/api/config/entity_registry/update",
+            f"{ha_url}/api/config/entity_registry/update",
             headers=headers,
             json={"entity_id": old_id, "new_entity_id": new_id},
             timeout=10,
@@ -228,25 +214,32 @@ def test_entity_rename(entity_data_list):
     return False
 
 
-def test_service_call_method():
+def test_service_call_method(ha_url, token, entity_data_list):
     """Test if we can rename via service calls."""
     print("\n🔧 Testing Service Call Method...")
 
     headers = {
-        "Authorization": f"Bearer {TOKEN}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
+
+    # Use first discovered entity, or skip if none available
+    if not entity_data_list:
+        print("   ❌ No entity data to test with")
+        return
+
+    target_entity = entity_data_list[0].get("entity_id", "unknown")
 
     # Test calling homeassistant.update_entity service
     try:
         service_data = {
-            "entity_id": "binary_sensor.basement",
+            "entity_id": target_entity,
             # This changes friendly name, not entity_id
-            "name": "SF Basement Motion Test",
+            "name": "Rename Test Temp",
         }
 
         response = requests.post(
-            f"{HA_URL}/api/services/homeassistant/update_entity",
+            f"{ha_url}/api/services/homeassistant/update_entity",
             headers=headers,
             json=service_data,
             timeout=10,
@@ -278,8 +271,8 @@ def show_websocket_info():
     websocket_example = {
         "id": 1,
         "type": "config/entity_registry/update",
-        "entity_id": "binary_sensor.basement",
-        "new_entity_id": "binary_sensor.sf_basement_motion",
+        "entity_id": "<old_entity_id>",
+        "new_entity_id": "<new_entity_id>",
     }
 
     print("\n   Example WebSocket command:")
@@ -291,32 +284,36 @@ def main():
     print("🏠 Home Assistant API Diagnostic Tool")
     print("=" * 60)
 
-    if not TOKEN:
+    config = get_config()
+    ha_url = config["ha_url"]
+    token = config["token"]
+
+    if not token:
         print("❌ No HA_TOKEN found in .env file!")
         print("   Create a .env file with: HA_TOKEN=your_long_lived_access_token")
         return
 
-    print(f"🔗 Testing connection to: {HA_URL}")
+    print(f"🔗 Testing connection to: {ha_url}")
 
     # Test 1: Basic connection
-    if not test_api_connection():
+    if not test_api_connection(ha_url, token):
         print("❌ Basic connection failed - stopping tests")
         return
 
     # Test 2: Explore available endpoints
-    successful_endpoints = test_api_endpoints()
+    successful_endpoints = test_api_endpoints(ha_url, token)
 
     # Test 3: Entity registry read
-    entity_data = test_entity_registry_read()
+    entity_data = test_entity_registry_read(ha_url, token)
 
     # Test 4: States endpoint
-    states_work = test_states_endpoint()
+    states_work = test_states_endpoint(ha_url, token)
 
     # Test 5: Entity rename attempts
-    test_entity_rename(entity_data)
+    test_entity_rename(ha_url, token, entity_data)
 
     # Test 6: Service call method
-    test_service_call_method()
+    test_service_call_method(ha_url, token, entity_data)
 
     # Test 7: WebSocket method info
     show_websocket_info()

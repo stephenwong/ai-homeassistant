@@ -4,15 +4,15 @@
 Validates that all entity references in configuration files actually exist.
 """
 
+import argparse
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Any, TypedDict
 
 import yaml
 
-from tools.common import HAYamlLoader
+from tools.common import HAYamlLoader, ValidatorBase
 
 
 class DomainSummary(TypedDict):
@@ -24,8 +24,10 @@ class DomainSummary(TypedDict):
     examples: list[str]
 
 
-class ReferenceValidator:
+class ReferenceValidator(ValidatorBase):
     """Validates entity and device references in Home Assistant config."""
+
+    validator_name = "Entity/device references"
 
     # Special keywords that are not entity IDs
     SPECIAL_KEYWORDS = {"all", "none"}
@@ -38,10 +40,8 @@ class ReferenceValidator:
 
     def __init__(self, config_dir: str = "config"):
         """Initialize the ReferenceValidator."""
-        self.config_dir = Path(config_dir)
+        super().__init__(config_dir)
         self.storage_dir = self.config_dir / ".storage"
-        self.errors: list[str] = []
-        self.warnings: list[str] = []
 
         # Cache for loaded registries
         self._entities: dict[str, Any] | None = None
@@ -380,6 +380,7 @@ class ReferenceValidator:
         all_valid = True
 
         # Validate entity references (normal entity_id format)
+        yaml_entities = self.load_yaml_defined_entities()
         for entity_id in entity_refs:
             # Skip UUID-format entity IDs, they're handled separately
             if self.is_uuid_format(entity_id):
@@ -390,7 +391,6 @@ class ReferenceValidator:
                 continue
 
             # Skip entities defined in YAML templates
-            yaml_entities = self.load_yaml_defined_entities()
             if entity_id in yaml_entities:
                 continue
 
@@ -441,15 +441,6 @@ class ReferenceValidator:
 
         return all_valid
 
-    def get_yaml_files(self) -> list[Path]:
-        """Get all YAML files to validate."""
-        yaml_files: list[Path] = []
-        for pattern in ["*.yaml", "*.yml"]:
-            yaml_files.extend(self.config_dir.glob(pattern))
-
-        # Skip blueprints directory - these are templates with !input tags
-        return yaml_files
-
     def validate_all(self) -> bool:
         """Validate all references in the config directory."""
         if not self.config_dir.exists():
@@ -497,18 +488,8 @@ class ReferenceValidator:
         return summary
 
     def print_results(self):
-        """Print validation results."""
-        if self.errors:
-            print("ERRORS:")
-            for error in self.errors:
-                print(f"  ❌ {error}")
-            print()
-
-        if self.warnings:
-            print("WARNINGS:")
-            for warning in self.warnings:
-                print(f"  ⚠️  {warning}")
-            print()
+        """Print validation results with entity summary."""
+        super().print_results()
 
         # Print entity summary
         summary = self.get_entity_summary()
@@ -522,23 +503,25 @@ class ReferenceValidator:
                     print(f"    Examples: {', '.join(info['examples'])}")
             print()
 
-        if not self.errors and not self.warnings:
-            print("✅ All entity/device references are valid!")
-        elif not self.errors:
-            print("✅ Entity/device references are valid (with warnings)")
-        else:
-            print("❌ Invalid entity/device references found")
-
 
 def main():
     """Run entity and device reference validation from command line."""
-    config_dir = sys.argv[1] if len(sys.argv) > 1 else "config"
+    parser = argparse.ArgumentParser(
+        description="Validate entity and device references in Home Assistant config."
+    )
+    parser.add_argument(
+        "config_dir",
+        nargs="?",
+        default="config",
+        help="Path to the config directory (default: config)",
+    )
+    args = parser.parse_args()
 
-    validator = ReferenceValidator(config_dir)
+    validator = ReferenceValidator(args.config_dir)
     is_valid = validator.validate_all()
     validator.print_results()
 
-    sys.exit(0 if is_valid else 1)
+    raise SystemExit(0 if is_valid else 1)
 
 
 if __name__ == "__main__":

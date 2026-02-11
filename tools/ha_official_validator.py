@@ -5,20 +5,17 @@ This leverages Home Assistant's own validation tools for the most
 accurate results.
 """
 
+import argparse
 import subprocess
 import sys
-from pathlib import Path
+
+from tools.common import ValidatorBase
 
 
-class HAOfficialValidator:
+class HAOfficialValidator(ValidatorBase):
     """Validates Home Assistant configuration using the official HA package."""
 
-    def __init__(self, config_dir: str = "config"):
-        """Initialize the HAOfficialValidator."""
-        self.config_dir = Path(config_dir).resolve()
-        self.errors: list[str] = []
-        self.warnings: list[str] = []
-        self.info: list[str] = []
+    validator_name = "Home Assistant configuration"
 
     def run_ha_check_config(self) -> bool:
         """Run Home Assistant's official check_config script."""
@@ -72,7 +69,6 @@ class HAOfficialValidator:
             "Unable to locate turbojpeg library",
             "TurboJPEGSingleton",
             # Blueprint selector warnings for newer HA features
-            "extra keys not allowed",
             "selector']['reorder']",
             # Python traceback lines from non-critical errors
             "Traceback (most recent call last):",
@@ -167,43 +163,27 @@ class HAOfficialValidator:
         # Run the official Home Assistant validation
         return self.run_ha_check_config()
 
-    def print_results(self):
-        """Print validation results."""
-        if self.info:
-            print("INFO:")
-            for info in self.info:
-                print(f"  ℹ️  {info}")
-            print()
-
-        if self.errors:
-            print("ERRORS:")
-            for error in self.errors:
-                print(f"  ❌ {error}")
-            print()
-
-        if self.warnings:
-            print("WARNINGS:")
-            for warning in self.warnings:
-                print(f"  ⚠️  {warning}")
-            print()
-
-        if not self.errors and not self.warnings:
-            print("✅ Home Assistant configuration is valid!")
-        elif not self.errors:
-            print("✅ Home Assistant configuration is valid (with warnings)")
-        else:
-            print("❌ Home Assistant configuration validation failed")
-
 
 def main():
     """Run Home Assistant configuration validation from command line."""
-    config_dir = sys.argv[1] if len(sys.argv) > 1 else "config"
+    parser = argparse.ArgumentParser(
+        description=(
+            "Validate Home Assistant configuration using the official HA package."
+        )
+    )
+    parser.add_argument(
+        "config_dir",
+        nargs="?",
+        default="config",
+        help="Path to the config directory (default: config)",
+    )
+    args = parser.parse_args()
 
-    validator = HAOfficialValidator(config_dir)
+    validator = HAOfficialValidator(args.config_dir)
     is_valid = validator.validate_all()
     validator.print_results()
 
-    sys.exit(0 if is_valid else 1)
+    raise SystemExit(0 if is_valid else 1)
 
 
 if __name__ == "__main__":

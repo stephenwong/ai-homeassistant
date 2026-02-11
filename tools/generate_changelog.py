@@ -12,7 +12,7 @@ import difflib
 import tarfile
 from pathlib import Path
 
-from prune_backups import BACKUP_DIR, get_backups
+from tools.prune_backups import BACKUP_DIR, get_backups
 
 # Files/directories to skip (noisy runtime state)
 SKIP_PATTERNS = [

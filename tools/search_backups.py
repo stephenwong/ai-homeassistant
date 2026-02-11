@@ -13,7 +13,7 @@ import argparse
 import re
 import tarfile
 
-from prune_backups import get_backups
+from tools.prune_backups import get_backups
 
 
 def search_backup(backup, pattern, yaml_only=True, context_lines=0):
@@ -110,10 +110,7 @@ def main():
             match_count += 1
             print(f"  MATCH  {backup['filename']} ({date_str})")
             if not args.files_only:
-                seen_files = set()
                 for m in matches:
-                    if m["file"] not in seen_files:
-                        seen_files.add(m["file"])
                     if args.context > 0 and "context_before" in m:
                         for ctx_line in m["context_before"]:
                             print(f"           {m['file']}:     {ctx_line}")

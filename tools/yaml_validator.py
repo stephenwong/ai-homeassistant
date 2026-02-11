@@ -1,28 +1,23 @@
 #!/usr/bin/env python3
 """YAML syntax validator for Home Assistant configuration files."""
 
-import sys
+import argparse
 from pathlib import Path
 
 import yaml
 
-from tools.common import HAYamlLoader
+from tools.common import ValidatorBase
 
 
-class YAMLValidator:
+class YAMLValidator(ValidatorBase):
     """Validates YAML syntax and basic structure for Home Assistant files."""
 
-    def __init__(self, config_dir: str = "config"):
-        """Initialize the YAMLValidator."""
-        self.config_dir = Path(config_dir)
-        self.errors: list[str] = []
-        self.warnings: list[str] = []
+    validator_name = "YAML syntax"
 
     def validate_yaml_syntax(self, file_path: Path) -> bool:
         """Validate YAML syntax of a single file."""
         try:
-            with open(file_path, encoding="utf-8") as f:
-                yaml.load(f, Loader=HAYamlLoader)
+            self.load_yaml(file_path)
             return True
         except yaml.YAMLError as e:
             self.errors.append(f"{file_path}: YAML syntax error - {e}")
@@ -50,8 +45,7 @@ class YAMLValidator:
             return True
 
         try:
-            with open(file_path, encoding="utf-8") as f:
-                config = yaml.load(f, Loader=HAYamlLoader)
+            config = self.load_yaml(file_path)
 
             if not isinstance(config, dict):
                 self.errors.append(f"{file_path}: Configuration must be a dictionary")
@@ -78,8 +72,7 @@ class YAMLValidator:
             return True
 
         try:
-            with open(file_path, encoding="utf-8") as f:
-                automations = yaml.load(f, Loader=HAYamlLoader)
+            automations = self.load_yaml(file_path)
 
             if automations is None:
                 return True  # Empty file is valid
@@ -88,38 +81,7 @@ class YAMLValidator:
                 self.errors.append(f"{file_path}: Automations must be a list")
                 return False
 
-            all_valid = True
-            for i, automation in enumerate(automations):
-                if not isinstance(automation, dict):
-                    self.errors.append(
-                        f"{file_path}: Automation {i} must be a dictionary"
-                    )
-                    all_valid = False
-                    continue
-
-                # Check required fields (both singular and plural forms are valid)
-                # Blueprint automations use 'use_blueprint' instead of
-                # direct triggers/actions
-                if "use_blueprint" not in automation:
-                    if "trigger" not in automation and "triggers" not in automation:
-                        self.errors.append(
-                            f"{file_path}: Automation {i} missing 'trigger' "
-                            f"or 'triggers'"
-                        )
-                        all_valid = False
-                    if "action" not in automation and "actions" not in automation:
-                        self.errors.append(
-                            f"{file_path}: Automation {i} missing 'action' or 'actions'"
-                        )
-                        all_valid = False
-
-                # Check for alias (recommended)
-                if "alias" not in automation:
-                    self.warnings.append(
-                        f"{file_path}: Automation {i} missing 'alias' (recommended)"
-                    )
-
-            return all_valid
+            return self.check_automations_structure(automations, str(file_path))
         except Exception as e:
             self.errors.append(
                 f"{file_path}: Failed to validate automations structure - {e}"
@@ -132,8 +94,7 @@ class YAMLValidator:
             return True
 
         try:
-            with open(file_path, encoding="utf-8") as f:
-                scripts = yaml.load(f, Loader=HAYamlLoader)
+            scripts = self.load_yaml(file_path)
 
             if scripts is None:
                 return True  # Empty file is valid
@@ -142,42 +103,12 @@ class YAMLValidator:
                 self.errors.append(f"{file_path}: Scripts must be a dictionary")
                 return False
 
-            all_valid = True
-            for script_name, script_config in scripts.items():
-                if not isinstance(script_config, dict):
-                    self.errors.append(
-                        f"{file_path}: Script '{script_name}' must be a dictionary"
-                    )
-                    all_valid = False
-                    continue
-
-                # Check required fields
-                # Blueprint scripts use 'use_blueprint' instead of direct sequence
-                if (
-                    "use_blueprint" not in script_config
-                    and "sequence" not in script_config
-                ):
-                    self.errors.append(
-                        f"{file_path}: Script '{script_name}' missing required "
-                        f"'sequence' or 'use_blueprint'"
-                    )
-                    all_valid = False
-
-            return all_valid
+            return self.check_scripts_structure(scripts, str(file_path))
         except Exception as e:
             self.errors.append(
                 f"{file_path}: Failed to validate scripts structure - {e}"
             )
             return False
-
-    def get_yaml_files(self) -> list[Path]:
-        """Get all YAML files in the config directory."""
-        yaml_files: list[Path] = []
-        for pattern in ["*.yaml", "*.yml"]:
-            yaml_files.extend(self.config_dir.glob(pattern))
-
-        # Skip blueprints directory - these are templates and don't need validation
-        return yaml_files
 
     def validate_all(self) -> bool:
         """Validate all YAML files in the config directory."""
@@ -212,37 +143,25 @@ class YAMLValidator:
 
         return all_valid
 
-    def print_results(self):
-        """Print validation results."""
-        if self.errors:
-            print("ERRORS:")
-            for error in self.errors:
-                print(f"  ❌ {error}")
-            print()
-
-        if self.warnings:
-            print("WARNINGS:")
-            for warning in self.warnings:
-                print(f"  ⚠️  {warning}")
-            print()
-
-        if not self.errors and not self.warnings:
-            print("✅ All YAML files are valid!")
-        elif not self.errors:
-            print("✅ YAML syntax is valid (with warnings)")
-        else:
-            print("❌ YAML validation failed")
-
 
 def main():
     """Run YAML syntax validation from command line."""
-    config_dir = sys.argv[1] if len(sys.argv) > 1 else "config"
+    parser = argparse.ArgumentParser(
+        description="Validate YAML syntax for Home Assistant configuration files."
+    )
+    parser.add_argument(
+        "config_dir",
+        nargs="?",
+        default="config",
+        help="Path to the config directory (default: config)",
+    )
+    args = parser.parse_args()
 
-    validator = YAMLValidator(config_dir)
+    validator = YAMLValidator(args.config_dir)
     is_valid = validator.validate_all()
     validator.print_results()
 
-    sys.exit(0 if is_valid else 1)
+    raise SystemExit(0 if is_valid else 1)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 Runs all validators and provides a comprehensive report.
 """
 
+import argparse
 import subprocess
 import sys
 import time
@@ -208,12 +209,21 @@ class ValidationTestRunner:
 
 def main():
     """Run main function for command line usage."""
-    config_dir = sys.argv[1] if len(sys.argv) > 1 else "config"
+    parser = argparse.ArgumentParser(
+        description="Run all Home Assistant configuration validation tests."
+    )
+    parser.add_argument(
+        "config_dir",
+        nargs="?",
+        default="config",
+        help="Path to the config directory (default: config)",
+    )
+    args = parser.parse_args()
 
-    runner = ValidationTestRunner(config_dir)
+    runner = ValidationTestRunner(args.config_dir)
     success = runner.run()
 
-    sys.exit(0 if success else 1)
+    raise SystemExit(0 if success else 1)
 
 
 if __name__ == "__main__":
