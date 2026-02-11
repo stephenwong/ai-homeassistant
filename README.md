@@ -72,7 +72,7 @@ This repository provides a complete framework for managing Home Assistant config
 
 #### 1. Clone Repository
 ```bash
-git clone git@github.com:philippb/claude-homeassistant.git
+git clone git@github.com:stephenwong/claude-homeassistant.git
 cd claude-homeassistant
 make setup  # Installs dependencies via uv
 ```
@@ -235,23 +235,30 @@ xcode-select --install  # Installs Command Line Tools including make
 │   ├── scripts.yaml
 │   ├── blueprints/        # HA blueprints (automation/, script/, template/)
 │   └── .storage/          # Entity registry (pulled from HA)
-├── tools/                 # Validation scripts for Claude
+├── tools/                 # Validation and management scripts
+│   ├── common.py          # Shared utilities (ValidatorBase, HAYamlLoader)
 │   ├── run_tests.py       # Main test suite runner
 │   ├── yaml_validator.py  # YAML syntax validation
 │   ├── reference_validator.py # Entity reference validation
 │   ├── ha_official_validator.py # Official HA validation
+│   ├── ha_config_validator.py # Deep validation via HA check_config
 │   ├── entity_explorer.py # Entity discovery tool
 │   ├── ha-curl.sh         # HA API curl wrapper with auto-auth
 │   ├── ha_api_diagnostic.py # Comprehensive API testing
-│   └── ha_config_validator.py # Deep validation via HA check_config
+│   ├── reload_config.py   # Reload HA config via API
+│   ├── generate_changelog.py # Backup changelog generation
+│   ├── search_backups.py  # Full-text search across backups
+│   └── prune_backups.py   # Smart backup retention pruning
+├── tests/                 # Unit tests (pytest)
 ├── backups/               # Timestamped config backups with changelogs
 ├── .claude-code/          # Claude Code project settings
-│   ├── hooks/            # Automated validation hooks
-│   └── settings.json     # Project configuration
-├── .env.example          # Environment configuration template
-├── Makefile              # Management commands
-├── Makefile.dev          # Development-specific commands (see README-DEV.md)
-└── CLAUDE.md             # Claude Code instructions
+│   ├── hooks/             # Automated validation hooks
+│   ├── plugins/           # Custom skills (automation, backup, debugging, reflect)
+│   └── settings.json      # Project configuration
+├── .env.example           # Environment configuration template
+├── Makefile               # Management commands
+├── Makefile.dev           # Development-specific commands (see README-DEV.md)
+└── CLAUDE.md              # Claude Code instructions
 ```
 
 ## 🛠️ Available Commands
