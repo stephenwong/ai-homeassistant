@@ -83,7 +83,7 @@ def run_rsync(source, dest, excludes):
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise AssertionError(
-            "rsync failed:\n" f"stdout: {result.stdout}\n" f"stderr: {result.stderr}"
+            f"rsync failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
     return result
 
@@ -92,18 +92,18 @@ def test_push_updates_config_files(local_dir, remote_dir):
     """Push updates to configuration files."""
     run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
 
-    assert (
-        remote_dir / "configuration.yaml"
-    ).exists(), "configuration.yaml should be updated"
-    assert (
-        remote_dir / "configuration.yaml"
-    ).read_text() == "homeassistant: NEW", "configuration.yaml should have NEW content"
-    assert (
-        remote_dir / "automations.yaml"
-    ).exists(), "automations.yaml should be updated"
-    assert (
-        remote_dir / "automations.yaml"
-    ).read_text() == "automation: NEW", "automations.yaml should have NEW content"
+    assert (remote_dir / "configuration.yaml").exists(), (
+        "configuration.yaml should be updated"
+    )
+    assert (remote_dir / "configuration.yaml").read_text() == "homeassistant: NEW", (
+        "configuration.yaml should have NEW content"
+    )
+    assert (remote_dir / "automations.yaml").exists(), (
+        "automations.yaml should be updated"
+    )
+    assert (remote_dir / "automations.yaml").read_text() == "automation: NEW", (
+        "automations.yaml should have NEW content"
+    )
 
 
 def test_push_preserves_storage(local_dir, remote_dir):
@@ -119,27 +119,27 @@ def test_push_preserves_backups(local_dir, remote_dir):
     """Push preserves backups on the remote."""
     run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
 
-    assert (
-        remote_dir / "backups" / "backup.tar"
-    ).exists(), "Backups should be preserved"
+    assert (remote_dir / "backups" / "backup.tar").exists(), (
+        "Backups should be preserved"
+    )
 
 
 def test_push_preserves_www(local_dir, remote_dir):
     """Push preserves the www directory on the remote."""
     run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
 
-    assert (
-        remote_dir / "www" / "index.html"
-    ).exists(), "www directory should be preserved"
+    assert (remote_dir / "www" / "index.html").exists(), (
+        "www directory should be preserved"
+    )
 
 
 def test_push_preserves_custom_components(local_dir, remote_dir):
     """Push preserves custom_components on the remote."""
     run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
 
-    assert (
-        remote_dir / "custom_components" / "my_comp.py"
-    ).exists(), "custom_components should be preserved"
+    assert (remote_dir / "custom_components" / "my_comp.py").exists(), (
+        "custom_components should be preserved"
+    )
 
 
 def test_pull_excludes_auth_tokens(temp_dir, remote_dir):
@@ -149,9 +149,9 @@ def test_pull_excludes_auth_tokens(temp_dir, remote_dir):
 
     run_rsync(remote_dir, local, PULL_EXCLUDES)
 
-    assert not (
-        local / ".storage" / "auth" / "tokens.json"
-    ).exists(), "Auth tokens should NOT be pulled"
+    assert not (local / ".storage" / "auth" / "tokens.json").exists(), (
+        "Auth tokens should NOT be pulled"
+    )
 
 
 def test_pull_allows_storage_core(temp_dir, remote_dir):
@@ -173,9 +173,9 @@ def test_pull_excludes_backups(temp_dir, remote_dir):
 
     run_rsync(remote_dir, local, PULL_EXCLUDES)
 
-    assert not (
-        local / "backups" / "backup.tar"
-    ).exists(), "Backups should NOT be pulled"
+    assert not (local / "backups" / "backup.tar").exists(), (
+        "Backups should NOT be pulled"
+    )
 
 
 def test_pull_gets_config_files(temp_dir, remote_dir):
@@ -185,9 +185,9 @@ def test_pull_gets_config_files(temp_dir, remote_dir):
 
     run_rsync(remote_dir, local, PULL_EXCLUDES)
 
-    assert (
-        local / "configuration.yaml"
-    ).exists(), "configuration.yaml should be pulled"
+    assert (local / "configuration.yaml").exists(), (
+        "configuration.yaml should be pulled"
+    )
     assert (local / "automations.yaml").exists(), "automations.yaml should be pulled"
 
 
@@ -199,6 +199,6 @@ def test_pull_deletes_stale_local_files(temp_dir, remote_dir):
 
     run_rsync(remote_dir, local, PULL_EXCLUDES)
 
-    assert not (
-        local / "stale_file.yaml"
-    ).exists(), "Stale files should be deleted by --delete"
+    assert not (local / "stale_file.yaml").exists(), (
+        "Stale files should be deleted by --delete"
+    )

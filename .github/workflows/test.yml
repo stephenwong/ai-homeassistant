@@ -7,46 +7,37 @@ on:
     branches: [main]
 
 jobs:
-  rsync-excludes-tests:
-    name: Rsync Exclude Integration Tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13.2"
-
-      - name: Verify rsync is available
-        run: rsync --version
-
-      - name: Install test dependencies
-        run: pip install pytest pytest-cov
-
-      - name: Run rsync exclude tests
-        run: python -m pytest tests/test_rsync_excludes.py -o addopts=
-
   lint:
-    name: Lint
+    name: Lint & Type Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4.3.1
+      - uses: astral-sh/setup-uv@v7.3.0
+      - uses: actions/setup-python@v5.6.0
         with:
           python-version: "3.13.2"
+      - run: uv sync
+      - name: Check formatting
+        run: uv run ruff format --check tools/ tests/
+      - name: Lint
+        run: uv run ruff check tools/ tests/
+      - name: Type check
+        run: uv run mypy tools/
 
-      - name: Install linters
-        run: pip install ruff
+  test:
+    name: Tests & Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
-      - name: Check formatting with ruff
-        run: ruff format --check tools/
-
-      - name: Lint with ruff
-        run: ruff check tools/
+    steps:
+      - uses: actions/checkout@v4.3.1
+      - uses: astral-sh/setup-uv@v7.3.0
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.13.2"
+      - run: uv sync
+      - run: uv run pytest tests/
