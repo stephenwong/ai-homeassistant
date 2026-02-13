@@ -58,7 +58,13 @@ def remote_dir(temp_dir):
     (remote / "tts").mkdir()
 
     (remote / ".storage" / "auth" / "tokens.json").write_text("SECRET_AUTH_TOKEN")
+    # auth also exists as a plain file on real HA (not just a directory)
+    (remote / ".storage" / "auth_file").write_text("SECRET_AUTH_FILE_DATA")
+    (remote / ".storage" / "trace.saved_traces").write_text("trace_data")
     (remote / ".storage" / "core" / "entity_registry").write_text("entity_registry_v1")
+    (remote / "zigbee2mqtt").mkdir()
+    (remote / "zigbee2mqtt" / "database.db").write_text("zigbee_db")
+    (remote / "zigbee2mqtt" / "state.json").write_text("zigbee_state")
     (remote / "backups" / "backup.tar").write_text("backup_data")
     (remote / "www" / "index.html").write_text("<html>dashboard</html>")
     (remote / "custom_components" / "my_comp.py").write_text("custom_code")
@@ -189,6 +195,48 @@ def test_pull_gets_config_files(temp_dir, remote_dir):
         "configuration.yaml should be pulled"
     )
     assert (local / "automations.yaml").exists(), "automations.yaml should be pulled"
+
+
+def test_pull_excludes_auth_file(temp_dir):
+    """Pull excludes .storage/auth when it exists as a plain file (real HA layout)."""
+    remote = temp_dir / "remote_auth_file"
+    remote.mkdir()
+    (remote / ".storage").mkdir()
+    (remote / ".storage" / "auth").write_text("SECRET_AUTH_DATA")
+    (remote / ".storage" / "core.entity_registry").write_text("entities")
+
+    local = temp_dir / "local_auth_file"
+    local.mkdir()
+
+    run_rsync(remote, local, PULL_EXCLUDES)
+
+    assert not (local / ".storage" / "auth").exists(), (
+        ".storage/auth file should NOT be pulled"
+    )
+
+
+def test_pull_excludes_trace_saved_traces(temp_dir, remote_dir):
+    """Pull excludes .storage/trace.saved_traces."""
+    local = temp_dir / "local_pull"
+    local.mkdir()
+
+    run_rsync(remote_dir, local, PULL_EXCLUDES)
+
+    assert not (local / ".storage" / "trace.saved_traces").exists(), (
+        "trace.saved_traces should NOT be pulled"
+    )
+
+
+def test_pull_excludes_zigbee2mqtt(temp_dir, remote_dir):
+    """Pull excludes zigbee2mqtt directory."""
+    local = temp_dir / "local_pull"
+    local.mkdir()
+
+    run_rsync(remote_dir, local, PULL_EXCLUDES)
+
+    assert not (local / "zigbee2mqtt").exists(), (
+        "zigbee2mqtt directory should NOT be pulled"
+    )
 
 
 def test_pull_deletes_stale_local_files(temp_dir, remote_dir):

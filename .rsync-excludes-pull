@@ -10,6 +10,7 @@ home-assistant_v2.db*
 *.log*
 
 # Sensitive .storage files (never pull)
+.storage/auth
 .storage/auth/
 .storage/auth/**
 .storage/auth_cache/
@@ -26,11 +27,15 @@ custom_components/
 custom_icons/
 themes/
 
+# Large .storage files not needed locally
+.storage/trace.saved_traces
+
 # Runtime/cache directories
 .cloud/
 deps/
 tts/
 __pycache__/
+zigbee2mqtt/
 
 # Large directories not needed locally
 backups/
