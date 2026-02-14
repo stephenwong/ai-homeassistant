@@ -70,7 +70,7 @@ def setup_config(tmp_path):
     return config_dir
 
 
-class TestLoadYamlDefinedEntities:
+class TestGetConfigDefinedEntities:
     def test_extracts_template_entities(self, setup_config):
         config_yaml = setup_config / "configuration.yaml"
         config_yaml.write_text(
@@ -83,11 +83,11 @@ class TestLoadYamlDefinedEntities:
             "        state: '22'\n"
         )
         v = ReferenceValidator(str(setup_config))
-        entities = v.load_yaml_defined_entities()
+        entities = v.get_config_defined_entities()
         assert "binary_sensor.anyone_home" in entities
         assert "sensor.average_temp" in entities
 
-    def test_extracts_automation_ids(self, setup_config):
+    def test_extracts_automation_entities_from_alias(self, setup_config):
         automations_yaml = setup_config / "automations.yaml"
         automations_yaml.write_text(
             "- id: morning_lights\n"
@@ -98,26 +98,47 @@ class TestLoadYamlDefinedEntities:
             "    service: test\n"
         )
         v = ReferenceValidator(str(setup_config))
-        entities = v.load_yaml_defined_entities()
+        entities = v.get_config_defined_entities()
+        # Entity ID is derived from alias, not id field
         assert "automation.morning_lights" in entities
 
-    def test_caches_result(self, setup_config):
-        (setup_config / "configuration.yaml").write_text("homeassistant:\n")
+    def test_extracts_script_entities(self, setup_config):
+        scripts_yaml = setup_config / "scripts.yaml"
+        scripts_yaml.write_text(
+            "disable_alarm_timed:\n"
+            "  alias: Disable Alarm Timed\n"
+            "  sequence: []\n"
+        )
         v = ReferenceValidator(str(setup_config))
-        result1 = v.load_yaml_defined_entities()
-        result2 = v.load_yaml_defined_entities()
-        assert result1 is result2  # Same object = cached
+        entities = v.get_config_defined_entities()
+        assert "script.disable_alarm_timed" in entities
+
+    def test_extracts_scene_entities(self, setup_config):
+        scenes_yaml = setup_config / "scenes.yaml"
+        scenes_yaml.write_text(
+            "- name: Office Night\n"
+            "  entities: {}\n"
+        )
+        v = ReferenceValidator(str(setup_config))
+        entities = v.get_config_defined_entities()
+        assert "scene.office_night" in entities
+
+    def test_includes_builtin_entities(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        entities = v.get_config_defined_entities()
+        assert "sun.sun" in entities
+        assert "zone.home" in entities
 
     def test_handles_missing_files(self, setup_config):
         v = ReferenceValidator(str(setup_config))
-        entities = v.load_yaml_defined_entities()
+        entities = v.get_config_defined_entities()
         assert isinstance(entities, set)
 
     def test_handles_parse_error(self, setup_config):
         (setup_config / "configuration.yaml").write_text("template: !bad_tag\n")
         v = ReferenceValidator(str(setup_config))
-        entities = v.load_yaml_defined_entities()
-        # Should handle gracefully with warning
+        entities = v.get_config_defined_entities()
+        # Should handle gracefully (exceptions are caught)
         assert isinstance(entities, set)
 
 
@@ -420,16 +441,17 @@ class TestPrintResults:
         assert "light" in captured.out
 
 
-class TestLoadYamlDefinedEntitiesAutomationException:
-    """Cover lines 110-111: exception parsing automations.yaml."""
+class TestExtractAutomationEntitiesException:
+    """Cover exception handling in _extract_automation_entities."""
 
     def test_automations_parse_error(self, setup_config):
         # Write non-UTF-8 bytes to automations.yaml to trigger exception
         (setup_config / "automations.yaml").write_bytes(b"\xff\xfe invalid bytes")
         v = ReferenceValidator(str(setup_config))
-        entities = v.load_yaml_defined_entities()
+        entities = v._extract_automation_entities()
+        # Should handle gracefully (exceptions are caught)
         assert isinstance(entities, set)
-        assert any("Failed to parse automations" in w for w in v.warnings)
+        assert len(entities) == 0
 
 
 class TestValidateFileReferencesEdgeCases:
