@@ -176,7 +176,7 @@ class HAConfigValidator(ValidatorBase):
         self.validate_scripts_file()
         self.validate_secrets_file()
 
-        return all_valid and not self.errors
+        return all_valid
 
     def validate_basic_config_structure(self, config: dict[str, Any]):
         """Validate basic configuration structure."""

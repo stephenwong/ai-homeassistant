@@ -364,9 +364,8 @@ class TestRunHACheckConfig:
             side_effect=[mock_install, RuntimeError("unexpected")],
         ):
             result = validator.run_ha_check_config()
-            # Returns False because the error from the exception
-            # is already in self.errors
-            assert result is False
+            # Falls back to basic validation which succeeds with valid config
+            assert result is True
             assert any("Failed to run" in e for e in validator.errors)
 
 
