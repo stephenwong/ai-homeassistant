@@ -91,7 +91,7 @@ make -f Makefile.dev dev-clean-dev
 
 ### Ruff (Formatting & Linting)
 - Line length: 88 characters
-- Target Python version: 3.12+
+- Target Python version: 3.13+
 - Lint rules: pycodestyle (E/W), pyflakes (F), isort (I), pyupgrade (UP), bugbear (B), simplify (SIM)
 - Import sorting: first-party = `tools`
 - Config: `pyproject.toml` under `[tool.ruff]`
@@ -102,7 +102,7 @@ make -f Makefile.dev dev-clean-dev
 - Excludes venv and build directories
 
 ### pytest (Testing)
-- Coverage target: 80% minimum
+- Coverage target: 95% minimum
 - HTML coverage reports generated
 - Test discovery in `tests/` directory
 

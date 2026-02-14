@@ -301,6 +301,8 @@ The system provides three layers of validation:
 - Checks device and area references
 - Warns about disabled entities
 - Extracts entities from Jinja2 templates
+- Recognizes config-defined entities (input helpers, template sensors, scripts, scenes, zones, automations)
+- Diagnostic warnings for entities found in restore state but missing from registry
 
 ### 3. Official HA Validation
 - Uses Home Assistant's own validation tools
@@ -484,27 +486,7 @@ TOOLS_PATH=tools                        # Tools directory
 ```
 
 ### Claude Code Settings
-Located in `.claude-code/settings.json`:
-```json
-{
-  "hooks": {
-    "enabled": true,
-    "posttooluse": [
-      ".claude-code/hooks/yaml-formatter.sh",
-      ".claude-code/hooks/posttooluse-ha-validation.sh",
-      ".claude-code/hooks/posttooluse-python-quality.sh"
-    ],
-    "pretooluse": [
-      ".claude-code/hooks/pretooluse-ha-push-validation.sh"
-    ]
-  },
-  "validation": {
-    "enabled": true,
-    "auto_run": true,
-    "block_invalid_push": true
-  }
-}
-```
+Located in `.claude-code/settings.json` — configures hooks, validation, plugin marketplace, and development tooling. See the file for full details.
 
 ## Custom Claude Code Skills
 
