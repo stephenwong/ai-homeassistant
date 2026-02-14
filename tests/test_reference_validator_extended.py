@@ -105,9 +105,7 @@ class TestGetConfigDefinedEntities:
     def test_extracts_script_entities(self, setup_config):
         scripts_yaml = setup_config / "scripts.yaml"
         scripts_yaml.write_text(
-            "disable_alarm_timed:\n"
-            "  alias: Disable Alarm Timed\n"
-            "  sequence: []\n"
+            "disable_alarm_timed:\n  alias: Disable Alarm Timed\n  sequence: []\n"
         )
         v = ReferenceValidator(str(setup_config))
         entities = v.get_config_defined_entities()
@@ -115,10 +113,7 @@ class TestGetConfigDefinedEntities:
 
     def test_extracts_scene_entities(self, setup_config):
         scenes_yaml = setup_config / "scenes.yaml"
-        scenes_yaml.write_text(
-            "- name: Office Night\n"
-            "  entities: {}\n"
-        )
+        scenes_yaml.write_text("- name: Office Night\n  entities: {}\n")
         v = ReferenceValidator(str(setup_config))
         entities = v.get_config_defined_entities()
         assert "scene.office_night" in entities
