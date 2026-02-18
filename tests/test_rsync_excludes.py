@@ -65,6 +65,10 @@ def remote_dir(temp_dir):
     (remote / "zigbee2mqtt").mkdir()
     (remote / "zigbee2mqtt" / "database.db").write_text("zigbee_db")
     (remote / "zigbee2mqtt" / "state.json").write_text("zigbee_state")
+    (remote / "zigbee2mqtt" / "configuration.yaml").write_text("zigbee_config")
+    (remote / "zigbee2mqtt" / "coordinator_backup.json").write_text('{"channel":15}')
+    (remote / "zigbee2mqtt" / "log").mkdir()
+    (remote / "zigbee2mqtt" / "log" / "2026-01-01.log").write_text("zigbee_log")
     (remote / "backups" / "backup.tar").write_text("backup_data")
     (remote / "www" / "index.html").write_text("<html>dashboard</html>")
     (remote / "custom_components" / "my_comp.py").write_text("custom_code")
@@ -227,15 +231,27 @@ def test_pull_excludes_trace_saved_traces(temp_dir, remote_dir):
     )
 
 
-def test_pull_excludes_zigbee2mqtt(temp_dir, remote_dir):
-    """Pull excludes zigbee2mqtt directory."""
+def test_pull_zigbee2mqtt_selective(temp_dir, remote_dir):
+    """Pull includes Z2M config files but excludes runtime state."""
     local = temp_dir / "local_pull"
     local.mkdir()
 
     run_rsync(remote_dir, local, PULL_EXCLUDES)
 
-    assert not (local / "zigbee2mqtt").exists(), (
-        "zigbee2mqtt directory should NOT be pulled"
+    assert (local / "zigbee2mqtt" / "configuration.yaml").exists(), (
+        "zigbee2mqtt/configuration.yaml SHOULD be pulled"
+    )
+    assert (local / "zigbee2mqtt" / "coordinator_backup.json").exists(), (
+        "zigbee2mqtt/coordinator_backup.json SHOULD be pulled"
+    )
+    assert not (local / "zigbee2mqtt" / "database.db").exists(), (
+        "zigbee2mqtt/database.db should NOT be pulled (runtime state)"
+    )
+    assert not (local / "zigbee2mqtt" / "state.json").exists(), (
+        "zigbee2mqtt/state.json should NOT be pulled (runtime state)"
+    )
+    assert not (local / "zigbee2mqtt" / "log").exists(), (
+        "zigbee2mqtt/log/ should NOT be pulled"
     )
 
 

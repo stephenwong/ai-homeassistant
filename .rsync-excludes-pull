@@ -35,7 +35,12 @@ themes/
 deps/
 tts/
 __pycache__/
-zigbee2mqtt/
+
+# Zigbee2MQTT - pull config.yaml and coordinator_backup.json but not runtime state
+zigbee2mqtt/database.db
+zigbee2mqtt/state.json
+zigbee2mqtt/log/
+zigbee2mqtt/*.log
 
 # Large directories not needed locally
 backups/

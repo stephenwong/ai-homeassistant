@@ -64,7 +64,7 @@ tools/ha-curl.sh -X POST /api/states/sensor.test -d '{"state": "on"}'
 # With extra curl options
 tools/ha-curl.sh -X POST /api/services/light/turn_on -d '{"entity_id": "light.kitchen"}'
 ```
-This wrapper auto-approves in Claude Code (compound commands with `&&` require manual approval).
+Auto-approved via `Bash(tools/ha-curl.sh *)` in `~/.claude/settings.json`.
 
 ## Hardware
 
@@ -106,6 +106,11 @@ This project uses **separate exclude files** for pull vs push:
 
 **Never modify locally (runtime state):** `.storage/` files are managed by HA at runtime. Use the HA UI for entity/device changes.
 
+### HA Jinja2 Filter Availability
+HA uses a **curated subset of Jinja2 filters** — standard Jinja2 filters like `hash` are NOT available. Common available filters: `lower`, `upper`, `replace`, `truncate`, `length`, `int`, `float`, `round`, `default`, `select`, `map`, `join`, `sort`.
+
+When you need a content-change fingerprint for `value_template` (e.g., in `command_line` sensors), use `| length` rather than a hash — it changes whenever the content grows.
+
 ### Template Whitespace
 **NEVER use multi-line templates for URLs/entity IDs** - they add whitespace:
 ```yaml
@@ -130,6 +135,9 @@ required_zones:
 
 ### Helper Entity Reload
 New helpers in `configuration.yaml` require "Reload all YAML configuration" (Developer Tools > YAML), not just `make push`.
+
+### Trigger `from:` Constraint Drops Post-Restart Events
+After HA restarts, entities start in `unknown`/`unavailable` state. Triggers with `from: ['off']` will **miss the first transition** (e.g., `unknown → on`) because it doesn't match the `from` constraint. Only use `from:` when you specifically need to ignore startup transitions. For motion sensors and similar binary triggers, omit `from:` so `to: ['on']` fires on any transition including post-restart.
 
 ### Script Parameter Names
 **Parameter names must match exactly between automation and script.** With `| default(omit)` patterns, mismatches silently fail:
@@ -314,7 +322,7 @@ Run `make lint` locally before pushing to catch CI failures early. Use `make lin
 
 ## Integrations
 
-- **Zigbee2MQTT**: `config/zigbee2mqtt/configuration.yaml`
+- **Zigbee2MQTT**: `config/zigbee2mqtt/configuration.yaml` + `coordinator_backup.json` (addon slug: `45df7312_zigbee2mqtt`) — pulled locally via `make pull`, excluded from push except `configuration.yaml`
 - **Frigate**: Camera notifications via automations, config at `frigate/config.yml`
 - **Recorder**: 7-day retention
 
@@ -329,3 +337,4 @@ Run `make lint` locally before pushing to catch CI failures early. Use `make lin
 7. **Camera card not loading**: Check `installed: True` in `.storage/hacs.repositories`
 8. **False Frigate alerts**: Check zoned vs unzoned sensors, increase `inertia`/`loitering_time` in zone config
 9. **Restart Frigate addon**: Use SSH: `ssh homeassistant "ha apps restart ccab4aaf_frigate-fa-beta"`. The Supervisor API (`/api/hassio/addons/...`) returns 401 with long-lived access tokens — use SSH instead.
+10. **Z2M entity_ids stuck as hex after recovery**: HA's `deleted_entities` preserves old entity_ids. Stop HA, clean Z2M entries from both `entities` and `deleted_entities` in `core.entity_registry` (and `devices`/`deleted_devices` in `core.device_registry`), then restart. See MEMORY.md for full Z2M recovery notes.
