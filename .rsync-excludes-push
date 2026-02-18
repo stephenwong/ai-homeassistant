@@ -21,6 +21,13 @@ tts/
 .uuid
 __pycache__/
 
+# Zigbee2MQTT - push configuration.yaml but not runtime state (Z2M manages these)
+zigbee2mqtt/database.db
+zigbee2mqtt/state.json
+zigbee2mqtt/log/
+zigbee2mqtt/*.log
+zigbee2mqtt/coordinator_backup.json
+
 # Large directories not needed for config management
 backups/
 image/
