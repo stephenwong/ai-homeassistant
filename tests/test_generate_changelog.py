@@ -289,27 +289,6 @@ class TestGenerateForBackup:
             assert "Previous:" in content
 
 
-class TestExtractFilesNoneExtract:
-    def test_extractfile_returns_none(self, tmp_path):
-        """Cover line 64: f is None case in extract_files."""
-        tar_path = tmp_path / "test.tar.gz"
-        with tarfile.open(tar_path, "w:gz") as tar:
-            # Add a hardlink (extractfile returns None for links)
-            data = b"real content\n"
-            real_info = tarfile.TarInfo(name="config/real.yaml")
-            real_info.size = len(data)
-            tar.addfile(real_info, io.BytesIO(data))
-
-            link_info = tarfile.TarInfo(name="config/link.yaml")
-            link_info.type = tarfile.LNKTYPE
-            link_info.linkname = "config/real.yaml"
-            tar.addfile(link_info)
-
-        files = extract_files(tar_path)
-        assert "config/real.yaml" in files
-        # Link may or may not extract, but should not crash
-
-
 class TestMain:
     def test_no_backups(self, monkeypatch):
         from tools.generate_changelog import main

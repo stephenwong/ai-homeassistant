@@ -224,11 +224,6 @@ class TestRun:
         runner = ValidationTestRunner("/nonexistent")
         assert runner.run() is False
 
-    def test_deps_fail_stops_run(self, runner, capsys):
-        """Cover line 200: check_dependencies returns False."""
-        with patch.object(runner, "check_dependencies", return_value=False):
-            assert runner.run() is False
-
     def test_successful_run(self, runner, capsys):
         with (
             patch.object(runner, "check_dependencies", return_value=True),

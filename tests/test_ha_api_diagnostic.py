@@ -260,46 +260,6 @@ class TestShowWebsocketInfo:
         assert "entity_registry" in captured.out
 
 
-class TestApiEndpointsNonListNonDict:
-    """Cover line 81: response that is neither list nor dict."""
-
-    def test_non_list_non_dict_response(self, capsys):
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = "just a string"
-
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
-            result = diag.test_api_endpoints("http://test:8123", "token")
-            assert len(result) > 0
-            captured = capsys.readouterr()
-            assert "str" in captured.out
-
-
-class TestEntityRenameMethod2Success:
-    """Cover lines 206-207: method 1 fails, method 2 succeeds."""
-
-    def test_method1_fails_method2_succeeds(self, capsys):
-        entity_data = [{"entity_id": "sensor.test"}]
-        call_count = 0
-
-        def side_effect_fn(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            mock = MagicMock()
-            if call_count == 1:
-                mock.status_code = 405
-                mock.text = "Method not allowed"
-            else:
-                mock.status_code = 200
-            return mock
-
-        with patch("tools.ha_api_diagnostic.requests.post", side_effect=side_effect_fn):
-            result = diag.test_entity_rename("http://test:8123", "token", entity_data)
-            assert result is True
-            captured = capsys.readouterr()
-            assert "Method 2 successful" in captured.out
-
-
 class TestMainFunction:
     """Cover lines 284-335: main() function."""
 

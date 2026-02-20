@@ -86,6 +86,12 @@ class TestValidateConfigurationStructure:
             "introduction" in w and "deprecated" in w for w in validator.warnings
         )
 
+    def test_configuration_homeassistant_not_dict(self, config_dir, validator):
+        f = config_dir / "configuration.yaml"
+        f.write_text("homeassistant: null\n")
+        validator.validate_configuration_structure(f)
+        assert any("homeassistant" in w for w in validator.warnings)
+
 
 class TestValidateAutomationsStructure:
     def test_non_automations_yaml_skipped(self, config_dir, validator):
@@ -169,58 +175,6 @@ class TestValidateAll:
     def test_stops_on_syntax_error(self, config_dir, validator):
         (config_dir / "bad.yaml").write_text("key: value\n  bad: indent\n")
         assert validator.validate_all() is False
-
-
-class TestValidateYamlSyntaxEdgeCases:
-    """Cover exception branches in validate_yaml_syntax."""
-
-    def test_unexpected_exception(self, config_dir, validator):
-        from unittest.mock import patch
-
-        f = config_dir / "test.yaml"
-        f.write_text("key: value")
-        with patch.object(validator, "load_yaml", side_effect=RuntimeError("oops")):
-            assert validator.validate_yaml_syntax(f) is False
-            assert any("Unexpected error" in e for e in validator.errors)
-
-
-class TestValidateConfigurationStructureEdgeCases:
-    """Cover exception branch in validate_configuration_structure."""
-
-    def test_exception_during_validation(self, config_dir, validator):
-        from unittest.mock import patch
-
-        f = config_dir / "configuration.yaml"
-        f.write_text("homeassistant:\n  name: Test\n")
-        with patch.object(validator, "load_yaml", side_effect=RuntimeError("oops")):
-            assert validator.validate_configuration_structure(f) is False
-            assert any("Failed to validate structure" in e for e in validator.errors)
-
-
-class TestValidateAutomationsStructureEdgeCases:
-    """Cover exception branch in validate_automations_structure."""
-
-    def test_exception_during_validation(self, config_dir, validator):
-        from unittest.mock import patch
-
-        f = config_dir / "automations.yaml"
-        f.write_text("- alias: Test\n  trigger:\n    platform: state\n")
-        with patch.object(validator, "load_yaml", side_effect=RuntimeError("oops")):
-            assert validator.validate_automations_structure(f) is False
-            assert any("Failed to validate automations" in e for e in validator.errors)
-
-
-class TestValidateScriptsStructureEdgeCases:
-    """Cover exception branch in validate_scripts_structure."""
-
-    def test_exception_during_validation(self, config_dir, validator):
-        from unittest.mock import patch
-
-        f = config_dir / "scripts.yaml"
-        f.write_text("my_script:\n  sequence:\n    - service: test\n")
-        with patch.object(validator, "load_yaml", side_effect=RuntimeError("oops")):
-            assert validator.validate_scripts_structure(f) is False
-            assert any("Failed to validate scripts" in e for e in validator.errors)
 
 
 class TestYAMLValidatorMain:

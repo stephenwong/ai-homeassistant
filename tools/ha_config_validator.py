@@ -6,6 +6,7 @@ configuration checking.
 """
 
 import argparse
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -110,15 +111,16 @@ class HAConfigValidator(ValidatorBase):
                 continue
 
             # Look for common patterns
+            lower = line.lower()
             if line.startswith("ERROR"):
                 self.errors.append(f"HA Check: {line}")
             elif line.startswith("WARNING"):
                 self.warnings.append(f"HA Check: {line}")
-            elif "successful" in line.lower():
+            elif "successful" in lower:
                 self.info.append(f"HA Check: {line}")
-            elif "error" in line.lower():
+            elif re.search(r"\berror\b", lower):
                 self.errors.append(f"HA Check: {line}")
-            elif "warning" in line.lower():
+            elif re.search(r"\bwarning\b", lower):
                 self.warnings.append(f"HA Check: {line}")
 
     def parse_check_config_errors(self, stderr: str):

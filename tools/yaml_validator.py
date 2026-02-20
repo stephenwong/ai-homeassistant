@@ -54,6 +54,10 @@ class YAMLValidator(ValidatorBase):
             # Check for common configuration issues
             if "homeassistant" not in config:
                 self.warnings.append(f"{file_path}: Missing 'homeassistant' section")
+            elif not isinstance(config.get("homeassistant"), dict):
+                self.warnings.append(
+                    f"{file_path}: 'homeassistant' section should be a dictionary"
+                )
 
             # Check for deprecated keys
             deprecated_keys = ["discovery", "introduction"]
