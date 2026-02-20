@@ -35,12 +35,6 @@ Ask yourself: "Did anything unexpected happen? Any new gotcha or pattern worth c
 | Abstract | Is this a pattern? What's the general rule? | Generalized learning |
 | Document | Where should this live? Is it already documented? | Updated docs |
 
-**Reflect:** What was the specific mistake or surprise? What assumption was wrong?
-
-**Abstract:** Is this a one-off or a recurring pattern? Express as a general rule ("Always X before Y", "Never assume X without checking").
-
-**Document:** Check where it belongs (see below), then Grep existing docs for the topic before writing. **Update existing entries rather than adding new ones.** If the learning is already captured, stop.
-
 ## Where Learnings Live
 
 Before documenting, check these locations — slot into the right place:
@@ -56,19 +50,12 @@ Before documenting, check these locations — slot into the right place:
 
 **Dedup rule:** Grep existing docs for the topic first. If already covered, update the existing entry or stop. Don't create duplicates.
 
-## Common Mistakes
+## Pitfalls
 
-| Mistake | Fix |
-|---------|-----|
-| Superficial reflection ("I made an error") | Ask "why" at least 3 times to find root cause |
-| Too specific (only fixes this instance) | Abstract to pattern that prevents future occurrences |
-| Documenting without checking existing docs | Grep first — update existing entries, don't duplicate |
-| Vague updates like "be more careful" | Express as a concrete, actionable rule |
-| Skipping quick check before commits | Always pause to ask "anything unexpected?" |
-
-## Red Flags
-
-- Moving on after a significant debugging session or user correction without at least a quick check
-- Writing documentation that doesn't address root cause
-- Adding a new entry when an existing one covers the same topic
-- Documenting in a place no one will find
+| Pitfall | Why it fails | Fix |
+|---------|-------------|-----|
+| Superficial reflection ("I made an error") | Symptoms treated, not cause — recurs | Ask "why" 3x to reach root cause |
+| Too specific (only fixes this instance) | Next occurrence isn't prevented | Abstract to a general rule |
+| Documenting without grepping first | Creates duplicates, fragments context | Check existing entries; update, don't add |
+| Vague updates ("be more careful") | Not actionable, can't follow consistently | Express as a concrete rule ("Always X before Y") |
+| Moving on without a quick check | Learnings lost permanently | Pause before committing — even 30 seconds counts |
