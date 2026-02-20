@@ -31,18 +31,16 @@ Copy `.env.example` to `.env` and configure:
 
 | Command | Purpose |
 |---------|---------|
-| `make pull` | Sync config from HA instance |
+| `make pull` | Sync config from HA (includes Z2M config) |
 | `make push` | Push config (with validation) |
 | `make backup` | Create timestamped backup (with auto-changelog) |
-| `make validate` | Run all validation tests |
+| `make validate` | Validate YAML syntax, entity refs, device IDs, HA config |
 | `make setup` | Install Python dependencies via uv |
 | `make status` | Show config status and entity counts |
 | `make reload` | Reload HA config (API call, no push) |
 | `make entities` | Explore available entities |
 | `make entities ARGS='--search TERM'` | Search entities by name |
 | `make backup-search PATTERN='text'` | Search all backups for a pattern |
-| `make changelog BACKUP='path'` | Generate changelog for a specific backup |
-| `make changelog-all` | Backfill changelogs for all backups |
 | `make format-yaml` | Format YAML files (`FILES='...'` for specific files) |
 | `make lint` | Run Python linting and format checks (ruff) |
 | `make lint-fix` | Auto-fix Python lint and formatting issues |
@@ -83,13 +81,9 @@ Implications: Frigate can use aggressive detection (Hailo), streams use hardware
 
 ## Backups as Version History
 
-Config changes are often **not in git history** - they get pushed to HA and pulled back without commits. The `backups/` directory is the real historical record.
+Config changes are often **not in git history** - they get pushed to HA and pulled back without commits. The `backups/` directory is the real historical record. See `home-assistant-backup` skill for full workflow.
 
-- **Backup format:** `ha_config_YYYYMMDD_HHMMSS.tar.gz` with matching `.changelog`
-- **Find when a change was introduced:** `make backup-search PATTERN='media_player.play_media'`
-- **See what changed in a backup:** `cat backups/ha_config_YYYYMMDD_HHMMSS.changelog`
 - **Extract a specific file:** `tar -xzOf backups/ha_config_<timestamp>.tar.gz config/automations.yaml`
-- **Backfill changelogs:** `make changelog-all` (generates missing `.changelog` files)
 - **When reverting:** Don't blindly restore - ask about individual settings (e.g., timer durations) that may have been tuned independently of the change being reverted
 
 ## Critical Gotchas
@@ -136,22 +130,6 @@ required_zones:
 ### Helper Entity Reload
 New helpers in `configuration.yaml` require "Reload all YAML configuration" (Developer Tools > YAML), not just `make push`.
 
-### Trigger `from:` Constraint Drops Post-Restart Events
-After HA restarts, entities start in `unknown`/`unavailable` state. Triggers with `from: ['off']` will **miss the first transition** (e.g., `unknown → on`) because it doesn't match the `from` constraint. Only use `from:` when you specifically need to ignore startup transitions. For motion sensors and similar binary triggers, omit `from:` so `to: ['on']` fires on any transition including post-restart.
-
-### Script Parameter Names
-**Parameter names must match exactly between automation and script.** With `| default(omit)` patterns, mismatches silently fail:
-```yaml
-# automation calls with:
-data:
-  forced_mode: day   # WRONG - typo
-
-# script expects:
-fields:
-  force_mode:        # RIGHT - no 'd'
-```
-**Debug tip:** If automation triggers and script runs but doesn't produce expected result, compare parameter names immediately.
-
 ### Shell Commands
 HA's `shell_command` doesn't run through a shell by default - it executes directly via subprocess. To use shell features (`>>`, `&&`, `$()`), either:
 - Wrap with `/bin/sh -c "..."`
@@ -167,62 +145,13 @@ Shell scripts in `config/scripts/` must exist in the local repo, not just on the
 1. SSH to HA and edit `/config/.storage/lovelace` directly
 2. Restart HA (required for storage changes)
 
-### DashCast Login Screen Issue
-If DashCast shows HA login screen instead of dashboard, you need `trusted_users` (not just `allow_bypass_login`) when multiple HA users exist:
-```yaml
-auth_providers:
-  - type: homeassistant
-  - type: trusted_networks
-    trusted_networks:
-      - 192.168.1.0/24
-    trusted_users:
-      192.168.1.0/24:
-        - USER_ID_HERE  # Find in .storage/auth
-    allow_bypass_login: true
-```
-**Find user IDs:** `grep -A5 '"name":' config/.storage/auth | grep -E '"id"|"name"'`
+### DashCast Gotchas
+- **Login screen instead of dashboard:** Need `trusted_users` (not just `allow_bypass_login`) in `auth_providers` when multiple HA users exist. Find user IDs: `grep -A5 '"name":' config/.storage/auth | grep -E '"id"|"name"'`
+- **Stopping DashCast on Nest Hub:** Use `homeassistant.turn_off`, NOT `media_player.turn_off` (which doesn't reliably close DashCast)
 
-### Stopping DashCast on Nest Hub
-`media_player.turn_off` does NOT reliably close DashCast on Google Nest Hubs. Use `homeassistant.turn_off` instead:
-```yaml
-# BAD - doesn't close DashCast
-- action: media_player.turn_off
-  target:
-    entity_id: media_player.nest_hub
-
-# GOOD - reliably closes DashCast
-- action: homeassistant.turn_off
-  target:
-    entity_id: media_player.nest_hub
-```
-
-### HACS Custom Card "Configuration error"
-When a Lovelace card shows "Configuration error":
-1. **Verify card is installed** (not just known to HACS):
-   ```bash
-   ssh homeassistant 'python3 -c "import json; d=json.load(open(\"/config/.storage/hacs.repositories\")); print([(v[\"full_name\"],v.get(\"installed\",False)) for v in d[\"data\"].values() if \"card-name\" in v.get(\"full_name\",\"\").lower()])"'
-   ```
-2. **Test with minimal config first**, then add options back incrementally
-3. **Check browser console** (F12) for specific error messages
-
-### advanced-camera-card + go2rtc
-Keep config simple - avoid unnecessary options:
-```yaml
-# GOOD - minimal working config
-type: custom:advanced-camera-card
-cameras:
-  - camera_entity: camera.front_door
-    live_provider: go2rtc
-    go2rtc:
-      stream: front_door_rmtp
-      url: http://192.168.1.100:1984  # No trailing slash
-
-# BAD - over-complicated, can cause errors
-go2rtc:
-  modes: [webrtc, mse, mp4]  # Skip this
-  stream: front_door_rmtp
-  url: http://192.168.1.100:1984/  # No trailing slash
-```
+### HACS / Lovelace Cards
+- **"Configuration error":** Verify card is actually *installed* (not just known to HACS) — check `installed: True` in `.storage/hacs.repositories`. Test with minimal config first, check browser console (F12).
+- **advanced-camera-card + go2rtc:** Keep config minimal. No trailing slash on go2rtc URL. Don't add `modes:` array — use defaults.
 
 ## Entity Naming Convention
 
@@ -236,60 +165,30 @@ Examples: `binary_sensor.home_basement_motion_battery`, `climate.office_living_r
 
 ## Streaming Frigate to Cast/Nest
 
-**NEVER use `camera.play_stream`** - returns 500 errors with Frigate.
+**NEVER use `camera.play_stream`** — returns 500 errors with Frigate. Requires go2rtc port 1984 exposed in Frigate addon.
 
-Prerequisites: Expose go2rtc port 1984 in Frigate addon settings.
-
-```yaml
-# Start stream
-- action: media_player.play_media
-  target:
-    entity_id: media_player.nest_hub
-  data:
-    media_content_id: "http://192.168.1.100:1984/api/stream.mp4?src=front_door_rmtp"
-    media_content_type: "video/mp4"
-
-# Stop stream (use turn_off, not media_stop)
-- action: media_player.turn_off
-  target:
-    entity_id: media_player.nest_hub
-```
+- **Start:** `media_player.play_media` with `media_content_id: "http://<go2rtc>:1984/api/stream.mp4?src=<stream>"` and `media_content_type: "video/mp4"`
+- **Stop:** `media_player.turn_off` (not `media_stop`, which doesn't return to ambient)
 
 ## Frigate Sensor Naming & False Positive Tuning
 
 ### Sensor Naming Convention
-Frigate creates two types of count/occupancy sensors:
 
 | Pattern | Example | Meaning |
 |---------|---------|---------|
 | `sensor.<camera>_<zone>_<object>_count` | `sensor.driveway_driveway_car_count` | Objects in **specific zone** |
 | `sensor.<camera>_<object>_count` | `sensor.driveway_car_count` | Objects **anywhere on camera** |
 
-**Important:** Alert automations typically use **zoned** sensors (e.g., `sensor.anyone_outside` sums zoned counts). An object detected on camera but outside the zone won't trigger zoned sensors.
+Alert automations typically use **zoned** sensors. An object detected on camera but outside the zone won't trigger zoned sensors.
 
-### Zone Tuning Parameters
-When getting false alerts from brief detections (cars passing, detection jitter):
+### Zone Tuning (False Positives)
 
 | Parameter | Default | Effect |
 |-----------|---------|--------|
-| `inertia` | 1 | Frames object must be in zone before counting (higher = more filtering) |
-| `loitering_time` | 0 | Seconds object must remain in zone before triggering (higher = more filtering) |
+| `inertia` | 1 | Frames object must be in zone before counting |
+| `loitering_time` | 0 | Seconds object must remain before triggering |
 
-```yaml
-# frigate/config.yml - Example zone with filtering
-zones:
-  driveway_driveway:
-    coordinates: ...
-    inertia: 3           # Must be detected for 3 frames
-    loitering_time: 3    # Must stay for 3 seconds
-```
-
-### When to Adjust
-- **Brief false alerts (passing cars):** Increase `inertia` and `loitering_time`
-- **Alerts at zone edges:** Adjust zone coordinates to exclude problem areas
-- **Missing real detections:** Decrease values or expand zone
-
-After changes: `make push` then restart Frigate addon.
+Increase both for false alerts (passing cars, jitter). After changes: `make push` then restart Frigate addon.
 
 ## Automation Quick Reference
 
@@ -332,9 +231,7 @@ Run `make lint` locally before pushing to catch CI failures early. Use `make lin
 2. **SSH issues**: `chmod 600 ~/.ssh/key`, test with `make test-ssh`
 3. **Missing deps**: `uv sync`
 4. **Run tests**: `uv run pytest tests/`
-5. **DashCast shows login**: Add `trusted_users` mapping (see gotcha above)
-6. **Lovelace "Configuration error"**: Verify HACS card is installed, test minimal config
-7. **Camera card not loading**: Check `installed: True` in `.storage/hacs.repositories`
-8. **False Frigate alerts**: Check zoned vs unzoned sensors, increase `inertia`/`loitering_time` in zone config
-9. **Restart Frigate addon**: Use SSH: `ssh homeassistant "ha apps restart ccab4aaf_frigate-fa-beta"`. The Supervisor API (`/api/hassio/addons/...`) returns 401 with long-lived access tokens — use SSH instead.
-10. **Z2M entity_ids stuck as hex after recovery**: HA's `deleted_entities` preserves old entity_ids. Stop HA, clean Z2M entries from both `entities` and `deleted_entities` in `core.entity_registry` (and `devices`/`deleted_devices` in `core.device_registry`), then restart. See MEMORY.md for full Z2M recovery notes.
+5. **View HA logs**: `ssh homeassistant "ha core logs" | tail -100` (or `--follow` for real-time)
+6. **False Frigate alerts**: Check zoned vs unzoned sensors, increase `inertia`/`loitering_time` in zone config
+7. **Restart Frigate addon**: Use SSH: `ssh homeassistant "ha apps restart ccab4aaf_frigate-fa-beta"`. The Supervisor API returns 401 with long-lived access tokens — use SSH instead.
+8. **Z2M entity_ids stuck as hex after recovery**: HA's `deleted_entities` preserves old entity_ids. Stop HA, clean Z2M entries from both `entities` and `deleted_entities` in `core.entity_registry` (and `devices`/`deleted_devices` in `core.device_registry`), then restart. See MEMORY.md for full Z2M recovery notes.

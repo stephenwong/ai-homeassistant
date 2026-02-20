@@ -1,6 +1,6 @@
 ---
 name: home-assistant-debugging
-description: Use when investigating Home Assistant issues - entity behavior problems, automation failures, unexpected states after restart, template sensor bugs
+description: Use when investigating Home Assistant issues - entity behavior problems, automation failures, unexpected states after restart, template sensor bugs. Also use when user says "X isn't working", "X stopped working", "why does X do Y", or "something broke".
 ---
 
 # Home Assistant Debugging
@@ -27,75 +27,26 @@ Systematic approach to debugging Home Assistant issues. Find root cause before p
 - Template sensor returning unexpected values
 - "unavailable" → wrong state transitions
 - User reports "X stopped working" or "X behaves strangely"
+- User asks "why does X do Y" or "something broke"
 
 **When NOT to use:**
 - Creating new automations (use home-assistant-automation)
-- Simple entity lookups
 - Dashboard layout issues
+- Pure configuration questions with no malfunction
 
 ## Workflow
 
-```dot
-digraph debug_flow {
-    rankdir=TB;
-
-    subgraph cluster_identify {
-        label="1. IDENTIFY";
-        style=filled;
-        color=lightblue;
-        "Get entity name" -> "Search entity_explorer";
-        "Search entity_explorer" -> "Note device class and domain";
-    }
-
-    subgraph cluster_locate {
-        label="2. LOCATE DEFINITION";
-        style=filled;
-        color=lightyellow;
-        "Note device class and domain" -> "Grep config files for entity";
-        "Grep config files for entity" -> "Found in configuration.yaml?" [shape=diamond];
-        "Found in configuration.yaml?" -> "Read template/sensor definition" [label="yes"];
-        "Found in configuration.yaml?" -> "Check automations.yaml" [label="no"];
-        "Check automations.yaml" -> "Read automation definition";
-    }
-
-    subgraph cluster_analyze {
-        label="3. ANALYZE ROOT CAUSE";
-        style=filled;
-        color=lightgreen;
-        "Read template/sensor definition" -> "Trace logic flow";
-        "Read automation definition" -> "Trace logic flow";
-        "Trace logic flow" -> "Identify failure mode";
-        "Identify failure mode" -> "Document root cause";
-    }
-
-    subgraph cluster_fix {
-        label="4. FIX AND DEPLOY";
-        style=filled;
-        color=lightpink;
-        "Document root cause" -> "Propose minimal fix";
-        "Propose minimal fix" -> "User approves?";
-        "User approves?" -> "Edit configuration" [label="yes"];
-        "Edit configuration" -> "make validate";
-        "make validate" -> "make push";
-        "make push" -> "Reflect (capture learnings)";
-    }
-
-    subgraph cluster_reflect {
-        label="5. REFLECT";
-        style=filled;
-        color=lavender;
-        "Reflect (capture learnings)" -> "Done";
-    }
-}
-```
-
-## Quick Reference
+1. **Identify** — Find the entity, note domain/class
+2. **Locate** — Find where entity is defined in config
+3. **Analyze** — Trace logic, identify failure mode
+4. **Fix** — Propose minimal fix, validate, deploy
+5. **Reflect** — Capture learnings via `reflect` skill
 
 | Phase | Tools/Commands | Purpose |
 |-------|----------------|---------|
-| Identify | `uv run python tools/entity_explorer.py --search` | Find entity, note domain/class |
-| Locate | `Grep` | Find where entity is defined |
-| Analyze | `Read` (targeted lines) | Understand template/automation logic |
+| Identify | `entity_explorer.py --search`, `ha-curl.sh /api/states/` | Find entity, check current state |
+| Locate | `Grep` config files, `make backup-search` | Find definition and history |
+| Analyze | `Read` (targeted lines), automation traces | Understand template/automation logic |
 | Fix | `Edit`, `make validate`, `make push` | Apply and deploy fix |
 | Reflect | `reflect` skill | Capture learnings (gotchas, corrections, patterns) |
 
@@ -107,6 +58,24 @@ uv run python tools/entity_explorer.py --search "shower"
 uv run python tools/entity_explorer.py --search "occupancy"
 ```
 
+**Quick state checks via API:**
+```bash
+# Check current entity state and attributes
+tools/ha-curl.sh /api/states/sensor.entity_name
+
+# Check automation status — look for "last_triggered" attribute
+tools/ha-curl.sh /api/states/automation.automation_name
+
+# Check when an entity last changed state
+# The "last_changed" and "last_updated" fields show timestamps
+tools/ha-curl.sh /api/states/binary_sensor.entity_name
+```
+
+**`last_triggered` and `last_changed` are your fastest debugging tools:**
+- If `last_triggered` is `null` or old, the automation never fired → check triggers
+- If `last_triggered` is recent but nothing happened → check conditions/actions
+- If `last_changed` is old, the entity state isn't updating → check source
+
 **Note:**
 - Device class (moisture, occupancy, presence) hints at sensor type
 - Domain (binary_sensor, sensor, input_boolean) indicates definition location
@@ -117,17 +86,34 @@ uv run python tools/entity_explorer.py --search "occupancy"
 # Search for entity definition in configuration files
 Grep "entity_name" config/configuration.yaml
 Grep "entity_name" config/automations.yaml
-
-# Common locations by type:
-# - Template sensors: config/configuration.yaml (template: section)
-# - Automations: config/automations.yaml
-# - Helpers: config/configuration.yaml (input_boolean:, timer:, etc.)
-# - Integration entities: config/.storage/core.entity_registry (read-only)
 ```
 
-**Integration entities** (created by integrations like Zigbee2MQTT) cannot be modified in config - their behavior comes from the integration.
+**Where entities are defined by type:**
 
-**Template entities** are defined in `configuration.yaml` under `template:` section.
+| Entity Pattern | Defined In | Modifiable |
+|----------------|------------|------------|
+| `binary_sensor.*` / `sensor.*` (template) | `configuration.yaml` (`template:` section) | Yes |
+| `input_boolean.*`, `timer.*`, `input_datetime.*` | `configuration.yaml` (helpers section) | Yes |
+| Automations | `automations.yaml` | Yes |
+| `binary_sensor.*` / `sensor.*` (integration) | Integration (e.g., Z2M, Frigate) | No* |
+
+*Integration entities can only be modified via integration config. For debugging integration entities, see "Integration Debugging" below.
+
+### Integration Debugging
+
+When the problem entity comes from an integration (Zigbee2MQTT, Frigate, etc.):
+
+```bash
+# Check integration logs via SSH
+ssh homeassistant "ha apps logs 45df7312_zigbee2mqtt" | tail -50   # Z2M
+ssh homeassistant "ha apps logs ccab4aaf_frigate-fa-beta" | tail -50  # Frigate
+
+# Z2M web UI: check device status, interview, reconfigure
+# Frigate web UI: check camera feeds, detection zones
+
+# Verify MQTT connectivity
+tools/ha-curl.sh /api/states/binary_sensor.zigbee2mqtt_bridge_connection_state
+```
 
 ### Finding When a Change Was Introduced
 
@@ -155,7 +141,10 @@ cat backups/ha_config_YYYYMMDD_HHMMSS.changelog
 
 ### Template Sensor Debugging
 
-**Trigger-based templates** (common issue source):
+**Trigger-based templates** are especially vulnerable after HA restart. When HA restarts, all entities transition from `unavailable` → first reading, which means:
+- `trigger.from_state.state` = "unavailable"
+- `| float(0)` converts "unavailable" to 0
+- Large delta from 0 to real value triggers false positives
 
 ```yaml
 # PROBLEM: Doesn't handle unavailable → available transition
@@ -170,7 +159,7 @@ cat backups/ha_config_YYYYMMDD_HHMMSS.changelog
         # BUG: "unavailable" becomes 0, causing false triggers
 ```
 
-**Fix pattern - always check for unavailable/unknown:**
+**Fix pattern - always guard trigger-based templates:**
 
 ```yaml
 state: >
@@ -187,11 +176,13 @@ state: >
 ```bash
 # Find the automation
 Grep "automation_name_or_keyword" config/automations.yaml
-
-# Check triggers - are conditions ever met?
-# Check conditions - are they blocking execution?
-# Check actions - is the right service called?
 ```
+
+**Check automation traces** for execution history:
+- HA UI: Settings > Automations > find automation > three-dot menu > Traces
+- Traces show each step: trigger matched, conditions evaluated, actions executed
+- If no traces exist, the trigger never fired
+- If traces show condition failure, read the condition values at that timestamp
 
 **Common automation issues:**
 - `for:` duration prevents quick triggers
@@ -206,6 +197,64 @@ Grep "automation_name_or_keyword" config/automations.yaml
 3. **Make targeted edit** - smallest change that fixes the issue
 4. **Validate:** `make validate`
 5. **Deploy:** `make push`
+
+## Debugging Workflow for Service Failures
+
+When a service call doesn't work as expected:
+
+1. **Test the service directly** via API to isolate automation vs service issue
+2. **Check entity states** - is the target in expected state?
+3. **Check automation traces** (Settings > Automations > Traces) - did the automation run? Did each step succeed?
+4. **Check HA logs** via SSH:
+
+```bash
+# Recent HA core logs
+ssh homeassistant "ha core logs" | tail -100
+
+# Follow logs in real-time (useful for reproducing issues)
+ssh homeassistant "ha core logs --follow"
+
+# Addon-specific logs
+ssh homeassistant "ha apps logs 45df7312_zigbee2mqtt"   # Z2M
+ssh homeassistant "ha apps logs ccab4aaf_frigate-fa-beta"  # Frigate
+```
+
+This isolates whether the problem is:
+- The service itself (500 error, not supported)
+- The automation logic (service works manually but not via automation)
+- Entity state conditions (automation not triggering)
+
+## Direct HA API Access for Debugging
+
+Use `tools/ha-curl.sh` for API calls (see CLAUDE.md for general usage). Debugging-specific calls:
+
+```bash
+# Check entity state and attributes (last_changed, last_triggered)
+tools/ha-curl.sh /api/states/sensor.entity_name
+
+# Query logbook for recent events (use current date, ISO 8601 UTC)
+tools/ha-curl.sh "/api/logbook/2026-02-20T00:00:00Z?end_time=2026-02-20T12:00:00Z"
+
+# Query entity history over a period
+tools/ha-curl.sh "/api/history/period/2026-02-20T00:00:00Z?filter_entity_id=sensor.name"
+```
+
+**Note:** Replace dates above with the current date/time in UTC when running queries.
+
+### Bypass Validation for New Entities
+
+**LAST RESORT** - only when `make push` validation fails because new helpers/templates don't exist yet (chicken-and-egg with reload):
+
+```bash
+# DANGER: Bypasses all local validation. Only use if:
+# 1. Official HA validation (`make validate`) passed
+# 2. Errors are ONLY for entities that will exist after reload
+# Risk: Pushing invalid config can break HA startup
+rsync -avz config/ homeassistant:/config/
+# Then reload the specific domains:
+tools/ha-curl.sh -X POST /api/services/automation/reload
+tools/ha-curl.sh -X POST /api/services/template/reload
+```
 
 ## Common Mistakes
 
@@ -228,101 +277,6 @@ Grep "automation_name_or_keyword" config/automations.yaml
 - Not explaining root cause to user
 
 **All of these mean: Go back to Phase 2 and trace the actual code.**
-
-## Restart-Related Issues
-
-HA restart causes all entities to transition: `unavailable` → first reading
-
-**Template sensors with triggers** are especially vulnerable:
-- `trigger.from_state.state` = "unavailable"
-- `| float(0)` converts "unavailable" to 0
-- Large delta from 0 to real value triggers false positives
-
-**Fix:** Always guard trigger-based templates:
-
-```yaml
-{% if trigger.from_state.state in ['unavailable', 'unknown'] %}
-  {{ this.state | default('off') }}
-{% else %}
-  {# normal logic #}
-{% endif %}
-```
-
-## Entity Types and Where Defined
-
-| Entity Pattern | Defined In | Modifiable |
-|----------------|------------|------------|
-| `binary_sensor.name` (template) | configuration.yaml | Yes |
-| `sensor.name` (template) | configuration.yaml | Yes |
-| `input_boolean.name` | configuration.yaml | Yes |
-| `timer.name` | configuration.yaml | Yes |
-| `binary_sensor.device_name` (integration) | Integration | No* |
-| `sensor.device_name` (integration) | Integration | No* |
-
-*Integration entities can only be modified via integration config (e.g., Zigbee2MQTT config).
-
-## Direct HA API Access for Debugging
-
-Use `tools/ha-curl.sh` for all API calls - it auto-loads credentials from `.env`:
-
-```bash
-# Check entity state
-tools/ha-curl.sh /api/states/sensor.entity_name
-
-# Check automation status (look for "last_triggered" in attributes)
-tools/ha-curl.sh /api/states/automation.automation_name
-
-# Test service calls directly
-tools/ha-curl.sh -X POST /api/services/light/turn_on -d '{"entity_id": "light.room_light"}'
-
-# Query logbook (ISO 8601 format, UTC)
-tools/ha-curl.sh /api/logbook/2026-01-26T20:00:00Z?end_time=2026-01-26T21:00:00Z
-
-# Query entity history
-tools/ha-curl.sh /api/history/period/2026-01-26T00:00:00Z?filter_entity_id=sensor.name
-
-# Reload specific domains (when make push validation blocks on new entities)
-tools/ha-curl.sh -X POST /api/services/automation/reload
-tools/ha-curl.sh -X POST /api/services/timer/reload
-tools/ha-curl.sh -X POST /api/services/template/reload
-```
-
-### Bypass Validation for New Entities
-
-When validation fails because new helpers/templates don't exist yet (created on reload):
-
-```bash
-# Only if official HA validation passed and errors are for NEW entities:
-rsync -avz config/ homeassistant:/config/
-# Then reload the specific domains above
-```
-
-## Debugging Workflow for Service Failures
-
-When a service call doesn't work as expected:
-
-1. **Test the service directly** via API to isolate automation vs service issue
-2. **Check entity states** - is the target in expected state?
-3. **Check automation traces** - did the automation run?
-4. **Check HA logs** - `config/home-assistant.log` after `make pull`
-
-### Example: Debugging camera streaming failure
-
-```bash
-# 1. Test service directly
-tools/ha-curl.sh -X POST /api/services/camera/play_stream \
-  -d '{"entity_id": "camera.front_door", "media_player": "media_player.nest_hub"}'
-# If 500 error → service doesn't work with this camera type
-
-# 2. Try alternative service
-tools/ha-curl.sh -X POST /api/services/media_player/play_media \
-  -d '{"entity_id": "media_player.nest_hub", "media_content_id": "http://...", "media_content_type": "video/mp4"}'
-```
-
-This isolates whether the problem is:
-- The service itself (500 error, not supported)
-- The automation logic (service works manually but not via automation)
-- Entity state conditions (automation not triggering)
 
 ## Phase 5: Reflect & Learn
 
