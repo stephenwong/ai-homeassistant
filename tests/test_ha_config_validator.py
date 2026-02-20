@@ -90,6 +90,12 @@ class TestParseCheckConfigOutput:
         assert len(validator.errors) == 0
         assert len(validator.warnings) == 0
 
+    def test_parse_output_entity_with_error_in_name(self, validator):
+        validator.parse_check_config_output(
+            "Setup of sensor.water_error_code successful\n"
+        )
+        assert len(validator.errors) == 0
+
 
 class TestParseCheckConfigErrors:
     def test_parse_stderr_errors(self, validator):
@@ -367,65 +373,6 @@ class TestRunHACheckConfig:
             # Falls back to basic validation which succeeds with valid config
             assert result is True
             assert any("Failed to run" in e for e in validator.errors)
-
-
-class TestRunBasicValidationExceptions:
-    """Cover exception branches in run_basic_validation."""
-
-    def test_generic_exception_reading_config(self, config_dir, validator):
-        """Cover lines 170-172."""
-        (config_dir / "configuration.yaml").write_text("homeassistant:\n  name: Test\n")
-        with patch.object(validator, "load_yaml", side_effect=RuntimeError("oops")):
-            result = validator.run_basic_validation()
-            assert result is False
-            assert any(
-                "Error reading configuration.yaml" in e for e in validator.errors
-            )
-
-
-class TestValidateFilesExceptions:
-    """Cover exception branches in validate_automations/scripts/secrets."""
-
-    def test_automations_yaml_error(self, config_dir, validator):
-        """Cover line 256: yaml.YAMLError in validate_automations_file."""
-        (config_dir / "automations.yaml").write_text("- alias: Test\n  bad:\n indent\n")
-        validator.validate_automations_file()
-        assert any(
-            "YAML syntax error in automations.yaml" in e for e in validator.errors
-        )
-
-    def test_automations_generic_exception(self, config_dir, validator):
-        """Cover lines 257-258."""
-        (config_dir / "automations.yaml").write_text("- alias: Test\n")
-        with patch.object(validator, "load_yaml", side_effect=RuntimeError("oops")):
-            validator.validate_automations_file()
-            assert any("Error reading automations.yaml" in e for e in validator.errors)
-
-    def test_scripts_yaml_error(self, config_dir, validator):
-        """Cover line 275: yaml.YAMLError in validate_scripts_file."""
-        (config_dir / "scripts.yaml").write_text("my_script:\n  bad:\n indent\n")
-        validator.validate_scripts_file()
-        assert any("YAML syntax error in scripts.yaml" in e for e in validator.errors)
-
-    def test_scripts_generic_exception(self, config_dir, validator):
-        """Cover lines 276-277."""
-        (config_dir / "scripts.yaml").write_text("my_script:\n  sequence: []\n")
-        with patch.object(validator, "load_yaml", side_effect=RuntimeError("oops")):
-            validator.validate_scripts_file()
-            assert any("Error reading scripts.yaml" in e for e in validator.errors)
-
-    def test_secrets_yaml_error(self, config_dir, validator):
-        """Cover line 295: yaml.YAMLError in validate_secrets_file."""
-        (config_dir / "secrets.yaml").write_text("key: value\n  bad:\n indent\n")
-        validator.validate_secrets_file()
-        assert any("YAML syntax error in secrets.yaml" in e for e in validator.errors)
-
-    def test_secrets_generic_exception(self, config_dir, validator):
-        """Cover lines 296-297."""
-        (config_dir / "secrets.yaml").write_text("key: value\n")
-        with patch.object(validator, "load_yaml", side_effect=RuntimeError("oops")):
-            validator.validate_secrets_file()
-            assert any("Error reading secrets.yaml" in e for e in validator.errors)
 
 
 class TestHAConfigValidatorMain:

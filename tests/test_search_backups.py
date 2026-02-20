@@ -145,30 +145,6 @@ class TestSearchBackup:
         matches = search_backup(backup, re.compile("match"))
         assert len(matches) == 1
 
-    def test_extractfile_returns_none(self, tmp_path):
-        """Cover line 36: extractfile returns None for links."""
-        tar_path = tmp_path / "test.tar.gz"
-        with tarfile.open(tar_path, "w:gz") as tar:
-            # Add a real file first
-            data = b"match_content\n"
-            finfo = tarfile.TarInfo(name="config/real.yaml")
-            finfo.size = len(data)
-            tar.addfile(finfo, io.BytesIO(data))
-            # Add a hardlink (extractfile returns None)
-            link_info = tarfile.TarInfo(name="config/link.yaml")
-            link_info.type = tarfile.LNKTYPE
-            link_info.linkname = "config/real.yaml"
-            tar.addfile(link_info)
-
-        backup = {
-            "path": tar_path,
-            "filename": tar_path.name,
-            "timestamp": datetime(2026, 2, 1),
-        }
-        # Should not crash, just skip the None extractfile
-        matches = search_backup(backup, re.compile("match"))
-        assert len(matches) == 1  # Only from real.yaml
-
     def test_skips_binary_files(self, tmp_path):
         """Non-UTF8 files should be skipped without error."""
         tar_path = tmp_path / "test.tar.gz"

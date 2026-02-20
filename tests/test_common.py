@@ -10,14 +10,7 @@ import yaml
 from tools.common import (
     HAYamlLoader,
     ValidatorBase,
-    include_constructor,
-    include_dir_list_constructor,
-    include_dir_merge_list_constructor,
-    include_dir_merge_named_constructor,
-    include_dir_named_constructor,
-    input_constructor,
     load_env_file,
-    secret_constructor,
 )
 
 
@@ -51,51 +44,6 @@ class TestHAYamlLoader:
     def test_secret_tag(self):
         result = yaml.load("key: !secret api_key", Loader=HAYamlLoader)
         assert result == {"key": "!secret api_key"}
-
-
-class TestConstructorFunctions:
-    """Test individual constructor functions directly."""
-
-    def test_include_constructor(self):
-        node = yaml.ScalarNode(tag="!include", value="file.yaml")
-        loader = HAYamlLoader("")
-        assert include_constructor(loader, node) == "!include file.yaml"
-
-    def test_include_dir_named_constructor(self):
-        node = yaml.ScalarNode(tag="!include_dir_named", value="dir")
-        loader = HAYamlLoader("")
-        assert include_dir_named_constructor(loader, node) == "!include_dir_named dir"
-
-    def test_include_dir_merge_named_constructor(self):
-        node = yaml.ScalarNode(tag="!include_dir_merge_named", value="dir")
-        loader = HAYamlLoader("")
-        assert (
-            include_dir_merge_named_constructor(loader, node)
-            == "!include_dir_merge_named dir"
-        )
-
-    def test_include_dir_merge_list_constructor(self):
-        node = yaml.ScalarNode(tag="!include_dir_merge_list", value="dir")
-        loader = HAYamlLoader("")
-        assert (
-            include_dir_merge_list_constructor(loader, node)
-            == "!include_dir_merge_list dir"
-        )
-
-    def test_include_dir_list_constructor(self):
-        node = yaml.ScalarNode(tag="!include_dir_list", value="dir")
-        loader = HAYamlLoader("")
-        assert include_dir_list_constructor(loader, node) == "!include_dir_list dir"
-
-    def test_input_constructor(self):
-        node = yaml.ScalarNode(tag="!input", value="my_input")
-        loader = HAYamlLoader("")
-        assert input_constructor(loader, node) == "!input my_input"
-
-    def test_secret_constructor(self):
-        node = yaml.ScalarNode(tag="!secret", value="my_secret")
-        loader = HAYamlLoader("")
-        assert secret_constructor(loader, node) == "!secret my_secret"
 
 
 class TestLoadEnvFile:

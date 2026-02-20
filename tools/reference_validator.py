@@ -255,6 +255,12 @@ class ReferenceValidator(ValidatorBase):
                                     object_id = self._slugify_object_id(str(alias))
                                     if object_id:
                                         entities.add(f"automation.{object_id}")
+                                elif automation.get("id"):
+                                    object_id = self._slugify_object_id(
+                                        str(automation["id"])
+                                    )
+                                    if object_id:
+                                        entities.add(f"automation.{object_id}")
             except Exception:
                 pass
 
@@ -423,8 +429,8 @@ class ReferenceValidator(ValidatorBase):
 
     def is_template(self, value: str) -> bool:
         """Check if value is a Jinja2 template expression."""
-        # Match template expressions like {{ ... }}
-        return bool(re.search(r"\{\{.*?\}\}", value))
+        # Match template expressions like {{ ... }} or {% ... %}
+        return bool(re.search(r"\{\{.*?\}\}|\{%.*?%\}", value))
 
     def should_skip_entity_validation(self, value: str) -> bool:
         """Check if entity reference should be skipped during validation."""
@@ -552,7 +558,11 @@ class ReferenceValidator(ValidatorBase):
                             areas.add(value)
                     elif isinstance(value, list):
                         for area in value:
-                            if isinstance(area, str) and not area.startswith("!"):
+                            if (
+                                isinstance(area, str)
+                                and not area.startswith("!")
+                                and not self.is_template(area)
+                            ):
                                 areas.add(area)
                 else:
                     areas.update(self.extract_area_references(value))

@@ -119,53 +119,9 @@ class TestPrintByArea:
 
 
 class TestMain:
-    def test_missing_config_dir(self, capsys, monkeypatch):
-        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", "/nonexistent"])
-        result = main()
-        assert result == 1
-
-    def test_missing_entity_registry(self, tmp_path, capsys, monkeypatch):
-        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", str(tmp_path)])
-        result = main()
-        assert result == 1
-
-    def test_empty_entities(self, tmp_path, capsys, monkeypatch):
-        storage = tmp_path / ".storage"
-        storage.mkdir()
-        (storage / "core.entity_registry").write_text(
-            json.dumps({"data": {"entities": []}})
-        )
-        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", str(tmp_path)])
-        result = main()
-        assert result == 1
-
-    def test_summary_output(self, tmp_path, capsys, monkeypatch):
-        storage = tmp_path / ".storage"
-        storage.mkdir()
-        entity_data = {
-            "data": {
-                "entities": [
-                    {
-                        "entity_id": "light.test",
-                        "name": "Test",
-                        "original_name": None,
-                        "platform": "test",
-                        "area_id": None,
-                        "disabled_by": None,
-                        "hidden_by": None,
-                        "device_class": None,
-                        "original_device_class": None,
-                        "unit_of_measurement": None,
-                    }
-                ]
-            }
-        }
-        (storage / "core.entity_registry").write_text(json.dumps(entity_data))
-        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", str(tmp_path)])
-        result = main()
-        assert result == 0
-
-    def test_search_mode(self, tmp_path, capsys, monkeypatch):
+    @pytest.fixture
+    def config_with_entity(self, tmp_path):
+        """Set up a tmp_path with a single light entity in the registry."""
         storage = tmp_path / ".storage"
         storage.mkdir()
         entity_data = {
@@ -187,96 +143,82 @@ class TestMain:
             }
         }
         (storage / "core.entity_registry").write_text(json.dumps(entity_data))
+        return tmp_path
+
+    def test_missing_config_dir(self, capsys, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", "/nonexistent"])
+        result = main()
+        assert result == 1
+
+    def test_missing_entity_registry(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", str(tmp_path)])
+        result = main()
+        assert result == 1
+
+    def test_empty_entities(self, tmp_path, capsys, monkeypatch):
+        storage = tmp_path / ".storage"
+        storage.mkdir()
+        (storage / "core.entity_registry").write_text(
+            json.dumps({"data": {"entities": []}})
+        )
+        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", str(tmp_path)])
+        result = main()
+        assert result == 1
+
+    def test_summary_output(self, config_with_entity, capsys, monkeypatch):
         monkeypatch.setattr(
             "sys.argv",
-            ["entity_explorer", "--config", str(tmp_path), "--search", "test"],
+            ["entity_explorer", "--config", str(config_with_entity)],
         )
         result = main()
         assert result == 0
 
-    def test_domain_filter(self, tmp_path, capsys, monkeypatch):
-        storage = tmp_path / ".storage"
-        storage.mkdir()
-        entity_data = {
-            "data": {
-                "entities": [
-                    {
-                        "entity_id": "light.test",
-                        "name": "Test",
-                        "original_name": None,
-                        "platform": "test",
-                        "area_id": None,
-                        "disabled_by": None,
-                        "hidden_by": None,
-                        "device_class": None,
-                        "original_device_class": None,
-                        "unit_of_measurement": None,
-                    }
-                ]
-            }
-        }
-        (storage / "core.entity_registry").write_text(json.dumps(entity_data))
+    def test_search_mode(self, config_with_entity, capsys, monkeypatch):
         monkeypatch.setattr(
             "sys.argv",
-            ["entity_explorer", "--config", str(tmp_path), "--domain", "light"],
+            [
+                "entity_explorer",
+                "--config",
+                str(config_with_entity),
+                "--search",
+                "test",
+            ],
         )
         result = main()
         assert result == 0
 
-    def test_area_filter(self, tmp_path, capsys, monkeypatch):
-        storage = tmp_path / ".storage"
-        storage.mkdir()
-        entity_data = {
-            "data": {
-                "entities": [
-                    {
-                        "entity_id": "light.test",
-                        "name": "Test",
-                        "original_name": None,
-                        "platform": "test",
-                        "area_id": None,
-                        "disabled_by": None,
-                        "hidden_by": None,
-                        "device_class": None,
-                        "original_device_class": None,
-                        "unit_of_measurement": None,
-                    }
-                ]
-            }
-        }
-        (storage / "core.entity_registry").write_text(json.dumps(entity_data))
+    def test_domain_filter(self, config_with_entity, capsys, monkeypatch):
         monkeypatch.setattr(
             "sys.argv",
-            ["entity_explorer", "--config", str(tmp_path), "--area", "No Area"],
+            [
+                "entity_explorer",
+                "--config",
+                str(config_with_entity),
+                "--domain",
+                "light",
+            ],
         )
         result = main()
         assert result == 0
 
-    def test_full_output(self, tmp_path, capsys, monkeypatch):
-        storage = tmp_path / ".storage"
-        storage.mkdir()
-        entity_data = {
-            "data": {
-                "entities": [
-                    {
-                        "entity_id": "light.test",
-                        "name": "Test",
-                        "original_name": None,
-                        "platform": "test",
-                        "area_id": None,
-                        "disabled_by": None,
-                        "hidden_by": None,
-                        "device_class": None,
-                        "original_device_class": None,
-                        "unit_of_measurement": None,
-                    }
-                ]
-            }
-        }
-        (storage / "core.entity_registry").write_text(json.dumps(entity_data))
+    def test_area_filter(self, config_with_entity, capsys, monkeypatch):
         monkeypatch.setattr(
             "sys.argv",
-            ["entity_explorer", "--config", str(tmp_path), "--full"],
+            [
+                "entity_explorer",
+                "--config",
+                str(config_with_entity),
+                "--area",
+                "No Area",
+            ],
+        )
+        result = main()
+        assert result == 0
+
+    def test_full_output(self, config_with_entity, capsys, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv",
+            ["entity_explorer", "--config", str(config_with_entity), "--full"],
         )
         result = main()
         assert result == 0

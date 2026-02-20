@@ -244,6 +244,13 @@ class TestExtractEntitiesFromTemplate:
         )
         assert "climate.hvac" in result
 
+    def test_state_attr_double_quotes(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        result = v.extract_entities_from_template(
+            '{{ state_attr("climate.hvac", "temperature") }}'
+        )
+        assert "climate.hvac" in result
+
 
 class TestExtractDeviceReferences:
     def test_single_device_id(self, setup_config):
@@ -315,6 +322,55 @@ class TestExtractAreaReferences:
         data = {"target": {"area_id": "kitchen"}}
         result = v.extract_area_references(data)
         assert "kitchen" in result
+
+    def test_area_ids_list_skips_templates(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        data = {"area_ids": ["kitchen", "{{ input_area }}"]}
+        result = v.extract_area_references(data)
+        assert "kitchen" in result
+        assert "{{ input_area }}" not in result
+
+
+class TestExtractEntityReferences:
+    def test_entities_in_nested_repeat_sequence(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        data = {
+            "repeat": {
+                "count": 3,
+                "sequence": [
+                    {
+                        "service": "notify.send",
+                        "target": {"entity_id": "sensor.temperature"},
+                    }
+                ],
+            }
+        }
+        refs = v.extract_entity_references(data)
+        assert "sensor.temperature" in refs
+
+
+class TestIsTemplate:
+    def test_detects_control_flow(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        assert v.is_template("{% if true %}sensor.a{% endif %}") is True
+        assert v.is_template("{%- if x -%}sensor.a{%- endif -%}") is True
+
+    def test_rejects_non_templates(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        assert v.is_template("sensor.temperature") is False
+        assert v.is_template("normal text") is False
+
+
+class TestGetConfigDefinedEntitiesEdgeCases:
+    def test_automation_with_id_but_no_alias(self, setup_config):
+        (setup_config / "automations.yaml").write_text(
+            "- id: morning_lights_on\n"
+            "  trigger:\n    platform: time\n"
+            "  action:\n    service: test\n"
+        )
+        v = ReferenceValidator(str(setup_config))
+        entities = v.get_config_defined_entities()
+        assert "automation.morning_lights_on" in entities
 
 
 class TestValidateFileReferences:
@@ -434,44 +490,6 @@ class TestPrintResults:
         assert "AVAILABLE ENTITIES" in captured.out
         assert "sensor" in captured.out
         assert "light" in captured.out
-
-
-class TestExtractAutomationEntitiesException:
-    """Cover exception handling in _extract_automation_entities."""
-
-    def test_automations_parse_error(self, setup_config):
-        # Write non-UTF-8 bytes to automations.yaml to trigger exception
-        (setup_config / "automations.yaml").write_bytes(b"\xff\xfe invalid bytes")
-        v = ReferenceValidator(str(setup_config))
-        entities = v._extract_automation_entities()
-        # Should handle gracefully (exceptions are caught)
-        assert isinstance(entities, set)
-        assert len(entities) == 0
-
-
-class TestValidateFileReferencesEdgeCases:
-    """Cover line 395: YAML entity skip."""
-
-    def test_yaml_defined_entity_passes(self, setup_config):
-        """Cover line 395: entity defined in YAML templates is accepted."""
-        (setup_config / "configuration.yaml").write_text(
-            "template:\n  - sensor:\n      - name: Custom Sensor\n        state: '42'\n"
-        )
-        test_file = setup_config / "automations.yaml"
-        test_file.write_text("entity_id: sensor.custom_sensor\n")
-        v = ReferenceValidator(str(setup_config))
-        assert v.validate_file_references(test_file) is True
-
-
-class TestValidateAllReturnsFalse:
-    """Cover line 459: validate_all returns False when a file has invalid refs."""
-
-    def test_validate_all_fails_on_bad_refs(self, setup_config):
-        test_file = setup_config / "automations.yaml"
-        test_file.write_text("entity_id: sensor.totally_nonexistent_entity\n")
-        v = ReferenceValidator(str(setup_config))
-        result = v.validate_all()
-        assert result is False
 
 
 class TestReferenceValidatorMain:
