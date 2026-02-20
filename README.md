@@ -495,7 +495,7 @@ These are my own additions — Claude Code skills that guide workflows for commo
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **Automation** | `/home-assistant-automation` | Structured workflow for creating and modifying automations — handles entity discovery, design, implementation, and validation |
-| **Backup** | `/home-assistant-backup` | Pulls latest config, creates a timestamped backup, and prunes old backups with smart retention (7-day keep-all, then daily, then weekly) |
+| **Backup** | `/home-assistant-backup` | Pulls latest config, creates a timestamped backup, and prunes old backups with smart retention (7-day keep-all, then daily, then weekly). Supports `--dry-run` preview. |
 | **Debugging** | `/home-assistant-debugging` | Systematic approach to investigating HA issues — entity behavior problems, automation failures, template sensor bugs |
 | **Reflect** | `/reflect` | Captures learnings after completing work — records gotchas, corrections, and new patterns into CLAUDE.md, MEMORY.md, or skills to prevent recurrence |
 

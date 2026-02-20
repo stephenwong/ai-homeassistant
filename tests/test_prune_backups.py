@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from tools.prune_backups import (
     apply_retention,
+    clean_orphaned_changelogs,
     format_size,
     group_by_retention_period,
     parse_backup_filename,
@@ -114,6 +115,29 @@ class TestGroupByRetentionPeriod:
         assert sum(len(v) for v in groups["daily"].values()) == 1
         assert sum(len(v) for v in groups["weekly"].values()) == 1
 
+    def test_year_boundary_same_iso_week(self):
+        """Dec 29 2025 and Jan 2 2026 are ISO week 2026-W01 — must group together."""
+        now = datetime(2026, 2, 12, 12, 0, 0)
+        backups = [
+            {"timestamp": datetime(2025, 12, 29, 10, 0), "filename": "dec29"},
+            {"timestamp": datetime(2026, 1, 2, 10, 0), "filename": "jan02"},
+        ]
+        groups = group_by_retention_period(backups, now)
+        # Both should land in the same weekly group
+        assert len(groups["weekly"]) == 1
+        week_key = list(groups["weekly"].keys())[0]
+        assert len(groups["weekly"][week_key]) == 2
+
+    def test_jan1_not_week_zero(self):
+        """Jan 1 2026 should not produce a W00 group — ISO weeks are 01-53."""
+        now = datetime(2026, 2, 12, 12, 0, 0)
+        backups = [
+            {"timestamp": datetime(2026, 1, 1, 10, 0), "filename": "jan01"},
+        ]
+        groups = group_by_retention_period(backups, now)
+        for week_key in groups["weekly"]:
+            assert "W00" not in week_key
+
 
 class TestApplyRetention:
     def test_keep_all_recent(self):
@@ -159,6 +183,72 @@ class TestApplyRetention:
         assert to_keep[0]["filename"] == "b2"
         assert len(to_delete) == 1
 
+    def test_year_boundary_weekly_prunes_correctly(self):
+        """Two backups in same ISO week across year boundary — keep only latest."""
+        groups = {
+            "keep_all": [],
+            "daily": {},
+            "weekly": {
+                "2026-W01": [
+                    {
+                        "filename": "dec29",
+                        "timestamp": datetime(2025, 12, 29, 10, 0),
+                    },
+                    {
+                        "filename": "jan02",
+                        "timestamp": datetime(2026, 1, 2, 10, 0),
+                    },
+                ]
+            },
+        }
+        to_keep, to_delete = apply_retention(groups)
+        assert len(to_keep) == 1
+        assert to_keep[0]["filename"] == "jan02"
+        assert len(to_delete) == 1
+        assert to_delete[0]["filename"] == "dec29"
+
+
+class TestCleanOrphanedChangelogs:
+    def test_removes_orphaned_changelogs(self, tmp_path):
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        # Create a changelog with no matching tar.gz
+        orphan = backup_dir / "ha_config_20260101_120000.changelog"
+        orphan.write_text("orphan")
+        # Create a matched pair (should survive)
+        (backup_dir / "ha_config_20260201_120000.tar.gz").write_bytes(b"data")
+        (backup_dir / "ha_config_20260201_120000.changelog").write_text("matched")
+
+        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+            count = clean_orphaned_changelogs()
+            assert count == 1
+            assert not orphan.exists()
+            assert (backup_dir / "ha_config_20260201_120000.changelog").exists()
+
+    def test_no_orphans(self, tmp_path):
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        (backup_dir / "ha_config_20260201_120000.tar.gz").write_bytes(b"data")
+        (backup_dir / "ha_config_20260201_120000.changelog").write_text("matched")
+
+        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+            assert clean_orphaned_changelogs() == 0
+
+    def test_nonexistent_dir(self, tmp_path):
+        with patch("tools.prune_backups.BACKUP_DIR", tmp_path / "nonexistent"):
+            assert clean_orphaned_changelogs() == 0
+
+    def test_dry_run_does_not_delete(self, tmp_path):
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        orphan = backup_dir / "ha_config_20260101_120000.changelog"
+        orphan.write_text("orphan")
+
+        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+            count = clean_orphaned_changelogs(dry_run=True)
+            assert count == 1
+            assert orphan.exists()  # Not deleted
+
 
 class TestFormatSize:
     def test_bytes(self):
@@ -184,7 +274,7 @@ class TestMain:
         with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
-            result = main()
+            result = main([])
             assert result == 0
             captured = capsys.readouterr()
             assert "No backups found" in captured.out
@@ -200,13 +290,13 @@ class TestMain:
         with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
-            result = main()
+            result = main([])
             assert result == 0
             captured = capsys.readouterr()
             assert "No backups need to be deleted" in captured.out
 
     def test_yesterday_backup(self, tmp_path, capsys):
-        """Cover line 171: 'yesterday' age string."""
+        """Cover 'yesterday' age string."""
         backup_dir = tmp_path / "backups"
         backup_dir.mkdir()
         yesterday = datetime.now() - timedelta(days=1)
@@ -216,7 +306,7 @@ class TestMain:
         with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
-            result = main()
+            result = main([])
             assert result == 0
             captured = capsys.readouterr()
             assert "yesterday" in captured.out
@@ -238,8 +328,132 @@ class TestMain:
         with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
-            result = main()
+            result = main([])
             assert result == 0
             # Should keep the later one (200000) and delete earlier (100000)
             assert (backup_dir / fname2).exists()
             assert not (backup_dir / fname1).exists()
+            # Changelog for deleted backup should also be gone
+            assert not (backup_dir / fname1.replace(".tar.gz", ".changelog")).exists()
+
+    def test_kept_backup_changelog_preserved(self, tmp_path, capsys):
+        """Changelog for a kept backup must not be deleted."""
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+
+        old_date = datetime.now() - timedelta(days=15)
+        date_str = old_date.strftime("%Y%m%d")
+        fname1 = f"ha_config_{date_str}_100000.tar.gz"
+        fname2 = f"ha_config_{date_str}_200000.tar.gz"
+        (backup_dir / fname1).write_bytes(b"x" * 512)
+        (backup_dir / fname2).write_bytes(b"x" * 512)
+        # Changelogs for both
+        (backup_dir / fname1.replace(".tar.gz", ".changelog")).write_text("old")
+        (backup_dir / fname2.replace(".tar.gz", ".changelog")).write_text("kept")
+
+        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+            from tools.prune_backups import main
+
+            main([])
+            # Kept backup's changelog survives
+            assert (backup_dir / fname2.replace(".tar.gz", ".changelog")).exists()
+
+    def test_weekly_pruning_end_to_end(self, tmp_path, capsys):
+        """Two backups in the same week, 35+ days old — only latest survives."""
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+
+        # Pick a Monday 40 days ago and the following Wednesday
+        base = datetime.now() - timedelta(days=40)
+        # Align to Monday
+        base = base - timedelta(days=base.weekday())
+        d1 = base
+        d2 = base + timedelta(days=2)  # Wednesday, same ISO week
+
+        fname1 = f"ha_config_{d1.strftime('%Y%m%d')}_100000.tar.gz"
+        fname2 = f"ha_config_{d2.strftime('%Y%m%d')}_100000.tar.gz"
+        (backup_dir / fname1).write_bytes(b"x" * 512)
+        (backup_dir / fname2).write_bytes(b"x" * 512)
+
+        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+            from tools.prune_backups import main
+
+            result = main([])
+            assert result == 0
+            # Wednesday (later) kept, Monday (earlier) deleted
+            assert (backup_dir / fname2).exists()
+            assert not (backup_dir / fname1).exists()
+
+    def test_dry_run_does_not_delete(self, tmp_path, capsys):
+        """--dry-run should report but not delete anything."""
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+
+        old_date = datetime.now() - timedelta(days=15)
+        date_str = old_date.strftime("%Y%m%d")
+        fname1 = f"ha_config_{date_str}_100000.tar.gz"
+        fname2 = f"ha_config_{date_str}_200000.tar.gz"
+        (backup_dir / fname1).write_bytes(b"x" * 512)
+        (backup_dir / fname2).write_bytes(b"x" * 512)
+
+        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+            from tools.prune_backups import main
+
+            result = main(["--dry-run"])
+            assert result == 0
+            # Both files should still exist
+            assert (backup_dir / fname1).exists()
+            assert (backup_dir / fname2).exists()
+            captured = capsys.readouterr()
+            assert "DRY RUN" in captured.out
+
+    def test_orphaned_changelogs_cleaned_during_main(self, tmp_path, capsys):
+        """main() should clean orphaned changelogs after pruning."""
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+
+        # Recent backup (won't be pruned)
+        now = datetime.now()
+        fname = f"ha_config_{now.strftime('%Y%m%d_%H%M%S')}.tar.gz"
+        (backup_dir / fname).write_bytes(b"x" * 1024)
+
+        # Orphaned changelog (no matching tar.gz)
+        orphan = backup_dir / "ha_config_20250101_120000.changelog"
+        orphan.write_text("orphan")
+
+        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+            from tools.prune_backups import main
+
+            main([])
+            assert not orphan.exists()
+
+    def test_delete_error_returns_nonzero(self, tmp_path, capsys):
+        """If a file can't be deleted, main() should return 1."""
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+
+        old_date = datetime.now() - timedelta(days=15)
+        date_str = old_date.strftime("%Y%m%d")
+        fname1 = f"ha_config_{date_str}_100000.tar.gz"
+        fname2 = f"ha_config_{date_str}_200000.tar.gz"
+        (backup_dir / fname1).write_bytes(b"x" * 512)
+        (backup_dir / fname2).write_bytes(b"x" * 512)
+
+        # Make fname1 undeletable by removing write permission on the directory
+        # This is platform-specific but works on Linux
+        import os
+        import stat
+
+        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+            from tools.prune_backups import main
+
+            # Remove write permission from dir to prevent unlink
+            orig_mode = backup_dir.stat().st_mode
+            try:
+                os.chmod(backup_dir, stat.S_IRUSR | stat.S_IXUSR)
+                result = main([])
+                assert result == 1
+                captured = capsys.readouterr()
+                assert "Error deleting" in captured.out
+            finally:
+                os.chmod(backup_dir, orig_mode)
