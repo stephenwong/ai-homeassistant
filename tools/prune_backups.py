@@ -8,6 +8,7 @@ Retention rules:
 - Keep one backup per week for backups older than 30 days (latest each week)
 """
 
+import argparse
 import re
 from collections import defaultdict
 from datetime import datetime
@@ -67,8 +68,8 @@ def group_by_retention_period(backups, now):
             day_key = backup["timestamp"].strftime("%Y-%m-%d")
             groups["daily"][day_key].append(backup)
         else:
-            # Group by week (YYYY-WW where WW is ISO week number)
-            week_key = backup["timestamp"].strftime("%Y-W%W")
+            # Group by ISO week (%G = ISO year, %V = ISO week 01-53)
+            week_key = backup["timestamp"].strftime("%G-W%V")
             groups["weekly"][week_key].append(backup)
 
     return groups
@@ -114,14 +115,46 @@ def format_size(size_bytes):
     return f"{size_bytes:.1f}TB"
 
 
-def main():
+def clean_orphaned_changelogs(dry_run=False):
+    """Remove changelog files that have no matching backup tar.gz."""
+    if not BACKUP_DIR.exists():
+        return 0
+    orphans = []
+    for changelog in BACKUP_DIR.glob("*.changelog"):
+        tar_path = BACKUP_DIR / changelog.name.replace(".changelog", ".tar.gz")
+        if not tar_path.exists():
+            orphans.append(changelog)
+    if orphans:
+        print(f"\nOrphaned changelogs: {len(orphans)}")
+        for orphan in orphans:
+            if dry_run:
+                print(f"  Would delete: {orphan.name}")
+            else:
+                orphan.unlink()
+                print(f"  Deleted: {orphan.name}")
+    return len(orphans)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Prune Home Assistant backups")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be deleted without deleting",
+    )
+    args = parser.parse_args(argv)
+    dry_run = args.dry_run
+
     print("Home Assistant Backup Retention Pruner")
+    if dry_run:
+        print("(DRY RUN - no files will be deleted)")
     print("=" * 50)
 
     backups = get_backups()
 
     if not backups:
         print(f"No backups found in {BACKUP_DIR}")
+        clean_orphaned_changelogs(dry_run=dry_run)
         return 0
 
     print(f"\nFound {len(backups)} backup(s)")
@@ -147,16 +180,26 @@ def main():
 
         print(f"\nTotal space to free: {format_size(total_size)}")
 
-        # Delete files
-        for backup in to_delete:
-            backup["path"].unlink()
-            changelog_name = backup["filename"].replace(".tar.gz", ".changelog")
-            changelog_path = BACKUP_DIR / changelog_name
-            if changelog_path.exists():
-                changelog_path.unlink()
-            print(f"Deleted: {backup['filename']}")
+        if not dry_run:
+            errors = 0
+            for backup in to_delete:
+                try:
+                    backup["path"].unlink()
+                    changelog_name = backup["filename"].replace(".tar.gz", ".changelog")
+                    changelog_path = BACKUP_DIR / changelog_name
+                    if changelog_path.exists():
+                        changelog_path.unlink()
+                    print(f"Deleted: {backup['filename']}")
+                except OSError as e:
+                    print(f"Error deleting {backup['filename']}: {e}")
+                    errors += 1
 
-        print(f"\n✓ Successfully deleted {len(to_delete)} backup(s)")
+            if errors:
+                print(f"\n✗ Deleted {len(to_delete) - errors}, failed {errors}")
+                clean_orphaned_changelogs(dry_run=dry_run)
+                return 1
+
+            print(f"\n✓ Successfully deleted {len(to_delete)} backup(s)")
     else:
         print("\n✓ No backups need to be deleted")
 
@@ -173,6 +216,7 @@ def main():
                 age_str = f"{age_days} days ago"
             print(f"  - {backup['filename']} ({format_size(size)}, {age_str})")
 
+    clean_orphaned_changelogs(dry_run=dry_run)
     return 0
 
 
