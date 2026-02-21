@@ -232,14 +232,14 @@ Use `tools/ha-curl.sh` for API calls (see CLAUDE.md for general usage). Debuggin
 # Check entity state and attributes (last_changed, last_triggered)
 tools/ha-curl.sh /api/states/sensor.entity_name
 
-# Query logbook for recent events (use current date, ISO 8601 UTC)
-tools/ha-curl.sh "/api/logbook/2026-02-20T00:00:00Z?end_time=2026-02-20T12:00:00Z"
+# Query logbook for recent events (ISO 8601 UTC — use today's date)
+# Example: tools/ha-curl.sh "/api/logbook/YYYY-MM-DDT00:00:00Z?end_time=YYYY-MM-DDT12:00:00Z"
+tools/ha-curl.sh "/api/logbook/$(date -u +%Y-%m-%d)T00:00:00Z"
 
 # Query entity history over a period
-tools/ha-curl.sh "/api/history/period/2026-02-20T00:00:00Z?filter_entity_id=sensor.name"
+# Example: tools/ha-curl.sh "/api/history/period/YYYY-MM-DDT00:00:00Z?filter_entity_id=sensor.name"
+tools/ha-curl.sh "/api/history/period/$(date -u +%Y-%m-%d)T00:00:00Z?filter_entity_id=sensor.name"
 ```
-
-**Note:** Replace dates above with the current date/time in UTC when running queries.
 
 ### Bypass Validation for New Entities
 

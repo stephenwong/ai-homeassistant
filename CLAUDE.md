@@ -190,27 +190,6 @@ Alert automations typically use **zoned** sensors. An object detected on camera 
 
 Increase both for false alerts (passing cars, jitter). After changes: `make push` then restart Frigate addon.
 
-## Automation Quick Reference
-
-For full automation reference (structure, modes, triggers, patterns), see the `home-assistant-automation` skill.
-
-### Key Templates
-```yaml
-states('entity_id')              # Get state
-is_state('entity_id', 'value')   # Boolean check
-| float(0)                       # Convert with default
-| default(omit)                  # Omit if undefined (for optional script params)
-```
-
-### Debug Logging
-```yaml
-- action: script.debug_log
-  data:
-    message: "Camera started streaming"
-    severity: info  # info (default), warn, error
-    entity: camera.front_door  # optional context
-```
-
 ## CI/CD
 
 GitHub Actions (`.github/workflows/test.yml`) runs on push/PR:
