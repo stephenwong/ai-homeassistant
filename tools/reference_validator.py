@@ -367,7 +367,7 @@ class ReferenceValidator(ValidatorBase):
                 return {}
 
             try:
-                with open(registry_file) as f:
+                with open(registry_file, encoding="utf-8") as f:
                     data = json.load(f)
                     self._entities = {
                         entity["entity_id"]: entity
@@ -388,7 +388,7 @@ class ReferenceValidator(ValidatorBase):
                 return {}
 
             try:
-                with open(registry_file) as f:
+                with open(registry_file, encoding="utf-8") as f:
                     data = json.load(f)
                     self._devices = {
                         device["id"]: device
@@ -409,7 +409,7 @@ class ReferenceValidator(ValidatorBase):
                 return {}
 
             try:
-                with open(registry_file) as f:
+                with open(registry_file, encoding="utf-8") as f:
                     data = json.load(f)
                     self._areas = {
                         area["id"]: area

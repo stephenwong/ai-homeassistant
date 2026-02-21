@@ -138,6 +138,46 @@ class TestGroupByRetentionPeriod:
         for week_key in groups["weekly"]:
             assert "W00" not in week_key
 
+    def test_exactly_7_days_old_is_keep_all(self):
+        """A backup exactly 7 days old should be in keep_all, not daily."""
+        now = datetime(2026, 2, 12, 12, 0, 0)
+        backups = [
+            {"timestamp": now - timedelta(days=7), "filename": "b_7d"},
+        ]
+        groups = group_by_retention_period(backups, now)
+        assert len(groups["keep_all"]) == 1
+        assert sum(len(v) for v in groups["daily"].values()) == 0
+
+    def test_8_days_old_is_daily(self):
+        """A backup 8 days old should be in daily, not keep_all."""
+        now = datetime(2026, 2, 12, 12, 0, 0)
+        backups = [
+            {"timestamp": now - timedelta(days=8), "filename": "b_8d"},
+        ]
+        groups = group_by_retention_period(backups, now)
+        assert len(groups["keep_all"]) == 0
+        assert sum(len(v) for v in groups["daily"].values()) == 1
+
+    def test_exactly_30_days_old_is_daily(self):
+        """A backup exactly 30 days old should be in daily, not weekly."""
+        now = datetime(2026, 2, 12, 12, 0, 0)
+        backups = [
+            {"timestamp": now - timedelta(days=30), "filename": "b_30d"},
+        ]
+        groups = group_by_retention_period(backups, now)
+        assert sum(len(v) for v in groups["daily"].values()) == 1
+        assert sum(len(v) for v in groups["weekly"].values()) == 0
+
+    def test_31_days_old_is_weekly(self):
+        """A backup 31 days old should be in weekly, not daily."""
+        now = datetime(2026, 2, 12, 12, 0, 0)
+        backups = [
+            {"timestamp": now - timedelta(days=31), "filename": "b_31d"},
+        ]
+        groups = group_by_retention_period(backups, now)
+        assert sum(len(v) for v in groups["daily"].values()) == 0
+        assert sum(len(v) for v in groups["weekly"].values()) == 1
+
 
 class TestApplyRetention:
     def test_keep_all_recent(self):
