@@ -1,6 +1,7 @@
 """Tests for tools/reload_config.py - HA config reload via API."""
 
-from unittest.mock import MagicMock, patch
+import subprocess
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 import requests
@@ -80,6 +81,21 @@ class TestDetectChangedServices:
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout=""),
                 MagicMock(returncode=0, stdout="?? config/automations.yaml\n"),
+            ]
+            result = detect_changed_services()
+        assert result == {"automation/reload"}
+
+    def test_timeout_on_diff_returns_none(self):
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="git", timeout=10)
+            result = detect_changed_services()
+        assert result is None
+
+    def test_timeout_on_status_returns_diff_result(self):
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                MagicMock(returncode=0, stdout="config/automations.yaml\n"),
+                subprocess.TimeoutExpired(cmd="git", timeout=10),
             ]
             result = detect_changed_services()
         assert result == {"automation/reload"}
@@ -328,3 +344,30 @@ class TestReloadConfig:
             reload_config()
         out = capsys.readouterr().out
         assert "❌ scripts failed to reload" in out
+
+    def test_core_config_reloads_before_domain_services(self):
+        call_order = []
+
+        def post_side_effect(url, **kwargs):
+            if "reload_core_config" in url:
+                call_order.append("core")
+            else:
+                call_order.append("domain")
+            return MagicMock(status_code=200)
+
+        with (
+            patch.dict(
+                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
+            ),
+            patch("tools.reload_config.load_env_file"),
+            patch(
+                "tools.reload_config.detect_changed_services",
+                return_value={"homeassistant/reload_core_config", "automation/reload"},
+            ),
+            patch("tools.reload_config.requests.post", side_effect=post_side_effect),
+        ):
+            result = reload_config()
+
+        assert result is True
+        assert call_order[0] == "core"
+        assert "domain" in call_order[1:]
