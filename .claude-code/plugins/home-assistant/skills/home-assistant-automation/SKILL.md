@@ -60,7 +60,7 @@ Structured workflow for creating and modifying Home Assistant automations and sc
 
 **Always start here.** Before writing ANY automation or script:
 
-For major changes, use `home-assistant-backup` skill first (pull, backup, prune).
+**Always** use `home-assistant-backup` skill first (pull, backup, prune) — even for small changes. No exceptions.
 
 ```bash
 # 1. Find similar automations/scripts by keyword

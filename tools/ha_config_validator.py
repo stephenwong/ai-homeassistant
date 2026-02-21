@@ -136,8 +136,7 @@ class HAConfigValidator(ValidatorBase):
             if any(x in line.lower() for x in ["debug", "info", "starting"]):
                 continue
 
-            if line:
-                self.errors.append(f"HA Error: {line}")
+            self.errors.append(f"HA Error: {line}")
 
     def run_basic_validation(self) -> bool:
         """Run basic configuration validation without HA."""
