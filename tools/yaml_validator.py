@@ -3,6 +3,7 @@
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -39,13 +40,13 @@ class YAMLValidator(ValidatorBase):
             self.errors.append(f"{file_path}: File must be UTF-8 encoded")
             return False
 
-    def validate_configuration_structure(self, file_path: Path) -> bool:
+    def validate_configuration_structure(self, file_path: Path, data: Any) -> bool:
         """Validate basic Home Assistant configuration.yaml structure."""
         if file_path.name != "configuration.yaml":
             return True
 
         try:
-            config = self.load_yaml(file_path)
+            config = data
 
             if not isinstance(config, dict):
                 self.errors.append(f"{file_path}: Configuration must be a dictionary")
@@ -70,13 +71,13 @@ class YAMLValidator(ValidatorBase):
             self.errors.append(f"{file_path}: Failed to validate structure - {e}")
             return False
 
-    def validate_automations_structure(self, file_path: Path) -> bool:
+    def validate_automations_structure(self, file_path: Path, data: Any) -> bool:
         """Validate automations.yaml structure."""
         if file_path.name != "automations.yaml":
             return True
 
         try:
-            automations = self.load_yaml(file_path)
+            automations = data
 
             if automations is None:
                 return True  # Empty file is valid
@@ -92,13 +93,13 @@ class YAMLValidator(ValidatorBase):
             )
             return False
 
-    def validate_scripts_structure(self, file_path: Path) -> bool:
+    def validate_scripts_structure(self, file_path: Path, data: Any) -> bool:
         """Validate scripts.yaml structure."""
         if file_path.name != "scripts.yaml":
             return True
 
         try:
-            scripts = self.load_yaml(file_path)
+            scripts = data
 
             if scripts is None:
                 return True  # Empty file is valid
@@ -132,18 +133,26 @@ class YAMLValidator(ValidatorBase):
             if file_path.name == "secrets.yaml":
                 continue
 
-            if not self.validate_file_encoding(file_path):
+            # Parse once; catches encoding errors and YAML syntax errors
+            try:
+                data = self.load_yaml(file_path)
+            except yaml.YAMLError as e:
+                self.errors.append(f"{file_path}: YAML syntax error - {e}")
+                all_valid = False
+                continue
+            except UnicodeDecodeError as e:
+                self.errors.append(f"{file_path}: Encoding error - {e}")
+                all_valid = False
+                continue
+            except Exception as e:
+                self.errors.append(f"{file_path}: Unexpected error - {e}")
                 all_valid = False
                 continue
 
-            if not self.validate_yaml_syntax(file_path):
-                all_valid = False
-                continue
-
-            # Structure validation for specific files
-            self.validate_configuration_structure(file_path)
-            self.validate_automations_structure(file_path)
-            self.validate_scripts_structure(file_path)
+            # Structure validation for specific files (data already parsed)
+            self.validate_configuration_structure(file_path, data)
+            self.validate_automations_structure(file_path, data)
+            self.validate_scripts_structure(file_path, data)
 
         return all_valid
 

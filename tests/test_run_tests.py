@@ -198,25 +198,14 @@ class TestPrintSummary:
 
 class TestCheckDependencies:
     def test_all_present(self, runner):
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        with patch("tools.run_tests.subprocess.run", return_value=mock_result):
+        with patch("tools.run_tests.importlib.util.find_spec", return_value=object()):
             assert runner.check_dependencies() is True
 
     def test_missing_module(self, runner, capsys):
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        with patch("tools.run_tests.subprocess.run", return_value=mock_result):
+        with patch("tools.run_tests.importlib.util.find_spec", return_value=None):
             assert runner.check_dependencies() is False
             captured = capsys.readouterr()
             assert "Missing" in captured.out
-
-    def test_exception_during_check(self, runner, capsys):
-        with patch(
-            "tools.run_tests.subprocess.run",
-            side_effect=Exception("broken"),
-        ):
-            assert runner.check_dependencies() is False
 
 
 class TestRun:
