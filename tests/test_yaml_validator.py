@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tools.yaml_validator import YAMLValidator
 
@@ -57,30 +58,34 @@ class TestValidateConfigurationStructure:
     def test_non_configuration_yaml_skipped(self, config_dir, validator):
         f = config_dir / "other.yaml"
         f.write_text("key: value")
-        assert validator.validate_configuration_structure(f) is True
+        assert validator.validate_configuration_structure(f, {"key": "value"}) is True
 
     def test_valid_configuration(self, config_dir, validator):
         f = config_dir / "configuration.yaml"
-        f.write_text("homeassistant:\n  name: Test\n")
-        assert validator.validate_configuration_structure(f) is True
+        content = "homeassistant:\n  name: Test\n"
+        f.write_text(content)
+        assert validator.validate_configuration_structure(f, yaml.safe_load(content)) is True
         assert len(validator.errors) == 0
 
     def test_configuration_not_dict(self, config_dir, validator):
         f = config_dir / "configuration.yaml"
-        f.write_text("- item1\n- item2\n")
-        assert validator.validate_configuration_structure(f) is False
+        content = "- item1\n- item2\n"
+        f.write_text(content)
+        assert validator.validate_configuration_structure(f, yaml.safe_load(content)) is False
         assert any("must be a dictionary" in e for e in validator.errors)
 
     def test_configuration_missing_homeassistant(self, config_dir, validator):
         f = config_dir / "configuration.yaml"
-        f.write_text("logger:\n  default: info\n")
-        validator.validate_configuration_structure(f)
+        content = "logger:\n  default: info\n"
+        f.write_text(content)
+        validator.validate_configuration_structure(f, yaml.safe_load(content))
         assert any("homeassistant" in w for w in validator.warnings)
 
     def test_configuration_deprecated_keys(self, config_dir, validator):
         f = config_dir / "configuration.yaml"
-        f.write_text("homeassistant:\n  name: Test\ndiscovery:\nintroduction:\n")
-        validator.validate_configuration_structure(f)
+        content = "homeassistant:\n  name: Test\ndiscovery:\nintroduction:\n"
+        f.write_text(content)
+        validator.validate_configuration_structure(f, yaml.safe_load(content))
         assert any("discovery" in w and "deprecated" in w for w in validator.warnings)
         assert any(
             "introduction" in w and "deprecated" in w for w in validator.warnings
@@ -88,8 +93,9 @@ class TestValidateConfigurationStructure:
 
     def test_configuration_homeassistant_not_dict(self, config_dir, validator):
         f = config_dir / "configuration.yaml"
-        f.write_text("homeassistant: null\n")
-        validator.validate_configuration_structure(f)
+        content = "homeassistant: null\n"
+        f.write_text(content)
+        validator.validate_configuration_structure(f, yaml.safe_load(content))
         assert any("homeassistant" in w for w in validator.warnings)
 
 
@@ -97,25 +103,27 @@ class TestValidateAutomationsStructure:
     def test_non_automations_yaml_skipped(self, config_dir, validator):
         f = config_dir / "other.yaml"
         f.write_text("key: value")
-        assert validator.validate_automations_structure(f) is True
+        assert validator.validate_automations_structure(f, {"key": "value"}) is True
 
     def test_empty_automations(self, config_dir, validator):
         f = config_dir / "automations.yaml"
         f.write_text("")
-        assert validator.validate_automations_structure(f) is True
+        assert validator.validate_automations_structure(f, None) is True
 
     def test_valid_automations(self, config_dir, validator):
         f = config_dir / "automations.yaml"
-        f.write_text(
+        content = (
             "- alias: Test\n  trigger:\n    platform: state\n"
             "  action:\n    service: test\n"
         )
-        assert validator.validate_automations_structure(f) is True
+        f.write_text(content)
+        assert validator.validate_automations_structure(f, yaml.safe_load(content)) is True
 
     def test_automations_not_list(self, config_dir, validator):
         f = config_dir / "automations.yaml"
-        f.write_text("key: value\n")
-        assert validator.validate_automations_structure(f) is False
+        content = "key: value\n"
+        f.write_text(content)
+        assert validator.validate_automations_structure(f, yaml.safe_load(content)) is False
         assert any("must be a list" in e for e in validator.errors)
 
 
@@ -123,22 +131,24 @@ class TestValidateScriptsStructure:
     def test_non_scripts_yaml_skipped(self, config_dir, validator):
         f = config_dir / "other.yaml"
         f.write_text("key: value")
-        assert validator.validate_scripts_structure(f) is True
+        assert validator.validate_scripts_structure(f, {"key": "value"}) is True
 
     def test_empty_scripts(self, config_dir, validator):
         f = config_dir / "scripts.yaml"
         f.write_text("")
-        assert validator.validate_scripts_structure(f) is True
+        assert validator.validate_scripts_structure(f, None) is True
 
     def test_valid_scripts(self, config_dir, validator):
         f = config_dir / "scripts.yaml"
-        f.write_text("my_script:\n  sequence:\n    - service: test\n")
-        assert validator.validate_scripts_structure(f) is True
+        content = "my_script:\n  sequence:\n    - service: test\n"
+        f.write_text(content)
+        assert validator.validate_scripts_structure(f, yaml.safe_load(content)) is True
 
     def test_scripts_not_dict(self, config_dir, validator):
         f = config_dir / "scripts.yaml"
-        f.write_text("- item1\n- item2\n")
-        assert validator.validate_scripts_structure(f) is False
+        content = "- item1\n- item2\n"
+        f.write_text(content)
+        assert validator.validate_scripts_structure(f, yaml.safe_load(content)) is False
         assert any("must be a dictionary" in e for e in validator.errors)
 
 

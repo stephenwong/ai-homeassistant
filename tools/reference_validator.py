@@ -39,6 +39,19 @@ class ReferenceValidator(ValidatorBase):
     # See: https://www.home-assistant.io/integrations/zone/
     BUILTIN_ENTITIES = {"sun.sun", "zone.home"}
 
+    _TEMPLATE_PATTERNS = [
+        re.compile(p)
+        for p in [
+            r"states\('([^']+)'\)",
+            r'states\("([^"]+)"\)',
+            r"states\.([a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*)",
+            r"is_state\('([^']+)'",
+            r'is_state\("([^"]+)"',
+            r"state_attr\('([^']+)'",
+            r'state_attr\("([^"]+)"',
+        ]
+    ]
+
     def __init__(self, config_dir: str = "config"):
         """Initialize the ReferenceValidator."""
         super().__init__(config_dir)
@@ -496,22 +509,8 @@ class ReferenceValidator(ValidatorBase):
         """Extract entity references from Jinja2 templates."""
         entities = set()
 
-        # Common patterns for entity references in templates
-        patterns = [
-            r"states\('([^']+)'\)",  # states('entity.id')
-            r'states\("([^"]+)"\)',  # states("entity.id")
-            # states.domain.entity
-            r"states\.([a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*)",
-            r"is_state\('([^']+)'",  # is_state('entity.id', ...)
-            r'is_state\("([^"]+)"',  # is_state("entity.id", ...)
-            r"state_attr\('([^']+)'",  # state_attr('entity.id', ...)
-            r'state_attr\("([^"]+)"',  # state_attr("entity.id", ...)
-        ]
-
-        for pattern in patterns:
-            matches = re.findall(pattern, template)
-            for match in matches:
-                # Validate entity ID format
+        for pattern in self._TEMPLATE_PATTERNS:
+            for match in pattern.findall(template):
                 if "." in match and len(match.split(".")) == 2:
                     entities.add(match)
 

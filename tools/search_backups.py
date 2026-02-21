@@ -12,6 +12,7 @@ Usage:
 import argparse
 import re
 import tarfile
+from concurrent.futures import ThreadPoolExecutor
 
 from tools.prune_backups import get_backups
 
@@ -100,27 +101,40 @@ def main():
     print(f"Searching {len(backups)} backups for: {args.pattern} ({file_type})\n")
 
     match_count = 0
-    for backup in backups:
-        date_str = backup["timestamp"].strftime("%b %d")
-        matches = search_backup(
-            backup, pattern, yaml_only=yaml_only, context_lines=args.context
-        )
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            (
+                backup,
+                executor.submit(
+                    search_backup,
+                    backup,
+                    pattern,
+                    yaml_only=yaml_only,
+                    context_lines=args.context,
+                ),
+            )
+            for backup in backups
+        ]
 
-        if matches:
-            match_count += 1
-            print(f"  MATCH  {backup['filename']} ({date_str})")
-            if not args.files_only:
-                for m in matches:
-                    if args.context > 0 and "context_before" in m:
-                        for ctx_line in m["context_before"]:
-                            print(f"           {m['file']}:     {ctx_line}")
-                    print(f"         {m['file']}:{m['line_num']}:{m['line']}")
-                    if args.context > 0 and "context_after" in m:
-                        for ctx_line in m["context_after"]:
-                            print(f"           {m['file']}:     {ctx_line}")
-                print()
-        else:
-            print(f"  ----   {backup['filename']} ({date_str})")
+        for backup, future in futures:
+            date_str = backup["timestamp"].strftime("%b %d")
+            matches = future.result()
+
+            if matches:
+                match_count += 1
+                print(f"  MATCH  {backup['filename']} ({date_str})")
+                if not args.files_only:
+                    for m in matches:
+                        if args.context > 0 and "context_before" in m:
+                            for ctx_line in m["context_before"]:
+                                print(f"           {m['file']}:     {ctx_line}")
+                        print(f"         {m['file']}:{m['line_num']}:{m['line']}")
+                        if args.context > 0 and "context_after" in m:
+                            for ctx_line in m["context_after"]:
+                                print(f"           {m['file']}:     {ctx_line}")
+                    print()
+            else:
+                print(f"  ----   {backup['filename']} ({date_str})")
 
     print(f"\nFound in {match_count} of {len(backups)} backups")
     return 0

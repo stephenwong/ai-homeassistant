@@ -5,6 +5,8 @@ Runs all validators and provides a comprehensive report.
 """
 
 import argparse
+import concurrent.futures
+import importlib.util
 import subprocess
 import sys
 import time
@@ -69,7 +71,7 @@ class ValidationTestRunner:
             return (False, "", f"Failed to run validator: {e}", duration)
 
     def run_all_tests(self) -> bool:
-        """Run all validation tests."""
+        """Run all validation tests in parallel."""
         validators = [
             ("yaml_validator.py", "YAML Syntax Validation"),
             ("reference_validator.py", "Entity/Device Reference Validation"),
@@ -79,38 +81,45 @@ class ValidationTestRunner:
             ),
         ]
 
-        all_passed = True
-        total_duration = 0.0
-
         print("🔍 Running Home Assistant Configuration Validation Tests")
         print("=" * 60)
         print()
+        print("Running all validators in parallel...")
+        print()
 
-        for script_name, description in validators:
-            print(f"Running {description}...")
+        overall_start = time.time()
 
-            passed, stdout, stderr, duration = self.run_validator(
-                script_name, description
-            )
-            total_duration += duration
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_list = [
+                (
+                    script_name,
+                    description,
+                    executor.submit(self.run_validator, script_name, description),
+                )
+                for script_name, description in validators
+            ]
 
-            self.results[script_name] = {
-                "description": description,
-                "passed": passed,
-                "stdout": stdout,
-                "stderr": stderr,
-                "duration": duration,
-            }
+            all_passed = True
+            for script_name, description, future in future_list:
+                passed, stdout, stderr, duration = future.result()
 
-            if passed:
-                print(f"  ✅ PASSED ({duration:.2f}s)")
-            else:
-                print(f"  ❌ FAILED ({duration:.2f}s)")
-                all_passed = False
+                self.results[script_name] = {
+                    "description": description,
+                    "passed": passed,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "duration": duration,
+                }
 
-            print()
+                if passed:
+                    print(f"  ✅ {description}: PASSED ({duration:.2f}s)")
+                else:
+                    print(f"  ❌ {description}: FAILED ({duration:.2f}s)")
+                    all_passed = False
 
-        print(f"Total execution time: {total_duration:.2f}s")
+        overall_duration = time.time() - overall_start
+        print()
+        print(f"Total execution time: {overall_duration:.2f}s (parallel)")
         print("=" * 60)
 
         return all_passed
@@ -163,24 +172,15 @@ class ValidationTestRunner:
 
     def check_dependencies(self) -> bool:
         """Check if all required dependencies are available."""
-        python_exe = self.get_python_executable()
-
         required_modules = ["yaml", "voluptuous", "jsonschema"]
-        missing_modules = []
-
-        for module in required_modules:
-            try:
-                result = subprocess.run(
-                    [python_exe, "-c", f"import {module}"],
-                    capture_output=True,
-                    timeout=10,
-                )
-                if result.returncode != 0:
-                    missing_modules.append(module)
-            except Exception:
-                missing_modules.append(module)
+        missing_modules = [
+            module
+            for module in required_modules
+            if importlib.util.find_spec(module) is None
+        ]
 
         if missing_modules:
+            python_exe = self.get_python_executable()
             modules_str = ", ".join(missing_modules)
             print(f"❌ Missing required Python modules: {modules_str}")
             print("Please install them with:")
