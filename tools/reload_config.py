@@ -55,7 +55,7 @@ def detect_changed_services(config_dir="config") -> set[str] | None:
                 p = Path(line.strip())
                 if len(p.parts) == 2 and p.parts[0] == config_dir:
                     changed_files.add(p.name)
-    except (FileNotFoundError, OSError):
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         return None
 
     # Also check git status for untracked files not shown by git diff HEAD
@@ -73,7 +73,7 @@ def detect_changed_services(config_dir="config") -> set[str] | None:
                     p = Path(line[3:].strip())
                     if len(p.parts) == 2 and p.parts[0] == config_dir:
                         changed_files.add(p.name)
-    except (FileNotFoundError, OSError):
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         pass
 
     services: set[str] = set()
@@ -116,10 +116,22 @@ def reload_config() -> bool:
     labels = sorted(SERVICE_LABELS.get(s, s) for s in services)
     print(f"🔄 Reloading: {', '.join(labels)}")
 
-    with ThreadPoolExecutor() as executor:
-        results = list(
-            executor.map(lambda s: reload_service(s, ha_url, headers), services)
-        )
+    # reload_core_config must run before domain reloads — automations/scripts
+    # reference helpers and integrations that core config sets up.
+    core_service = "homeassistant/reload_core_config"
+    domain_services = services - {core_service}
+    results = []
+
+    if core_service in services:
+        results.append(reload_service(core_service, ha_url, headers))
+
+    if domain_services:
+        with ThreadPoolExecutor() as executor:
+            results.extend(
+                executor.map(
+                    lambda s: reload_service(s, ha_url, headers), domain_services
+                )
+            )
 
     all_ok = True
     for service, ok in results:
