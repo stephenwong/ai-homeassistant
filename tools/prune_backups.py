@@ -60,10 +60,10 @@ def group_by_retention_period(backups, now):
     for backup in backups:
         age = now - backup["timestamp"]
 
-        if age.days < 7:
+        if age.days <= 7:
             # Keep all from last 7 days
             groups["keep_all"].append(backup)
-        elif age.days < 30:
+        elif age.days <= 30:
             # Group by day (YYYY-MM-DD)
             day_key = backup["timestamp"].strftime("%Y-%m-%d")
             groups["daily"][day_key].append(backup)
