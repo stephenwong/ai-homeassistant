@@ -74,8 +74,6 @@ def categorize_entities(entities: list[dict], area_names: dict[str, str]) -> dic
         "camera",
         "person",
         "device_tracker",
-        "binary_sensor",
-        "sensor",
         "media_player",
         "scene",
         "script",
