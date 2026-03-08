@@ -228,3 +228,16 @@ class TestValidateAll:
             return_value=mock_result,
         ):
             assert validator.validate_all() is True
+
+
+class TestTimeoutConfiguration:
+    def test_uses_timeout_from_env(self, config_dir, monkeypatch):
+        monkeypatch.setenv("HA_VALIDATION_TIMEOUT", "240")
+        v = HAOfficialValidator(str(config_dir))
+        assert v.validation_timeout == 240
+
+    def test_invalid_timeout_warns_and_falls_back(self, config_dir, monkeypatch):
+        monkeypatch.setenv("HA_VALIDATION_TIMEOUT", "bad")
+        v = HAOfficialValidator(str(config_dir))
+        assert v.validation_timeout == 120
+        assert any("HA_VALIDATION_TIMEOUT" in warning for warning in v.warnings)

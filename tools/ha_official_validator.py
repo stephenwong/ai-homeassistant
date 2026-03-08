@@ -9,13 +9,25 @@ import argparse
 import subprocess
 import sys
 
-from tools.common import ValidatorBase
+from tools.common import ValidatorBase, get_env_int
 
 
 class HAOfficialValidator(ValidatorBase):
     """Validates Home Assistant configuration using the official HA package."""
 
     validator_name = "Home Assistant configuration"
+
+    def __init__(self, config_dir: str = "config"):
+        """Initialize validator and timeout configuration."""
+        super().__init__(config_dir)
+        self.validation_timeout = self._get_timeout("HA_VALIDATION_TIMEOUT", 120)
+
+    def _get_timeout(self, env_name: str, default: int) -> int:
+        """Read timeout env vars with validation."""
+        timeout, warning = get_env_int(env_name, default)
+        if warning:
+            self.warnings.append(warning)
+        return timeout
 
     def run_ha_check_config(self) -> bool:
         """Run Home Assistant's official check_config script."""
@@ -36,7 +48,7 @@ class HAOfficialValidator(ValidatorBase):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=self.validation_timeout,
                 cwd=str(self.config_dir),
             )
 
@@ -47,7 +59,10 @@ class HAOfficialValidator(ValidatorBase):
             return result.returncode == 0
 
         except subprocess.TimeoutExpired:
-            self.errors.append("Home Assistant configuration check timed out")
+            self.errors.append(
+                "Home Assistant configuration check timed out "
+                f"after {self.validation_timeout} seconds"
+            )
             return False
         except FileNotFoundError:
             self.errors.append(

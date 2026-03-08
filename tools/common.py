@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -70,6 +71,8 @@ HAYamlLoader.add_constructor("!include_dir_list", include_dir_list_constructor)
 HAYamlLoader.add_constructor("!input", input_constructor)
 HAYamlLoader.add_constructor("!secret", secret_constructor)
 
+DEFAULT_HA_URL = "http://homeassistant.local:8123"
+
 
 def load_env_file():
     """Load environment variables from .env file."""
@@ -82,6 +85,40 @@ def load_env_file():
                     key, value = line.split("=", 1)
                     if key.strip():
                         os.environ[key.strip()] = value.strip().strip('"').strip("'")
+
+
+def get_env_int(name: str, default: int, *, minimum: int = 1) -> tuple[int, str | None]:
+    """Read an integer env var with validation and fallback.
+
+    Returns:
+        A tuple of (value, warning). warning is None when the parsed value is valid.
+    """
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default, None
+
+    try:
+        value = int(raw)
+    except ValueError:
+        return default, f"{name} must be an integer, got {raw!r}; using {default}"
+
+    if value < minimum:
+        return (
+            default,
+            f"{name} must be >= {minimum}, got {value}; using {default}",
+        )
+
+    return value, None
+
+
+def validate_ha_url(ha_url: str) -> str | None:
+    """Validate HA URL format and return an error message when invalid."""
+    parsed = urlparse(ha_url)
+    if parsed.scheme not in {"http", "https"}:
+        return "HA_URL must start with http:// or https://"
+    if not parsed.netloc:
+        return "HA_URL must include a hostname"
+    return None
 
 
 class ValidatorBase:

@@ -13,13 +13,26 @@ from typing import Any
 
 import yaml
 
-from tools.common import ValidatorBase
+from tools.common import ValidatorBase, get_env_int
 
 
 class HAConfigValidator(ValidatorBase):
     """Validates Home Assistant configuration using HA's check_config tool."""
 
     validator_name = "Home Assistant configuration"
+
+    def __init__(self, config_dir: str = "config"):
+        """Initialize validator and timeout configuration."""
+        super().__init__(config_dir)
+        self.install_check_timeout = self._get_timeout("HA_REQUEST_TIMEOUT", 10)
+        self.validation_timeout = self._get_timeout("HA_VALIDATION_TIMEOUT", 60)
+
+    def _get_timeout(self, env_name: str, default: int) -> int:
+        """Read timeout env vars with validation."""
+        timeout, warning = get_env_int(env_name, default)
+        if warning:
+            self.warnings.append(warning)
+        return timeout
 
     def check_ha_installation(self) -> bool:
         """Check if Home Assistant is available for configuration checking."""
@@ -29,7 +42,7 @@ class HAConfigValidator(ValidatorBase):
                 ["hass", "--version"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=self.install_check_timeout,
             )
             if result.returncode == 0:
                 self.info.append(f"Using Home Assistant: {result.stdout.strip()}")
@@ -43,7 +56,7 @@ class HAConfigValidator(ValidatorBase):
                 ["python", "-m", "homeassistant", "--version"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=self.install_check_timeout,
             )
             if result.returncode == 0:
                 self.info.append(f"Using Home Assistant: {result.stdout.strip()}")
@@ -70,7 +83,12 @@ class HAConfigValidator(ValidatorBase):
                 "--script",
                 "check_config",
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.validation_timeout,
+            )
 
             if result.returncode != 0 and "No module named" in result.stderr:
                 # Try alternative command
@@ -83,7 +101,12 @@ class HAConfigValidator(ValidatorBase):
                     "--script",
                     "check_config",
                 ]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.validation_timeout,
+                )
 
             # Parse output
             if result.stdout:
@@ -95,7 +118,10 @@ class HAConfigValidator(ValidatorBase):
             return result.returncode == 0
 
         except subprocess.TimeoutExpired:
-            self.errors.append("Home Assistant configuration check timed out")
+            self.errors.append(
+                "Home Assistant configuration check timed out "
+                f"after {self.validation_timeout} seconds"
+            )
             return False
         except Exception as e:
             self.errors.append(f"Failed to run HA config check: {e}")

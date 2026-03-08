@@ -133,8 +133,15 @@ class TestGetConfigDefinedEntities:
         (setup_config / "configuration.yaml").write_text("template: !bad_tag\n")
         v = ReferenceValidator(str(setup_config))
         entities = v.get_config_defined_entities()
-        # Should handle gracefully (exceptions are caught)
+        # Should handle gracefully and surface warning context.
         assert isinstance(entities, set)
+        assert any("Failed to extract entity definitions" in w for w in v.warnings)
+
+    def test_reports_config_defined_entity_summary(self, setup_config):
+        (setup_config / "configuration.yaml").write_text("group:\n  test_group: {}\n")
+        v = ReferenceValidator(str(setup_config))
+        v.get_config_defined_entities()
+        assert any("Config-defined entities:" in info for info in v.info)
 
 
 class TestLoadRegistries:

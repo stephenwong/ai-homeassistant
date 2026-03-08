@@ -10,39 +10,57 @@ import os
 
 import requests
 
-from tools.common import load_env_file
+from tools.common import DEFAULT_HA_URL, get_env_int, load_env_file, validate_ha_url
 
 
 def get_config():
     """Load configuration from environment."""
     load_env_file()
+    request_timeout, timeout_warning = get_env_int("HA_REQUEST_TIMEOUT", 10)
+    if timeout_warning:
+        print(f"⚠️  {timeout_warning}")
     return {
-        "ha_url": os.getenv("HA_URL", "http://homeassistant.local:8123"),
+        "ha_url": os.getenv("HA_URL", DEFAULT_HA_URL),
         "token": os.getenv("HA_TOKEN", ""),
+        "request_timeout": request_timeout,
     }
 
 
-def test_api_connection(ha_url, token):
+def _safe_json_response(response, error_prefix: str):
+    """Parse JSON response, printing a helpful message on decode failures."""
+    try:
+        return response.json()
+    except ValueError:
+        preview = response.text[:100] if response.text else "<empty response>"
+        print(f"{error_prefix} Invalid JSON response: {preview}")
+        return None
+
+
+def test_api_connection(ha_url, token, request_timeout: int = 10):
     """Test basic API connection."""
     print("🔗 Testing API Connection...")
     try:
         headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get(f"{ha_url}/api/", headers=headers, timeout=10)
+        response = requests.get(
+            f"{ha_url}/api/", headers=headers, timeout=request_timeout
+        )
 
         print(f"   Status: {response.status_code}")
         if response.status_code == 200:
-            data = response.json()
+            data = _safe_json_response(response, "   ❌")
+            if data is None:
+                return False
             print(f"   Message: {data.get('message', 'No message')}")
             return True
         else:
             print(f"   Error: {response.text}")
             return False
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"   Exception: {e}")
         return False
 
 
-def test_api_endpoints(ha_url, token):
+def test_api_endpoints(ha_url, token, request_timeout: int = 10):
     """Test various API endpoints to find entity registry access."""
     print("\n🔍 Testing Various API Endpoints...")
 
@@ -63,45 +81,50 @@ def test_api_endpoints(ha_url, token):
     for endpoint, description in endpoints_to_test:
         try:
             print(f"\n   Testing: {endpoint} ({description})")
-            response = requests.get(f"{ha_url}{endpoint}", headers=headers, timeout=10)
+            response = requests.get(
+                f"{ha_url}{endpoint}", headers=headers, timeout=request_timeout
+            )
             print(f"   Status: {response.status_code}")
 
             if response.status_code == 200:
                 successful_endpoints.append(endpoint)
-                try:
-                    data = response.json()
-                    if isinstance(data, list):
-                        print(f"   ✅ List with {len(data)} items")
-                        if len(data) > 0:
-                            print(f"      Sample type: {type(data[0])}")
-                    elif isinstance(data, dict):
-                        keys = list(data.keys())[:5]
-                        print(f"   ✅ Dict with keys: {keys}")
-                    else:
-                        print(f"   ✅ {type(data)}")
-                except Exception:
+                data = _safe_json_response(response, "   ✅")
+                if data is None:
                     print(f"   ✅ Non-JSON response ({len(response.text)} chars)")
+                elif isinstance(data, list):
+                    print(f"   ✅ List with {len(data)} items")
+                    if len(data) > 0:
+                        print(f"      Sample type: {type(data[0])}")
+                elif isinstance(data, dict):
+                    keys = list(data.keys())[:5]
+                    print(f"   ✅ Dict with keys: {keys}")
+                else:
+                    print(f"   ✅ {type(data)}")
             else:
                 print(f"   ❌ {response.text[:100]}")
 
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"   ❌ Exception: {e}")
 
     return successful_endpoints
 
 
-def test_entity_registry_read(ha_url, token):
+def test_entity_registry_read(ha_url, token, request_timeout: int = 10):
     """Test reading entity registry."""
     print("\n📋 Testing Entity Registry Read Access...")
     try:
         headers = {"Authorization": f"Bearer {token}"}
         response = requests.get(
-            f"{ha_url}/api/config/entity_registry", headers=headers, timeout=10
+            f"{ha_url}/api/config/entity_registry",
+            headers=headers,
+            timeout=request_timeout,
         )
 
         print(f"   Status: {response.status_code}")
         if response.status_code == 200:
-            data = response.json()
+            data = _safe_json_response(response, "   ❌")
+            if not isinstance(data, list):
+                return []
             print(f"   ✅ Found {len(data)} entities")
 
             # Sample first 3 entities for inspection
@@ -117,21 +140,25 @@ def test_entity_registry_read(ha_url, token):
         else:
             print(f"   ❌ Error: {response.text}")
             return []
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"   ❌ Exception: {e}")
         return []
 
 
-def test_states_endpoint(ha_url, token):
+def test_states_endpoint(ha_url, token, request_timeout: int = 10):
     """Test the /api/states endpoint to see entity data."""
     print("\n📊 Testing States Endpoint for Entity Info...")
     try:
         headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get(f"{ha_url}/api/states", headers=headers, timeout=10)
+        response = requests.get(
+            f"{ha_url}/api/states", headers=headers, timeout=request_timeout
+        )
 
         print(f"   Status: {response.status_code}")
         if response.status_code == 200:
-            states = response.json()
+            states = _safe_json_response(response, "   ❌")
+            if not isinstance(states, list):
+                return False
             print(f"   ✅ Found {len(states)} states")
 
             # Sample first 3 entities for inspection
@@ -145,12 +172,12 @@ def test_states_endpoint(ha_url, token):
         else:
             print(f"   ❌ Error: {response.text}")
             return False
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"   ❌ Exception: {e}")
         return False
 
 
-def test_entity_rename(ha_url, token, entity_data_list):
+def test_entity_rename(ha_url, token, entity_data_list, request_timeout: int = 10):
     """Test renaming a single entity using multiple methods."""
     print("\n🔄 Testing Entity Rename Methods...")
 
@@ -178,7 +205,7 @@ def test_entity_rename(ha_url, token, entity_data_list):
             f"{ha_url}/api/config/entity_registry/{old_id}",
             headers=headers,
             json=data,
-            timeout=10,
+            timeout=request_timeout,
         )
 
         print(f"   Status: {response.status_code}")
@@ -188,7 +215,7 @@ def test_entity_rename(ha_url, token, entity_data_list):
         else:
             print(f"   ❌ Method 1 failed: {response.text}")
 
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"   ❌ Method 1 exception: {e}")
 
     # Method 2: Update endpoint
@@ -198,7 +225,7 @@ def test_entity_rename(ha_url, token, entity_data_list):
             f"{ha_url}/api/config/entity_registry/update",
             headers=headers,
             json={"entity_id": old_id, "new_entity_id": new_id},
-            timeout=10,
+            timeout=request_timeout,
         )
 
         print(f"   Status: {response.status_code}")
@@ -208,13 +235,15 @@ def test_entity_rename(ha_url, token, entity_data_list):
         else:
             print(f"   ❌ Method 2 failed: {response.text}")
 
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"   ❌ Method 2 exception: {e}")
 
     return False
 
 
-def test_service_call_method(ha_url, token, entity_data_list):
+def test_service_call_method(
+    ha_url, token, entity_data_list, request_timeout: int = 10
+):
     """Test if we can rename via service calls."""
     print("\n🔧 Testing Service Call Method...")
 
@@ -242,7 +271,7 @@ def test_service_call_method(ha_url, token, entity_data_list):
             f"{ha_url}/api/services/homeassistant/update_entity",
             headers=headers,
             json=service_data,
-            timeout=10,
+            timeout=request_timeout,
         )
 
         print(f"   Status: {response.status_code}")
@@ -252,7 +281,7 @@ def test_service_call_method(ha_url, token, entity_data_list):
         else:
             print(f"   ❌ Service call failed: {response.text}")
 
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"   ❌ Exception: {e}")
 
 
@@ -287,6 +316,12 @@ def main():
     config = get_config()
     ha_url = config["ha_url"]
     token = config["token"]
+    request_timeout = config["request_timeout"]
+
+    url_error = validate_ha_url(ha_url)
+    if url_error:
+        print(f"❌ {url_error}")
+        return
 
     if not token:
         print("❌ No HA_TOKEN found in .env file!")
@@ -296,24 +331,24 @@ def main():
     print(f"🔗 Testing connection to: {ha_url}")
 
     # Test 1: Basic connection
-    if not test_api_connection(ha_url, token):
+    if not test_api_connection(ha_url, token, request_timeout):
         print("❌ Basic connection failed - stopping tests")
         return
 
     # Test 2: Explore available endpoints
-    successful_endpoints = test_api_endpoints(ha_url, token)
+    successful_endpoints = test_api_endpoints(ha_url, token, request_timeout)
 
     # Test 3: Entity registry read
-    entity_data = test_entity_registry_read(ha_url, token)
+    entity_data = test_entity_registry_read(ha_url, token, request_timeout)
 
     # Test 4: States endpoint
-    states_work = test_states_endpoint(ha_url, token)
+    states_work = test_states_endpoint(ha_url, token, request_timeout)
 
     # Test 5: Entity rename attempts
-    test_entity_rename(ha_url, token, entity_data)
+    test_entity_rename(ha_url, token, entity_data, request_timeout)
 
     # Test 6: Service call method
-    test_service_call_method(ha_url, token, entity_data)
+    test_service_call_method(ha_url, token, entity_data, request_timeout)
 
     # Test 7: WebSocket method info
     show_websocket_info()

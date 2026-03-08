@@ -62,6 +62,7 @@ class ReferenceValidator(ValidatorBase):
         self._devices: dict[str, Any] | None = None
         self._areas: dict[str, Any] | None = None
         self._restore_entities: set[str] | None = None
+        self._config_defined_entities: set[str] | None = None
 
     @classmethod
     def _slugify_object_id(cls, value: str) -> str:
@@ -128,14 +129,42 @@ class ReferenceValidator(ValidatorBase):
 
     def get_config_defined_entities(self) -> set[str]:
         """Extract entities defined in config files (not in entity registry)."""
+        if self._config_defined_entities is not None:
+            return self._config_defined_entities
+
         entities: set[str] = set()
         entities.update(self.BUILTIN_ENTITIES)
-        entities.update(self._extract_from_configuration())
-        entities.update(self._extract_automation_entities())
-        entities.update(self._extract_script_entities())
-        entities.update(self._extract_scene_entities())
-        entities.update(self._extract_zone_entities())
-        return entities
+        config_entities = self._extract_from_configuration()
+        automation_entities = self._extract_automation_entities()
+        script_entities = self._extract_script_entities()
+        scene_entities = self._extract_scene_entities()
+        zone_entities = self._extract_zone_entities()
+
+        entities.update(config_entities)
+        entities.update(automation_entities)
+        entities.update(script_entities)
+        entities.update(scene_entities)
+        entities.update(zone_entities)
+
+        self.info.append(
+            "Config-defined entities: "
+            f"{len(entities)} total "
+            f"(builtin={len(self.BUILTIN_ENTITIES)}, "
+            f"configuration={len(config_entities)}, "
+            f"automations={len(automation_entities)}, "
+            f"scripts={len(script_entities)}, "
+            f"scenes={len(scene_entities)}, "
+            f"zones={len(zone_entities)})"
+        )
+
+        self._config_defined_entities = entities
+        return self._config_defined_entities
+
+    def _record_extraction_warning(self, source: Path, error: Exception) -> None:
+        """Record entity extraction errors without hiding them."""
+        self.warnings.append(
+            f"{source}: Failed to extract entity definitions - {error}"
+        )
 
     def _extract_from_configuration(self) -> set[str]:
         """Extract entities defined in configuration.yaml."""
@@ -199,8 +228,8 @@ class ReferenceValidator(ValidatorBase):
                                     ) and self._is_valid_object_id(name):
                                         entities.add(f"{sensor_type}.{name}")
 
-        except Exception:
-            pass
+        except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
+            self._record_extraction_warning(config_file, e)
 
         return entities
 
@@ -274,8 +303,8 @@ class ReferenceValidator(ValidatorBase):
                                     )
                                     if object_id:
                                         entities.add(f"automation.{object_id}")
-            except Exception:
-                pass
+            except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
+                self._record_extraction_warning(automations_file, e)
 
         return entities
 
@@ -294,8 +323,8 @@ class ReferenceValidator(ValidatorBase):
                                 script_name, str
                             ) and self._is_valid_object_id(script_name):
                                 entities.add(f"script.{script_name}")
-            except Exception:
-                pass
+            except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
+                self._record_extraction_warning(scripts_file, e)
 
         return entities
 
@@ -320,8 +349,8 @@ class ReferenceValidator(ValidatorBase):
                                     object_id = self._slugify_object_id(str(name))
                                     if object_id:
                                         entities.add(f"scene.{object_id}")
-            except Exception:
-                pass
+            except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
+                self._record_extraction_warning(scenes_file, e)
 
         return entities
 
@@ -349,8 +378,8 @@ class ReferenceValidator(ValidatorBase):
                                         object_id = self._slugify_object_id(str(name))
                                         if object_id:
                                             entities.add(f"zone.{object_id}")
-            except Exception:
-                pass
+            except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
+                self._record_extraction_warning(config_file, e)
 
         # Extract from storage (UI-configured zones)
         zone_storage = self.storage_dir / "core.zone"
@@ -366,8 +395,8 @@ class ReferenceValidator(ValidatorBase):
                                 object_id = self._slugify_object_id(str(name))
                                 if object_id:
                                     entities.add(f"zone.{object_id}")
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
+                self._record_extraction_warning(zone_storage, e)
 
         return entities
 

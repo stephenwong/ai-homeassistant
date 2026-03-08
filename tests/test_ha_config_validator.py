@@ -64,6 +64,19 @@ class TestCheckHAInstallation:
             assert validator.check_ha_installation() is False
 
 
+class TestTimeoutConfiguration:
+    def test_uses_timeout_from_env(self, config_dir, monkeypatch):
+        monkeypatch.setenv("HA_VALIDATION_TIMEOUT", "75")
+        v = HAConfigValidator(str(config_dir))
+        assert v.validation_timeout == 75
+
+    def test_invalid_timeout_env_warns_and_falls_back(self, config_dir, monkeypatch):
+        monkeypatch.setenv("HA_VALIDATION_TIMEOUT", "not-int")
+        v = HAConfigValidator(str(config_dir))
+        assert v.validation_timeout == 60
+        assert any("HA_VALIDATION_TIMEOUT" in warning for warning in v.warnings)
+
+
 class TestParseCheckConfigOutput:
     def test_parse_errors(self, validator):
         validator.parse_check_config_output("ERROR: Something went wrong\n")

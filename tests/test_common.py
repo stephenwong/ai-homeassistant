@@ -8,9 +8,12 @@ from pathlib import Path
 import yaml
 
 from tools.common import (
+    DEFAULT_HA_URL,
     HAYamlLoader,
     ValidatorBase,
+    get_env_int,
     load_env_file,
+    validate_ha_url,
 )
 
 
@@ -106,6 +109,55 @@ class TestLoadEnvFile:
                 env_path.write_text(old_content)
             elif not existed:
                 env_path.unlink(missing_ok=True)
+
+
+class TestGetEnvInt:
+    def test_missing_env_uses_default(self, monkeypatch):
+        monkeypatch.delenv("HA_REQUEST_TIMEOUT", raising=False)
+        value, warning = get_env_int("HA_REQUEST_TIMEOUT", 10)
+        assert value == 10
+        assert warning is None
+
+    def test_valid_integer_env(self, monkeypatch):
+        monkeypatch.setenv("HA_REQUEST_TIMEOUT", "25")
+        value, warning = get_env_int("HA_REQUEST_TIMEOUT", 10)
+        assert value == 25
+        assert warning is None
+
+    def test_invalid_integer_env_warns_and_falls_back(self, monkeypatch):
+        monkeypatch.setenv("HA_REQUEST_TIMEOUT", "abc")
+        value, warning = get_env_int("HA_REQUEST_TIMEOUT", 10)
+        assert value == 10
+        assert warning is not None
+        assert "must be an integer" in warning
+
+    def test_below_minimum_warns_and_falls_back(self, monkeypatch):
+        monkeypatch.setenv("HA_REQUEST_TIMEOUT", "0")
+        value, warning = get_env_int("HA_REQUEST_TIMEOUT", 10)
+        assert value == 10
+        assert warning is not None
+        assert "must be >=" in warning
+
+
+class TestValidateHAURL:
+    def test_valid_http_url(self):
+        assert validate_ha_url("http://homeassistant.local:8123") is None
+
+    def test_valid_https_url(self):
+        assert validate_ha_url("https://example.com") is None
+
+    def test_missing_scheme_is_invalid(self):
+        error = validate_ha_url("homeassistant.local:8123")
+        assert error is not None
+        assert "http://" in error
+
+    def test_missing_host_is_invalid(self):
+        error = validate_ha_url("http://")
+        assert error is not None
+        assert "hostname" in error
+
+    def test_default_ha_url_is_valid(self):
+        assert validate_ha_url(DEFAULT_HA_URL) is None
 
 
 class TestValidatorBase:

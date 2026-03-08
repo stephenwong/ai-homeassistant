@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import requests
+
 import tools.ha_api_diagnostic as diag
 
 
@@ -52,8 +54,18 @@ class TestApiConnection:
     def test_exception(self, capsys):
         with patch(
             "tools.ha_api_diagnostic.requests.get",
-            side_effect=Exception("connection failed"),
+            side_effect=requests.exceptions.RequestException("connection failed"),
         ):
+            result = diag.test_api_connection("http://test:8123", "token")
+            assert result is False
+
+    def test_invalid_json_response(self, capsys):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.side_effect = ValueError("bad json")
+        mock_response.text = "not-json"
+
+        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
             result = diag.test_api_connection("http://test:8123", "token")
             assert result is False
 
@@ -89,7 +101,7 @@ class TestApiEndpoints:
     def test_non_json_response(self, capsys):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.side_effect = Exception("not json")
+        mock_response.json.side_effect = ValueError("not json")
         mock_response.text = "plain text response"
 
         with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
@@ -99,7 +111,7 @@ class TestApiEndpoints:
     def test_exception(self, capsys):
         with patch(
             "tools.ha_api_diagnostic.requests.get",
-            side_effect=Exception("timeout"),
+            side_effect=requests.exceptions.RequestException("timeout"),
         ):
             result = diag.test_api_endpoints("http://test:8123", "token")
             assert len(result) == 0
@@ -134,8 +146,18 @@ class TestEntityRegistryRead:
     def test_exception(self, capsys):
         with patch(
             "tools.ha_api_diagnostic.requests.get",
-            side_effect=Exception("error"),
+            side_effect=requests.exceptions.RequestException("error"),
         ):
+            result = diag.test_entity_registry_read("http://test:8123", "token")
+            assert result == []
+
+    def test_invalid_json(self, capsys):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.side_effect = ValueError("invalid json")
+        mock_response.text = "nope"
+
+        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
             result = diag.test_entity_registry_read("http://test:8123", "token")
             assert result == []
 
@@ -173,8 +195,18 @@ class TestStatesEndpoint:
     def test_exception(self, capsys):
         with patch(
             "tools.ha_api_diagnostic.requests.get",
-            side_effect=Exception("error"),
+            side_effect=requests.exceptions.RequestException("error"),
         ):
+            result = diag.test_states_endpoint("http://test:8123", "token")
+            assert result is False
+
+    def test_invalid_json(self, capsys):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.side_effect = ValueError("invalid json")
+        mock_response.text = "plain text"
+
+        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
             result = diag.test_states_endpoint("http://test:8123", "token")
             assert result is False
 
@@ -208,7 +240,7 @@ class TestEntityRename:
         # Both methods raise exceptions
         with patch(
             "tools.ha_api_diagnostic.requests.post",
-            side_effect=Exception("error"),
+            side_effect=requests.exceptions.RequestException("error"),
         ):
             result = diag.test_entity_rename("http://test:8123", "token", entity_data)
             assert result is False
@@ -245,7 +277,7 @@ class TestServiceCallMethod:
         entity_data = [{"entity_id": "sensor.test"}]
         with patch(
             "tools.ha_api_diagnostic.requests.post",
-            side_effect=Exception("error"),
+            side_effect=requests.exceptions.RequestException("error"),
         ):
             diag.test_service_call_method("http://test:8123", "token", entity_data)
             captured = capsys.readouterr()

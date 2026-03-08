@@ -13,6 +13,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tools.common import get_env_int
+
 
 class ValidationTestRunner:
     """Runs all validation tests and reports results."""
@@ -23,6 +25,15 @@ class ValidationTestRunner:
         self.tools_dir = Path(__file__).parent
         self.venv_dir = self.tools_dir.parent / ".venv"
         self.results: dict[str, dict[str, Any]] = {}
+        self.validator_timeout = self._get_timeout("HA_RUNNER_TIMEOUT", 120)
+
+    @staticmethod
+    def _get_timeout(env_name: str, default: int) -> int:
+        """Read timeout env vars with validation."""
+        timeout, warning = get_env_int(env_name, default)
+        if warning:
+            print(f"⚠️  {warning}")
+        return timeout
 
     def get_python_executable(self) -> str:
         """Get the Python executable from venv if available."""
@@ -44,7 +55,12 @@ class ValidationTestRunner:
 
         start_time = time.time()
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.validator_timeout,
+            )
             end_time = time.time()
             duration = end_time - start_time
 
@@ -61,7 +77,7 @@ class ValidationTestRunner:
             return (
                 False,
                 "",
-                "Validator timed out after 120 seconds",
+                f"Validator timed out after {self.validator_timeout} seconds",
                 duration,
             )
 
