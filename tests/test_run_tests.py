@@ -45,6 +45,20 @@ class TestGetPythonExecutable:
         assert runner.get_python_executable() == sys.executable
 
 
+class TestTimeoutConfiguration:
+    def test_uses_timeout_from_env(self, config_dir, monkeypatch):
+        monkeypatch.setenv("HA_RUNNER_TIMEOUT", "150")
+        runner = ValidationTestRunner(str(config_dir))
+        assert runner.validator_timeout == 150
+
+    def test_invalid_timeout_env_falls_back(self, config_dir, monkeypatch, capsys):
+        monkeypatch.setenv("HA_RUNNER_TIMEOUT", "invalid")
+        runner = ValidationTestRunner(str(config_dir))
+        assert runner.validator_timeout == 120
+        captured = capsys.readouterr()
+        assert "HA_RUNNER_TIMEOUT" in captured.out
+
+
 class TestRunValidator:
     def test_successful_validator(self, runner, tmp_path):
         # Create a dummy script

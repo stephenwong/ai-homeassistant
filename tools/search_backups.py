@@ -10,11 +10,26 @@ Usage:
 """
 
 import argparse
+import os
 import re
 import tarfile
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
+from tools.common import get_env_int
 from tools.prune_backups import get_backups
+
+
+def is_potentially_unsafe_regex(pattern: str) -> bool:
+    """Detect common catastrophic-backtracking regex patterns.
+
+    This intentionally targets only obvious nested-quantifier forms.
+    """
+    nested_quantifier_patterns = [
+        r"\([^)]*[+*][^)]*\)[+*]",  # e.g. (a+)+, (.*)+
+        r"\([^)]*\{[^}]+\}[^)]*\)[+*]",  # e.g. (a{1,3})+
+    ]
+    return any(re.search(expr, pattern) for expr in nested_quantifier_patterns)
 
 
 def search_backup(backup, pattern, yaml_only=True, context_lines=0):
@@ -32,27 +47,55 @@ def search_backup(backup, pattern, yaml_only=True, context_lines=0):
                     continue
 
                 try:
-                    f = tar.extractfile(member)
-                    if f is None:
+                    extracted = tar.extractfile(member)
+                    if extracted is None:
                         continue
-                    content = f.read().decode("utf-8")
-                except (UnicodeDecodeError, KeyError):
+                except KeyError:
                     continue
 
-                lines = content.splitlines()
-                for i, line in enumerate(lines):
-                    if pattern.search(line):
-                        match_entry = {
-                            "file": member.name,
-                            "line_num": i + 1,
-                            "line": line,
-                        }
-                        if context_lines > 0:
-                            start = max(0, i - context_lines)
-                            end = min(len(lines), i + context_lines + 1)
-                            match_entry["context_before"] = lines[start:i]
-                            match_entry["context_after"] = lines[i + 1 : end]
-                        matches.append(match_entry)
+                try:
+                    with extracted:
+                        context_before = deque(maxlen=context_lines)
+                        pending_after = []
+
+                        for line_num, raw_line in enumerate(extracted, start=1):
+                            line = raw_line.decode("utf-8").rstrip("\n")
+
+                            if pending_after:
+                                remaining = []
+                                for pending_match in pending_after:
+                                    pending_match["context_after"].append(line)
+                                    pending_match["_remaining_after"] -= 1
+                                    if pending_match["_remaining_after"] > 0:
+                                        remaining.append(pending_match)
+                                pending_after = remaining
+
+                            if not pattern.search(line):
+                                if context_lines > 0:
+                                    context_before.append(line)
+                                continue
+
+                            match_entry = {
+                                "file": member.name,
+                                "line_num": line_num,
+                                "line": line,
+                            }
+                            if context_lines > 0:
+                                match_entry["context_before"] = list(context_before)
+                                match_entry["context_after"] = []
+                                match_entry["_remaining_after"] = context_lines
+                                pending_after.append(match_entry)
+
+                            matches.append(match_entry)
+
+                            if context_lines > 0:
+                                context_before.append(line)
+                except UnicodeDecodeError:
+                    # Skip non-UTF8 files
+                    continue
+
+            for match in matches:
+                match.pop("_remaining_after", None)
     except (tarfile.TarError, OSError) as e:
         print(f"  Warning: Could not read {backup['filename']}: {e}")
 
@@ -82,6 +125,13 @@ def main():
     )
     args = parser.parse_args()
 
+    if is_potentially_unsafe_regex(args.pattern):
+        print(
+            "Invalid regex pattern: pattern appears unsafe "
+            "(nested quantifiers can cause catastrophic backtracking)"
+        )
+        return 1
+
     try:
         pattern = re.compile(args.pattern)
     except re.error as e:
@@ -100,8 +150,15 @@ def main():
     file_type = "all files" if args.all else "YAML files"
     print(f"Searching {len(backups)} backups for: {args.pattern} ({file_type})\n")
 
-    match_count = 0
-    with ThreadPoolExecutor() as executor:
+    default_workers = min(32, (os.cpu_count() or 1) + 4)
+    max_workers, worker_warning = get_env_int(
+        "BACKUP_SEARCH_MAX_WORKERS", default_workers
+    )
+    if worker_warning:
+        print(f"Warning: {worker_warning}")
+
+    results = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             (
                 backup,
@@ -117,24 +174,26 @@ def main():
         ]
 
         for backup, future in futures:
-            date_str = backup["timestamp"].strftime("%b %d")
-            matches = future.result()
+            results.append((backup, future.result()))
 
-            if matches:
-                match_count += 1
-                print(f"  MATCH  {backup['filename']} ({date_str})")
-                if not args.files_only:
-                    for m in matches:
-                        if args.context > 0 and "context_before" in m:
-                            for ctx_line in m["context_before"]:
-                                print(f"           {m['file']}:     {ctx_line}")
-                        print(f"         {m['file']}:{m['line_num']}:{m['line']}")
-                        if args.context > 0 and "context_after" in m:
-                            for ctx_line in m["context_after"]:
-                                print(f"           {m['file']}:     {ctx_line}")
-                    print()
-            else:
-                print(f"  ----   {backup['filename']} ({date_str})")
+    match_count = sum(1 for _backup, matches in results if matches)
+
+    for backup, matches in results:
+        date_str = backup["timestamp"].strftime("%b %d")
+        if matches:
+            print(f"  MATCH  {backup['filename']} ({date_str})")
+            if not args.files_only:
+                for m in matches:
+                    if args.context > 0 and "context_before" in m:
+                        for ctx_line in m["context_before"]:
+                            print(f"           {m['file']}:     {ctx_line}")
+                    print(f"         {m['file']}:{m['line_num']}:{m['line']}")
+                    if args.context > 0 and "context_after" in m:
+                        for ctx_line in m["context_after"]:
+                            print(f"           {m['file']}:     {ctx_line}")
+                print()
+        else:
+            print(f"  ----   {backup['filename']} ({date_str})")
 
     print(f"\nFound in {match_count} of {len(backups)} backups")
     return 0

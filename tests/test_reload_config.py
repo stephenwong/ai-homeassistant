@@ -206,7 +206,7 @@ class TestReloadConfig:
         ):
             assert reload_config() is False
 
-    def test_generic_exception(self):
+    def test_request_exception(self):
         with (
             patch.dict(
                 "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
@@ -218,8 +218,15 @@ class TestReloadConfig:
             ),
             patch(
                 "tools.reload_config.requests.post",
-                side_effect=RuntimeError("unexpected"),
+                side_effect=requests.exceptions.RequestException("unexpected"),
             ),
+        ):
+            assert reload_config() is False
+
+    def test_invalid_ha_url(self):
+        with (
+            patch.dict("os.environ", {"HA_TOKEN": "test_token", "HA_URL": "not_a_url"}),
+            patch("tools.reload_config.load_env_file"),
         ):
             assert reload_config() is False
 

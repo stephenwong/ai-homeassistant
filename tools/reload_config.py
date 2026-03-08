@@ -14,7 +14,7 @@ from pathlib import Path
 
 import requests
 
-from tools.common import load_env_file
+from tools.common import DEFAULT_HA_URL, get_env_int, load_env_file, validate_ha_url
 
 FILE_TO_SERVICE = {
     "automations.yaml": "automation/reload",
@@ -31,7 +31,9 @@ SERVICE_LABELS = {
 }
 
 
-def detect_changed_services(config_dir="config") -> set[str] | None:
+def detect_changed_services(
+    config_dir="config", git_timeout: int = 10
+) -> set[str] | None:
     """Detect which HA reload services are needed based on git-changed files.
 
     Returns a set of service strings (e.g. {"automation/reload"}),
@@ -46,7 +48,7 @@ def detect_changed_services(config_dir="config") -> set[str] | None:
             cwd=repo_root,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=git_timeout,
         )
         if r.returncode != 0:
             return None
@@ -65,7 +67,7 @@ def detect_changed_services(config_dir="config") -> set[str] | None:
             cwd=repo_root,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=git_timeout,
         )
         if r2.returncode == 0:
             for line in r2.stdout.splitlines():
@@ -83,13 +85,15 @@ def detect_changed_services(config_dir="config") -> set[str] | None:
     return services
 
 
-def reload_service(service: str, ha_url: str, headers: dict) -> tuple[str, bool]:
+def reload_service(
+    service: str, ha_url: str, headers: dict, timeout: int = 30
+) -> tuple[str, bool]:
     """Call a single HA reload service. Returns (service, success)."""
     url = f"{ha_url}/api/services/{service}"
     try:
-        response = requests.post(url, headers=headers, timeout=30)
+        response = requests.post(url, headers=headers, timeout=timeout)
         return (service, response.status_code == 200)
-    except Exception:
+    except requests.RequestException:
         return (service, False)
 
 
@@ -97,8 +101,19 @@ def reload_config() -> bool:
     """Reload Home Assistant configuration via API."""
     load_env_file()
 
-    ha_url = os.getenv("HA_URL", "http://homeassistant.local:8123")
+    ha_url = os.getenv("HA_URL", DEFAULT_HA_URL)
     token = os.getenv("HA_TOKEN", "")
+    git_timeout, git_timeout_warning = get_env_int("HA_GIT_TIMEOUT", 10)
+    reload_timeout, reload_timeout_warning = get_env_int("HA_RELOAD_TIMEOUT", 30)
+
+    for warning in [git_timeout_warning, reload_timeout_warning]:
+        if warning:
+            print(f"⚠️  {warning}")
+
+    url_error = validate_ha_url(ha_url)
+    if url_error:
+        print(f"❌ Error: {url_error}")
+        return False
 
     if not token:
         print("❌ Error: HA_TOKEN not found in environment or .env file")
@@ -108,10 +123,10 @@ def reload_config() -> bool:
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    services = detect_changed_services()
+    services = detect_changed_services(git_timeout=git_timeout)
     if not services:
         print("⚠️  No config changes detected, reloading all domains to be safe")
-        services = ALL_SERVICES
+        services = set(ALL_SERVICES)
 
     labels = sorted(SERVICE_LABELS.get(s, s) for s in services)
     print(f"🔄 Reloading: {', '.join(labels)}")
@@ -123,13 +138,14 @@ def reload_config() -> bool:
     results = []
 
     if core_service in services:
-        results.append(reload_service(core_service, ha_url, headers))
+        results.append(reload_service(core_service, ha_url, headers, reload_timeout))
 
     if domain_services:
         with ThreadPoolExecutor() as executor:
             results.extend(
                 executor.map(
-                    lambda s: reload_service(s, ha_url, headers), domain_services
+                    lambda s: reload_service(s, ha_url, headers, reload_timeout),
+                    domain_services,
                 )
             )
 

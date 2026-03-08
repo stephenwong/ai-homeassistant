@@ -5,7 +5,7 @@ import re
 import tarfile
 from datetime import datetime
 
-from tools.search_backups import search_backup
+from tools.search_backups import is_potentially_unsafe_regex, search_backup
 
 
 def _make_backup(tmp_path, files_dict, name="test.tar.gz"):
@@ -164,6 +164,14 @@ class TestSearchBackup:
         assert matches == []
 
 
+class TestRegexSafety:
+    def test_detects_nested_quantifier_pattern(self):
+        assert is_potentially_unsafe_regex("(a+)+b") is True
+
+    def test_allows_normal_pattern(self):
+        assert is_potentially_unsafe_regex("sensor.temperature") is False
+
+
 class TestSearchBackupsMainFlow:
     """Test the main() function flow with mocked backups."""
 
@@ -283,3 +291,12 @@ class TestSearchBackupsMainFlow:
 
         result = main()
         assert result == 1
+
+    def test_main_unsafe_regex(self, capsys, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["search_backups", "(a+)+b"])
+        from tools.search_backups import main
+
+        result = main()
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "unsafe" in captured.out

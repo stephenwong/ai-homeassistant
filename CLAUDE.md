@@ -76,7 +76,9 @@ Implications: Frigate can use aggressive detection (Hailo), streams use hardware
 **Before feature work:** Use `home-assistant-backup` skill (pull → backup → prune)
 **Creating automations:** Use `home-assistant-automation` skill
 **Debugging issues:** Use `home-assistant-debugging` skill
+**Python changes:** Follow TDD — write tests first, confirm red, then implement
 **Before committing Python changes:** Run `make lint` (or `make lint-fix` to auto-fix)
+**After any changes with concurrency, parallel API calls, multi-step error handling, or HA automation state transitions:** Run `code-review:code-review` skill as "State Machine Auditor" (ordering deps, race conditions, exception handler completeness)
 **Before committing/finishing:** Use `reflect` skill to capture learnings (gotchas, corrections, new patterns)
 
 ## Backups as Version History
@@ -142,8 +144,10 @@ Shell scripts in `config/scripts/` must exist in the local repo, not just on the
 
 ### Lovelace Storage Changes
 `.storage/lovelace` is excluded from rsync push. To edit Lovelace views:
-1. SSH to HA and edit `/config/.storage/lovelace` directly
+1. SSH to HA and edit `/config/.storage/lovelace.lovelace` directly (note: actual filename is `lovelace.lovelace`, not `lovelace`)
 2. Restart HA (required for storage changes)
+
+**The HA Lovelace REST API (`GET/POST /api/lovelace/config`) returns 404 in storage mode** — don't attempt it. SSH + direct file edit is the only approach.
 
 ### DashCast Gotchas
 - **Login screen instead of dashboard:** Need `trusted_users` (not just `allow_bypass_login`) in `auth_providers` when multiple HA users exist. Find user IDs: `grep -A5 '"name":' config/.storage/auth | grep -E '"id"|"name"'`
@@ -169,6 +173,7 @@ Examples: `binary_sensor.home_basement_motion_battery`, `climate.office_living_r
 
 - **Start:** `media_player.play_media` with `media_content_id: "http://<go2rtc>:1984/api/stream.mp4?src=<stream>"` and `media_content_type: "video/mp4"`
 - **Stop:** `media_player.turn_off` (not `media_stop`, which doesn't return to ambient)
+- **Do NOT check `media_content_id` to detect if a Cast stream is active** — HA's Google Cast integration never reliably populates this attribute after `play_media`. The media player often reports `off` with empty `content_id` even while physically showing the stream. For timer-based cleanup, call `turn_off` unconditionally (the start automation's idle/off guard prevents interrupting legitimate user media).
 
 ## Frigate Sensor Naming & False Positive Tuning
 
