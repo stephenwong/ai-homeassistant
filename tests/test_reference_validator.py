@@ -83,12 +83,8 @@ def config_dir(tmp_path):
         "data": {"areas": [{"id": "living_room", "name": "Living Room"}]},
     }
 
-    (storage_dir / "core.entity_registry").write_text(
-        json.dumps(entity_registry_data)
-    )
-    (storage_dir / "core.device_registry").write_text(
-        json.dumps(device_registry_data)
-    )
+    (storage_dir / "core.entity_registry").write_text(json.dumps(entity_registry_data))
+    (storage_dir / "core.device_registry").write_text(json.dumps(device_registry_data))
     (storage_dir / "core.area_registry").write_text(json.dumps(area_registry_data))
 
     return tmp_path
@@ -108,9 +104,7 @@ class TestIsUUIDFormat:
         assert validator.is_uuid_format("sensor.kitchen_motion") is False
         assert validator.is_uuid_format("88a52f17bf43cb276836f06ac5c0744") is False
         assert validator.is_uuid_format("88a52f17bf43cb276836f06ac5c074455") is False
-        assert (
-            validator.is_uuid_format("88a52f17-bf43-cb27-6836-f06ac5c07444") is False
-        )
+        assert validator.is_uuid_format("88a52f17-bf43-cb27-6836-f06ac5c07444") is False
         assert validator.is_uuid_format("gghhiijjkkllmmnnooppqqrrssttuu99") is False
 
 
@@ -292,9 +286,7 @@ class TestShouldSkipEntityValidation:
 
     def test_skips_uuids(self, validator):
         assert (
-            validator.should_skip_entity_validation(
-                "88a52f17bf43cb276836f06ac5c07444"
-            )
+            validator.should_skip_entity_validation("88a52f17bf43cb276836f06ac5c07444")
             is True
         )
 

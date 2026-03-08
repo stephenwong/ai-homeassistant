@@ -63,6 +63,14 @@ class TestCheckHAInstallation:
         ):
             assert validator.check_ha_installation() is False
 
+    def test_hass_permission_error(self, validator):
+        with patch(
+            "tools.ha_config_validator.subprocess.run",
+            side_effect=PermissionError("permission denied"),
+        ):
+            assert validator.check_ha_installation() is False
+            assert any("not found" in w for w in validator.warnings)
+
 
 class TestTimeoutConfiguration:
     def test_uses_timeout_from_env(self, config_dir, monkeypatch):

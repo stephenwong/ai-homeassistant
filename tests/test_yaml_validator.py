@@ -64,14 +64,20 @@ class TestValidateConfigurationStructure:
         f = config_dir / "configuration.yaml"
         content = "homeassistant:\n  name: Test\n"
         f.write_text(content)
-        assert validator.validate_configuration_structure(f, yaml.safe_load(content)) is True
+        assert (
+            validator.validate_configuration_structure(f, yaml.safe_load(content))
+            is True
+        )
         assert len(validator.errors) == 0
 
     def test_configuration_not_dict(self, config_dir, validator):
         f = config_dir / "configuration.yaml"
         content = "- item1\n- item2\n"
         f.write_text(content)
-        assert validator.validate_configuration_structure(f, yaml.safe_load(content)) is False
+        assert (
+            validator.validate_configuration_structure(f, yaml.safe_load(content))
+            is False
+        )
         assert any("must be a dictionary" in e for e in validator.errors)
 
     def test_configuration_missing_homeassistant(self, config_dir, validator):
@@ -117,13 +123,18 @@ class TestValidateAutomationsStructure:
             "  action:\n    service: test\n"
         )
         f.write_text(content)
-        assert validator.validate_automations_structure(f, yaml.safe_load(content)) is True
+        assert (
+            validator.validate_automations_structure(f, yaml.safe_load(content)) is True
+        )
 
     def test_automations_not_list(self, config_dir, validator):
         f = config_dir / "automations.yaml"
         content = "key: value\n"
         f.write_text(content)
-        assert validator.validate_automations_structure(f, yaml.safe_load(content)) is False
+        assert (
+            validator.validate_automations_structure(f, yaml.safe_load(content))
+            is False
+        )
         assert any("must be a list" in e for e in validator.errors)
 
 

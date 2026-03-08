@@ -1,9 +1,8 @@
 """Tests for tools/reload_config.py - HA config reload via API."""
 
 import subprocess
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 import requests
 
 from tools.reload_config import detect_changed_services, reload_config, reload_service
@@ -12,19 +11,25 @@ from tools.reload_config import detect_changed_services, reload_config, reload_s
 class TestDetectChangedServices:
     def test_automations_yaml_returns_automation_reload(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="config/automations.yaml\n")
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout="config/automations.yaml\n"
+            )
             result = detect_changed_services()
         assert result == {"automation/reload"}
 
     def test_scripts_yaml_returns_script_reload(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="config/scripts.yaml\n")
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout="config/scripts.yaml\n"
+            )
             result = detect_changed_services()
         assert result == {"script/reload"}
 
     def test_scenes_yaml_returns_scene_reload(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="config/scenes.yaml\n")
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout="config/scenes.yaml\n"
+            )
             result = detect_changed_services()
         assert result == {"scene/reload"}
 
@@ -38,7 +43,9 @@ class TestDetectChangedServices:
 
     def test_unknown_yaml_returns_reload_core_config(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="config/secrets.yaml\n")
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout="config/secrets.yaml\n"
+            )
             result = detect_changed_services()
         assert result == {"homeassistant/reload_core_config"}
 
@@ -108,20 +115,26 @@ class TestReloadService:
     def test_200_returns_service_and_true(self):
         mock_response = MagicMock(status_code=200)
         with patch("tools.reload_config.requests.post", return_value=mock_response):
-            result = reload_service("automation/reload", "http://test:8123", self._headers())
+            result = reload_service(
+                "automation/reload", "http://test:8123", self._headers()
+            )
         assert result == ("automation/reload", True)
 
     def test_500_returns_service_and_false(self):
         mock_response = MagicMock(status_code=500)
         with patch("tools.reload_config.requests.post", return_value=mock_response):
-            result = reload_service("automation/reload", "http://test:8123", self._headers())
+            result = reload_service(
+                "automation/reload", "http://test:8123", self._headers()
+            )
         assert result == ("automation/reload", False)
 
     def test_timeout_returns_service_and_false(self):
         with patch(
             "tools.reload_config.requests.post", side_effect=requests.exceptions.Timeout
         ):
-            result = reload_service("automation/reload", "http://test:8123", self._headers())
+            result = reload_service(
+                "automation/reload", "http://test:8123", self._headers()
+            )
         assert result == ("automation/reload", False)
 
     def test_connection_error_returns_service_and_false(self):
@@ -129,7 +142,9 @@ class TestReloadService:
             "tools.reload_config.requests.post",
             side_effect=requests.exceptions.ConnectionError,
         ):
-            result = reload_service("automation/reload", "http://test:8123", self._headers())
+            result = reload_service(
+                "automation/reload", "http://test:8123", self._headers()
+            )
         assert result == ("automation/reload", False)
 
 
