@@ -406,6 +406,7 @@ class ReferenceValidator(ValidatorBase):
             registry_file = self.storage_dir / "core.entity_registry"
             if not registry_file.exists():
                 self.errors.append(f"Entity registry not found: {registry_file}")
+                self._entities = {}
                 return {}
 
             try:
@@ -417,6 +418,7 @@ class ReferenceValidator(ValidatorBase):
                     }
             except Exception as e:
                 self.errors.append(f"Failed to load entity registry: {e}")
+                self._entities = {}
                 return {}
 
         return self._entities
@@ -427,6 +429,7 @@ class ReferenceValidator(ValidatorBase):
             registry_file = self.storage_dir / "core.device_registry"
             if not registry_file.exists():
                 self.errors.append(f"Device registry not found: {registry_file}")
+                self._devices = {}
                 return {}
 
             try:
@@ -438,6 +441,7 @@ class ReferenceValidator(ValidatorBase):
                     }
             except Exception as e:
                 self.errors.append(f"Failed to load device registry: {e}")
+                self._devices = {}
                 return {}
 
         return self._devices
@@ -448,6 +452,7 @@ class ReferenceValidator(ValidatorBase):
             registry_file = self.storage_dir / "core.area_registry"
             if not registry_file.exists():
                 self.warnings.append(f"Area registry not found: {registry_file}")
+                self._areas = {}
                 return {}
 
             try:
@@ -459,6 +464,7 @@ class ReferenceValidator(ValidatorBase):
                     }
             except Exception as e:
                 self.warnings.append(f"Failed to load area registry: {e}")
+                self._areas = {}
                 return {}
 
         return self._areas

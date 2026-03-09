@@ -8,66 +8,62 @@ import requests
 from tools.reload_config import detect_changed_services, reload_config, reload_service
 
 
+def _diff_only(stdout):
+    """Return side_effect list: diff returns stdout, status returns empty."""
+    return [
+        MagicMock(returncode=0, stdout=stdout),
+        MagicMock(returncode=0, stdout=""),
+    ]
+
+
 class TestDetectChangedServices:
     def test_automations_yaml_returns_automation_reload(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="config/automations.yaml\n"
-            )
+            mock_run.side_effect = _diff_only("config/automations.yaml\n")
             result = detect_changed_services()
         assert result == {"automation/reload"}
 
     def test_scripts_yaml_returns_script_reload(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="config/scripts.yaml\n"
-            )
+            mock_run.side_effect = _diff_only("config/scripts.yaml\n")
             result = detect_changed_services()
         assert result == {"script/reload"}
 
     def test_scenes_yaml_returns_scene_reload(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="config/scenes.yaml\n"
-            )
+            mock_run.side_effect = _diff_only("config/scenes.yaml\n")
             result = detect_changed_services()
         assert result == {"scene/reload"}
 
     def test_configuration_yaml_returns_reload_core_config(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="config/configuration.yaml\n"
-            )
+            mock_run.side_effect = _diff_only("config/configuration.yaml\n")
             result = detect_changed_services()
         assert result == {"homeassistant/reload_core_config"}
 
     def test_unknown_yaml_returns_reload_core_config(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="config/secrets.yaml\n"
-            )
+            mock_run.side_effect = _diff_only("config/secrets.yaml\n")
             result = detect_changed_services()
         assert result == {"homeassistant/reload_core_config"}
 
     def test_subdir_file_not_included(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="config/blueprints/foo.yaml\n"
-            )
+            mock_run.side_effect = _diff_only("config/blueprints/foo.yaml\n")
             result = detect_changed_services()
         assert result == set()
 
     def test_multiple_files_returns_multiple_services(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout="config/automations.yaml\nconfig/scripts.yaml\n"
+            mock_run.side_effect = _diff_only(
+                "config/automations.yaml\nconfig/scripts.yaml\n"
             )
             result = detect_changed_services()
         assert result == {"automation/reload", "script/reload"}
 
     def test_no_changed_files_returns_empty_set(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="")
+            mock_run.side_effect = _diff_only("")
             result = detect_changed_services()
         assert result == set()
 

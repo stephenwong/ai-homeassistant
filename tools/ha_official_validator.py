@@ -49,7 +49,6 @@ class HAOfficialValidator(ValidatorBase):
                 capture_output=True,
                 text=True,
                 timeout=self.validation_timeout,
-                cwd=str(self.config_dir),
             )
 
             # Parse the output
