@@ -59,10 +59,11 @@ def extract_files(backup_path):
                 if not should_include(member.name):
                     continue
                 try:
-                    f = tar.extractfile(member)
-                    if f is None:
+                    extracted = tar.extractfile(member)
+                    if extracted is None:
                         continue
-                    files[member.name] = f.read().decode("utf-8")
+                    with extracted:
+                        files[member.name] = extracted.read().decode("utf-8")
                 except (UnicodeDecodeError, KeyError):
                     continue
     except (tarfile.TarError, OSError) as e:
