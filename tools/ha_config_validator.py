@@ -15,6 +15,9 @@ import yaml
 
 from tools.common import ValidatorBase, get_env_int
 
+_RE_WORD_ERROR = re.compile(r"\berror\b")
+_RE_WORD_WARNING = re.compile(r"\bwarning\b")
+
 
 class HAConfigValidator(ValidatorBase):
     """Validates Home Assistant configuration using HA's check_config tool."""
@@ -144,9 +147,9 @@ class HAConfigValidator(ValidatorBase):
                 self.warnings.append(f"HA Check: {line}")
             elif "successful" in lower:
                 self.info.append(f"HA Check: {line}")
-            elif re.search(r"\berror\b", lower):
+            elif _RE_WORD_ERROR.search(lower):
                 self.errors.append(f"HA Check: {line}")
-            elif re.search(r"\bwarning\b", lower):
+            elif _RE_WORD_WARNING.search(lower):
                 self.warnings.append(f"HA Check: {line}")
 
     def parse_check_config_errors(self, stderr: str):

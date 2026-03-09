@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Unit tests for reference_validator.py UUID support."""
 
+import builtins
 import json
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -371,3 +373,29 @@ class TestValidateFileWithMixedEntityTypes:
             yaml.dump(automation_data, f)
         assert validator.validate_file_references(test_file) is True
         assert len(validator.errors) == 0
+
+
+class TestConfigDefinedEntitiesEfficiency:
+    def test_configuration_yaml_opened_once(self, tmp_path):
+        """configuration.yaml should be parsed only once even though both
+        _extract_from_configuration and _extract_zone_entities use it."""
+        storage = tmp_path / ".storage"
+        storage.mkdir()
+        (tmp_path / "configuration.yaml").write_text(
+            "zone:\n  - name: Work\ngroup:\n  my_group:\n    entities: []\n"
+        )
+        validator = ReferenceValidator(str(tmp_path))
+
+        open_count = 0
+        real_open = builtins.open
+
+        def spy(path, *args, **kwargs):
+            nonlocal open_count
+            if "configuration.yaml" in str(path):
+                open_count += 1
+            return real_open(path, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=spy):
+            validator.get_config_defined_entities()
+
+        assert open_count == 1
