@@ -178,17 +178,17 @@ format-yaml:
 # Run Python linting and format checks
 lint: check-setup
 	@echo "$(GREEN)Checking Python formatting...$(NC)"
-	@$(UV_RUN) ruff format --check $(TOOLS_PATH)/
+	@$(UV_RUN) ruff format --check $(TOOLS_PATH)/ tests/
 	@echo "$(GREEN)Running Python linter...$(NC)"
-	@$(UV_RUN) ruff check $(TOOLS_PATH)/
+	@$(UV_RUN) ruff check $(TOOLS_PATH)/ tests/
 	@echo "$(GREEN)All lint checks passed!$(NC)"
 
 # Auto-fix Python lint and formatting issues
 lint-fix: check-setup
 	@echo "$(GREEN)Fixing Python formatting...$(NC)"
-	@$(UV_RUN) ruff format $(TOOLS_PATH)/
+	@$(UV_RUN) ruff format $(TOOLS_PATH)/ tests/
 	@echo "$(GREEN)Fixing Python lint issues...$(NC)"
-	@$(UV_RUN) ruff check --fix $(TOOLS_PATH)/
+	@$(UV_RUN) ruff check --fix $(TOOLS_PATH)/ tests/
 	@echo "$(GREEN)Lint fixes applied!$(NC)"
 
 # Clean up temporary files
