@@ -4,7 +4,7 @@ import io
 import tarfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch, wraps
+from unittest.mock import patch
 
 from tools.generate_changelog import (
     changelog_path_for,
@@ -124,7 +124,7 @@ class TestExtractFiles:
         assert "config/binary.yaml" not in files
 
     def test_same_path_not_re_extracted(self, tmp_path):
-        """extract_files should cache results so the same archive is only opened once."""
+        """extract_files caches results so the same archive is only opened once."""
         tar_path = _make_tar(tmp_path, {"config/test.yaml": "content\n"})
         extract_files.cache_clear()
         with patch(
