@@ -4,7 +4,7 @@ import io
 import tarfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, wraps
 
 from tools.generate_changelog import (
     changelog_path_for,
@@ -122,6 +122,18 @@ class TestExtractFiles:
             tar.addfile(info, io.BytesIO(data))
         files = extract_files(tar_path)
         assert "config/binary.yaml" not in files
+
+    def test_same_path_not_re_extracted(self, tmp_path):
+        """extract_files should cache results so the same archive is only opened once."""
+        tar_path = _make_tar(tmp_path, {"config/test.yaml": "content\n"})
+        extract_files.cache_clear()
+        with patch(
+            "tools.generate_changelog.tarfile.open", wraps=tarfile.open
+        ) as mock_open:
+            r1 = extract_files(tar_path)
+            r2 = extract_files(tar_path)
+        assert r1 == r2
+        assert mock_open.call_count == 1
 
 
 class TestGenerateChangelog:

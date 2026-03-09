@@ -9,6 +9,7 @@ Usage:
 
 import argparse
 import difflib
+import functools
 import tarfile
 from pathlib import Path
 
@@ -48,6 +49,7 @@ def should_include(name):
     return ext in INTERESTING_EXTENSIONS or ext == ""
 
 
+@functools.cache
 def extract_files(backup_path):
     """Extract interesting text files from a backup archive. Returns {name: content}."""
     files = {}

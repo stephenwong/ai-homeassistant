@@ -5,6 +5,7 @@ Validates that all entity references in configuration files actually exist.
 """
 
 import argparse
+import concurrent.futures
 import json
 import re
 from pathlib import Path
@@ -134,11 +135,23 @@ class ReferenceValidator(ValidatorBase):
 
         entities: set[str] = set()
         entities.update(self.BUILTIN_ENTITIES)
-        config_entities = self._extract_from_configuration()
-        automation_entities = self._extract_automation_entities()
-        script_entities = self._extract_script_entities()
-        scene_entities = self._extract_scene_entities()
-        zone_entities = self._extract_zone_entities()
+
+        # Load configuration.yaml once; share with both extraction methods that need it.
+        config_data = self._load_config_yaml()
+
+        # Run all five file reads concurrently (each targets a different file).
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            f_config = executor.submit(self._extract_from_configuration, config_data)
+            f_auto = executor.submit(self._extract_automation_entities)
+            f_script = executor.submit(self._extract_script_entities)
+            f_scene = executor.submit(self._extract_scene_entities)
+            f_zone = executor.submit(self._extract_zone_entities, config_data)
+
+        config_entities = f_config.result()
+        automation_entities = f_auto.result()
+        script_entities = f_script.result()
+        scene_entities = f_scene.result()
+        zone_entities = f_zone.result()
 
         entities.update(config_entities)
         entities.update(automation_entities)
@@ -160,76 +173,76 @@ class ReferenceValidator(ValidatorBase):
         self._config_defined_entities = entities
         return self._config_defined_entities
 
+    def _load_config_yaml(self) -> dict | None:
+        """Load and parse configuration.yaml once; shared across extraction methods."""
+        config_file = self.config_dir / "configuration.yaml"
+        if not config_file.exists():
+            return None
+        try:
+            with open(config_file, encoding="utf-8") as f:
+                data = yaml.load(f, Loader=HAYamlLoader)
+            return data if isinstance(data, dict) else None
+        except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
+            self._record_extraction_warning(config_file, e)
+            return None
+
     def _record_extraction_warning(self, source: Path, error: Exception) -> None:
         """Record entity extraction errors without hiding them."""
         self.warnings.append(
             f"{source}: Failed to extract entity definitions - {error}"
         )
 
-    def _extract_from_configuration(self) -> set[str]:
-        """Extract entities defined in configuration.yaml."""
+    def _extract_from_configuration(self, config_data: dict | None) -> set[str]:
+        """Extract entities defined in configuration.yaml from pre-loaded data."""
         entities: set[str] = set()
-        config_file = self.config_dir / "configuration.yaml"
 
-        if not config_file.exists():
+        if not isinstance(config_data, dict):
             return entities
 
-        try:
-            with open(config_file, encoding="utf-8") as f:
-                data = yaml.load(f, Loader=HAYamlLoader)
+        # Extract group entities
+        if "group" in config_data and isinstance(config_data["group"], dict):
+            for group_name in config_data["group"]:
+                if isinstance(group_name, str) and self._is_valid_object_id(group_name):
+                    entities.add(f"group.{group_name}")
 
-            if not isinstance(data, dict):
-                return entities
+        # Extract input helpers
+        for input_type in [
+            "input_boolean",
+            "input_number",
+            "input_text",
+            "input_select",
+            "input_datetime",
+            "input_button",
+        ]:
+            if input_type in config_data and isinstance(config_data[input_type], dict):
+                for name in config_data[input_type]:
+                    if isinstance(name, str) and self._is_valid_object_id(name):
+                        entities.add(f"{input_type}.{name}")
 
-            # Extract group entities
-            if "group" in data and isinstance(data["group"], dict):
-                for group_name in data["group"]:
-                    if isinstance(group_name, str) and self._is_valid_object_id(
-                        group_name
-                    ):
-                        entities.add(f"group.{group_name}")
+        # Extract template entities
+        if "template" in config_data:
+            template_data = config_data["template"]
+            if isinstance(template_data, list):
+                for item in template_data:
+                    entities.update(self._extract_template_entities(item))
+            elif isinstance(template_data, dict):
+                entities.update(self._extract_template_entities(template_data))
 
-            # Extract input helpers
-            for input_type in [
-                "input_boolean",
-                "input_number",
-                "input_text",
-                "input_select",
-                "input_datetime",
-                "input_button",
-            ]:
-                if input_type in data and isinstance(data[input_type], dict):
-                    for name in data[input_type]:
-                        if isinstance(name, str) and self._is_valid_object_id(name):
-                            entities.add(f"{input_type}.{name}")
-
-            # Extract template entities
-            if "template" in data:
-                template_data = data["template"]
-                if isinstance(template_data, list):
-                    for item in template_data:
-                        entities.update(self._extract_template_entities(item))
-                elif isinstance(template_data, dict):
-                    entities.update(self._extract_template_entities(template_data))
-
-            # Extract platform-based sensors/binary_sensors
-            for sensor_type in ["sensor", "binary_sensor"]:
-                if sensor_type in data:
-                    sensor_data = data[sensor_type]
-                    if isinstance(sensor_data, list):
-                        for item in sensor_data:
-                            if isinstance(item, dict) and (
-                                "platform" in item and item["platform"] == "template"
-                            ):
-                                sensors = item.get("sensors", {})
-                                for name in sensors:
-                                    if isinstance(
-                                        name, str
-                                    ) and self._is_valid_object_id(name):
-                                        entities.add(f"{sensor_type}.{name}")
-
-        except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
-            self._record_extraction_warning(config_file, e)
+        # Extract platform-based sensors/binary_sensors
+        for sensor_type in ["sensor", "binary_sensor"]:
+            if sensor_type in config_data:
+                sensor_data = config_data[sensor_type]
+                if isinstance(sensor_data, list):
+                    for item in sensor_data:
+                        if isinstance(item, dict) and (
+                            "platform" in item and item["platform"] == "template"
+                        ):
+                            sensors = item.get("sensors", {})
+                            for name in sensors:
+                                if isinstance(name, str) and self._is_valid_object_id(
+                                    name
+                                ):
+                                    entities.add(f"{sensor_type}.{name}")
 
         return entities
 
@@ -354,7 +367,7 @@ class ReferenceValidator(ValidatorBase):
 
         return entities
 
-    def _extract_zone_entities(self) -> set[str]:
+    def _extract_zone_entities(self, config_data: dict | None) -> set[str]:
         """Extract zone entities from configuration and storage.
 
         Zones can be defined in configuration.yaml or via the UI (.storage/core.zone).
@@ -362,24 +375,17 @@ class ReferenceValidator(ValidatorBase):
         """
         entities: set[str] = set()
 
-        # Extract from configuration.yaml
-        config_file = self.config_dir / "configuration.yaml"
-        if config_file.exists():
-            try:
-                with open(config_file, encoding="utf-8") as f:
-                    data = yaml.load(f, Loader=HAYamlLoader)
-                    if isinstance(data, dict) and "zone" in data:
-                        zone_data = data["zone"]
-                        if isinstance(zone_data, list):
-                            for zone in zone_data:
-                                if isinstance(zone, dict):
-                                    name = zone.get("name", "")
-                                    if name:
-                                        object_id = self._slugify_object_id(str(name))
-                                        if object_id:
-                                            entities.add(f"zone.{object_id}")
-            except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
-                self._record_extraction_warning(config_file, e)
+        # Extract from pre-loaded configuration.yaml data
+        if isinstance(config_data, dict) and "zone" in config_data:
+            zone_data = config_data["zone"]
+            if isinstance(zone_data, list):
+                for zone in zone_data:
+                    if isinstance(zone, dict):
+                        name = zone.get("name", "")
+                        if name:
+                            object_id = self._slugify_object_id(str(name))
+                            if object_id:
+                                entities.add(f"zone.{object_id}")
 
         # Extract from storage (UI-configured zones)
         zone_storage = self.storage_dir / "core.zone"
