@@ -9,12 +9,12 @@ This repository manages Home Assistant configuration files with automated valida
 
 ## Project Structure
 
-- `config/automations.yaml` - **Primary file for automation work**
+- `config/automations.yaml` - **Primary file for automation work** (can be large — use Gemini CLI for full-file analysis)
 - `config/scripts.yaml` - Reusable scripts
 - `config/scripts/` - Shell helper scripts (e.g., `debug_log.sh`)
 - `config/configuration.yaml` - Main HA config (integrations, includes, helpers)
 - `config/blueprints/` - HA blueprints (automation/, script/, template/)
-- `config/.storage/core.entity_registry` - **Entity registry** (search for entity IDs, device IDs)
+- `config/.storage/core.entity_registry` - **Entity registry** (large JSON — use Gemini CLI for full searches, targeted `grep` for known IDs)
 - `frigate/config.yml` - Frigate NVR configuration (addon slug: `ccab4aaf_frigate-fa-beta`)
 - `tools/` - Validation and testing scripts
 - `Makefile` - Commands for pulling/pushing configuration
@@ -64,12 +64,31 @@ tools/ha-curl.sh -X POST /api/services/light/turn_on -d '{"entity_id": "light.ki
 ```
 Auto-approved via `Bash(tools/ha-curl.sh *)` in `~/.claude/settings.json`.
 
-## Hardware
+### Gemini CLI (Large File Analysis)
 
-**Host:** Dell OptiPlex 7010 Micro Plus (i5-13600, 32GB DDR5, Hailo-8 26 TOPS, Intel QuickSync)
-**Zigbee:** SMLIGHT SLZB-06Mg24 (Ethernet-attached, PoE)
+Use `gemini -p` with `@path` syntax when files exceed context limits or you need cross-file analysis. Paths are relative to current working directory.
 
-Implications: Frigate can use aggressive detection (Hailo), streams use hardware transcoding (QuickSync).
+```bash
+# Analyze automations + scripts together
+gemini -p "@config/automations.yaml @config/scripts.yaml Find all automations that reference the doorbell"
+
+# Search the entity registry (too large to read directly)
+gemini -p "@config/.storage/core.entity_registry Find all entities for device 'motion' in the basement"
+
+# Cross-reference entities against config
+gemini -p "@config/.storage/core.entity_registry @config/automations.yaml Find entity references that may be broken"
+
+# Full config directory analysis
+gemini -p "@config/ Summarize all helpers defined across configuration files"
+
+# Compare backup contents
+gemini -p "@/tmp/old_automations.yaml @config/automations.yaml What changed between these versions?"
+
+# Whole project overview
+gemini --all_files -p "Analyze the automation architecture and identify patterns"
+```
+
+**When to use over direct file reads:** Full `automations.yaml` analysis, entity registry searches (>100KB JSON), cross-referencing multiple large YAML files, comparing backup extracts, `.storage/` file analysis.
 
 ## Development Workflow
 
@@ -86,7 +105,71 @@ Implications: Frigate can use aggressive detection (Hailo), streams use hardware
 Config changes are often **not in git history** - they get pushed to HA and pulled back without commits. The `backups/` directory is the real historical record. See `home-assistant-backup` skill for full workflow.
 
 - **Extract a specific file:** `tar -xzOf backups/ha_config_<timestamp>.tar.gz config/automations.yaml`
+- **Compare backup versions:** Extract to temp files, then use Gemini CLI: `gemini -p "@/tmp/old.yaml @/tmp/new.yaml What changed?"`
 - **When reverting:** Don't blindly restore - ask about individual settings (e.g., timer durations) that may have been tuned independently of the change being reverted
+
+## CI/CD
+
+GitHub Actions runs on push/PR to main:
+
+**`.github/workflows/test.yml`:**
+- **lint**: `ruff format --check`, `ruff check`, and `mypy` (on `tools/` and `tests/`)
+- **test**: `pytest tests/`
+
+**`.github/workflows/codeql.yml`:** CodeQL Python analysis (weekly + on push/PR)
+
+Run `make lint` locally before pushing to catch CI failures early. Use `make lint-fix` to auto-fix.
+
+## Hardware
+
+**Host:** Dell OptiPlex 7010 Micro Plus (i5-13600, 32GB DDR5, Hailo-8 26 TOPS, Intel QuickSync)
+**Zigbee:** SMLIGHT SLZB-06Mg24 (Ethernet-attached, PoE)
+
+Implications: Frigate can use aggressive detection (Hailo), streams use hardware transcoding (QuickSync).
+
+## Integrations
+
+- **Zigbee2MQTT**: `config/zigbee2mqtt/configuration.yaml` + `coordinator_backup.json` (addon slug: `45df7312_zigbee2mqtt`) — pulled locally via `make pull`, excluded from push except `configuration.yaml`
+- **Frigate**: Camera notifications via automations, config at `frigate/config.yml`
+- **Recorder**: 7-day retention
+
+## Entity Naming Convention
+
+Format: `location_room_device_sensor`
+- **location**: `home`, `office`, `cabin`
+- **room**: `basement`, `kitchen`, `driveway`
+- **device**: `motion`, `heatpump`, `lock`
+- **sensor**: `battery`, `temperature`, `status`
+
+Examples: `binary_sensor.home_basement_motion_battery`, `climate.office_living_room_thermostat`
+
+## Streaming Frigate to Cast/Nest
+
+**NEVER use `camera.play_stream`** — returns 500 errors with Frigate. Requires go2rtc port 1984 exposed in Frigate addon.
+
+- **Start:** `media_player.play_media` with `media_content_id: "http://<go2rtc>:1984/api/stream.mp4?src=<stream>"` and `media_content_type: "video/mp4"`
+- **Stop:** `media_player.turn_off` (not `media_stop`, which doesn't return to ambient)
+- **Do NOT check `media_content_id` to detect if a Cast stream is active** — HA's Google Cast integration never reliably populates this attribute after `play_media`. The media player often reports `off` with empty `content_id` even while physically showing the stream. For timer-based cleanup, call `turn_off` unconditionally (the start automation's idle/off guard prevents interrupting legitimate user media).
+
+## Frigate Sensor Naming & False Positive Tuning
+
+### Sensor Naming Convention
+
+| Pattern | Example | Meaning |
+|---------|---------|---------|
+| `sensor.<camera>_<zone>_<object>_count` | `sensor.driveway_driveway_car_count` | Objects in **specific zone** |
+| `sensor.<camera>_<object>_count` | `sensor.driveway_car_count` | Objects **anywhere on camera** |
+
+Alert automations typically use **zoned** sensors. An object detected on camera but outside the zone won't trigger zoned sensors.
+
+### Zone Tuning (False Positives)
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `inertia` | 1 | Frames object must be in zone before counting |
+| `loitering_time` | 0 | Seconds object must remain before triggering |
+
+Increase both for false alerts (passing cars, jitter). After changes: `make push` then restart Frigate addon.
 
 ## Critical Gotchas
 
@@ -100,7 +183,7 @@ This project uses **separate exclude files** for pull vs push:
 
 **What this repo can manage (YAML files):** `automations.yaml`, `scripts.yaml`, `scenes.yaml`, `configuration.yaml`, `secrets.yaml`
 
-**Never modify locally (runtime state):** `.storage/` files are managed by HA at runtime. Use the HA UI for entity/device changes.
+**`.storage/` files are read-only reference** — managed by HA at runtime. Never modify locally; use the HA UI for entity/device changes. Reading them for analysis is fine — use Gemini CLI for large files like `core.entity_registry`, or targeted `grep` for known IDs.
 
 ### HA Jinja2 Filter Availability
 HA uses a **curated subset of Jinja2 filters** — standard Jinja2 filters like `hash` are NOT available. Common available filters: `lower`, `upper`, `replace`, `truncate`, `length`, `int`, `float`, `round`, `default`, `select`, `map`, `join`, `sort`.
@@ -150,64 +233,12 @@ Shell scripts in `config/scripts/` must exist in the local repo, not just on the
 **The HA Lovelace REST API (`GET/POST /api/lovelace/config`) returns 404 in storage mode** — don't attempt it. SSH + direct file edit is the only approach.
 
 ### DashCast Gotchas
-- **Login screen instead of dashboard:** Need `trusted_users` (not just `allow_bypass_login`) in `auth_providers` when multiple HA users exist. Find user IDs: `grep -A5 '"name":' config/.storage/auth | grep -E '"id"|"name"'`
+- **Login screen instead of dashboard:** Need `trusted_users` (not just `allow_bypass_login`) in `auth_providers` when multiple HA users exist. Find user IDs via Gemini CLI: `gemini -p "@config/.storage/auth List all user names and IDs"` (or `grep -A5 '"name":' config/.storage/auth`)
 - **Stopping DashCast on Nest Hub:** Use `homeassistant.turn_off`, NOT `media_player.turn_off` (which doesn't reliably close DashCast)
 
 ### HACS / Lovelace Cards
 - **"Configuration error":** Verify card is actually *installed* (not just known to HACS) — check `installed: True` in `.storage/hacs.repositories`. Test with minimal config first, check browser console (F12).
 - **advanced-camera-card + go2rtc:** Keep config minimal. No trailing slash on go2rtc URL. Don't add `modes:` array — use defaults.
-
-## Entity Naming Convention
-
-Format: `location_room_device_sensor`
-- **location**: `home`, `office`, `cabin`
-- **room**: `basement`, `kitchen`, `driveway`
-- **device**: `motion`, `heatpump`, `lock`
-- **sensor**: `battery`, `temperature`, `status`
-
-Examples: `binary_sensor.home_basement_motion_battery`, `climate.office_living_room_thermostat`
-
-## Streaming Frigate to Cast/Nest
-
-**NEVER use `camera.play_stream`** — returns 500 errors with Frigate. Requires go2rtc port 1984 exposed in Frigate addon.
-
-- **Start:** `media_player.play_media` with `media_content_id: "http://<go2rtc>:1984/api/stream.mp4?src=<stream>"` and `media_content_type: "video/mp4"`
-- **Stop:** `media_player.turn_off` (not `media_stop`, which doesn't return to ambient)
-- **Do NOT check `media_content_id` to detect if a Cast stream is active** — HA's Google Cast integration never reliably populates this attribute after `play_media`. The media player often reports `off` with empty `content_id` even while physically showing the stream. For timer-based cleanup, call `turn_off` unconditionally (the start automation's idle/off guard prevents interrupting legitimate user media).
-
-## Frigate Sensor Naming & False Positive Tuning
-
-### Sensor Naming Convention
-
-| Pattern | Example | Meaning |
-|---------|---------|---------|
-| `sensor.<camera>_<zone>_<object>_count` | `sensor.driveway_driveway_car_count` | Objects in **specific zone** |
-| `sensor.<camera>_<object>_count` | `sensor.driveway_car_count` | Objects **anywhere on camera** |
-
-Alert automations typically use **zoned** sensors. An object detected on camera but outside the zone won't trigger zoned sensors.
-
-### Zone Tuning (False Positives)
-
-| Parameter | Default | Effect |
-|-----------|---------|--------|
-| `inertia` | 1 | Frames object must be in zone before counting |
-| `loitering_time` | 0 | Seconds object must remain before triggering |
-
-Increase both for false alerts (passing cars, jitter). After changes: `make push` then restart Frigate addon.
-
-## CI/CD
-
-GitHub Actions (`.github/workflows/test.yml`) runs on push/PR:
-- **rsync-excludes-tests**: Validates rsync exclude file consistency
-- **lint**: Runs `ruff format --check` and `ruff check`
-
-Run `make lint` locally before pushing to catch CI failures early. Use `make lint-fix` to auto-fix issues.
-
-## Integrations
-
-- **Zigbee2MQTT**: `config/zigbee2mqtt/configuration.yaml` + `coordinator_backup.json` (addon slug: `45df7312_zigbee2mqtt`) — pulled locally via `make pull`, excluded from push except `configuration.yaml`
-- **Frigate**: Camera notifications via automations, config at `frigate/config.yml`
-- **Recorder**: 7-day retention
 
 ## Troubleshooting
 
