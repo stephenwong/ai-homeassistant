@@ -66,7 +66,7 @@ def extract_files(backup_path):
                         continue
                     with extracted:
                         files[member.name] = extracted.read().decode("utf-8")
-                except (UnicodeDecodeError, KeyError):
+                except UnicodeDecodeError, KeyError:
                     continue
     except (tarfile.TarError, OSError) as e:
         print(f"  Warning: Could not read {backup_path}: {e}")

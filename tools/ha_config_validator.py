@@ -50,7 +50,7 @@ class HAConfigValidator(ValidatorBase):
             if result.returncode == 0:
                 self.info.append(f"Using Home Assistant: {result.stdout.strip()}")
                 return True
-        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        except FileNotFoundError, OSError, subprocess.TimeoutExpired:
             pass
 
         # Try python -m homeassistant --version
@@ -64,7 +64,7 @@ class HAConfigValidator(ValidatorBase):
             if result.returncode == 0:
                 self.info.append(f"Using Home Assistant: {result.stdout.strip()}")
                 return True
-        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        except FileNotFoundError, OSError, subprocess.TimeoutExpired:
             pass
 
         self.warnings.append(
