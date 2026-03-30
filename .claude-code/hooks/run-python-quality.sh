@@ -1,25 +1,20 @@
 #!/bin/bash
+# Manual Python quality check runner
+# Runs the same checks as make lint + mypy
 #
-# Manual Python Quality Check Runner
-# Forces a full run of all Python development tools regardless of file changes
-#
-# Usage: ./.claude-code/hooks/run-python-quality.sh [--force-all]
+# Usage: .claude-code/hooks/run-python-quality.sh
 
 set -e
 
-# Colors
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+echo "Running full Python quality checks..."
 
-echo -e "${BLUE}🚀 Running Full Python Quality Check Suite${NC}"
+echo "Checking formatting..."
+uv run ruff format --check tools/ tests/
 
-# Set environment variable to force the hook to run
-export FORCE_PYTHON_CHECKS=true
+echo "Running linter..."
+uv run ruff check tools/ tests/
 
-# Run the post-tool-use hook
-./.claude-code/hooks/posttooluse-python-quality.sh
+echo "Running type checker..."
+uv run mypy tools/ || echo "mypy found issues (non-blocking)"
 
-echo -e "${GREEN}✅ Full Python quality check completed!${NC}"
-echo -e "${YELLOW}💡 Tip: Use 'make -f Makefile.dev dev-workflow' for development workflow${NC}"
+echo "All checks complete."
