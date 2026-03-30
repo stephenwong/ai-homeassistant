@@ -173,6 +173,9 @@ Increase both for false alerts (passing cars, jitter). After changes: `make push
 
 ## Critical Gotchas
 
+### Zigbee Command Timing
+When sending multiple commands to the same Zigbee device in an automation sequence, add **250ms delays** between each command. Without delays, later commands may not take effect before an action (e.g., alarm activation) fires. This applies to any mix of `select.select_option`, `switch.turn_on/off`, `number.set_value`, etc. targeting the same device.
+
 ### Rsync Architecture
 This project uses **separate exclude files** for pull vs push:
 

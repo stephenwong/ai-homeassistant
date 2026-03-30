@@ -271,6 +271,7 @@ make push
 | Wrong `mode:` for motion timers | Use `restart` so re-triggers extend the timer |
 | Using `from:` on motion triggers | Omit `from:` so post-restart transitions aren't missed |
 | Mismatched script parameter names | Compare automation `data:` keys with script `fields:` keys exactly |
+| Rapid-fire Zigbee commands to same device | Add 250ms `delay` between each command (see CLAUDE.md → Zigbee Command Timing) |
 
 ## Red Flags - You're Doing It Wrong
 
