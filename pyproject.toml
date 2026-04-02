@@ -136,5 +136,14 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
 ]
 
+[tool.uv]
+# Force patched versions over homeassistant's exact pins to resolve Dependabot alerts
+override-dependencies = [
+    "aiohttp>=3.13.4",
+    "cryptography>=46.0.6",
+    "PyJWT>=2.12.0",
+    "requests>=2.33.0",
+]
+
 [tool.codespell]
 ignore-words-list = "hass"
