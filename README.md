@@ -308,6 +308,7 @@ The system provides three layers of validation:
 - Uses Home Assistant's own validation tools
 - Most comprehensive check available
 - Catches integration-specific issues
+- **"Successful config (partial)"** is the normal local result — some integration packages can't install locally due to version pin differences, but this is expected and doesn't indicate a real config problem
 
 ## 🤖 Claude Code Integration
 
