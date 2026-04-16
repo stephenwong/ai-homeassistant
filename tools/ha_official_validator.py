@@ -89,6 +89,14 @@ class HAOfficialValidator(ValidatorBase):
             "raise RuntimeError",
             "RuntimeError:",
             "^^^",
+            # Package installation and integration load failures in local environment.
+            # Not config errors — integration packages are installed at runtime on the
+            # real HA server, not in this local validation environment.
+            "Unable to install package",
+            "No solution found when resolving",
+            "requirements are unsatisfiable",
+            "Requirements for",
+            "could not be loaded",
         ]
         line_lower = line.lower()
         return any(pattern.lower() in line_lower for pattern in ignorable_patterns)
