@@ -26,7 +26,7 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
-    "pytest>=8.0.0",
+    "pytest>=9.0.3",
     "pytest-cov>=4.0.0",
     "pytest-mock>=3.12.0",
     "types-PyYAML>=6.0.0",
@@ -140,9 +140,11 @@ exclude_lines = [
 # Force patched versions over homeassistant's exact pins to resolve Dependabot alerts
 override-dependencies = [
     "aiohttp>=3.13.4",
-    "cryptography>=46.0.6",
+    "cryptography>=46.0.7",
+    "Pillow>=12.2.0",
     "PyJWT>=2.12.0",
     "requests>=2.33.0",
+    "uv>=0.11.6",
 ]
 
 [tool.codespell]
