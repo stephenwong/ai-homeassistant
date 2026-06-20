@@ -66,7 +66,9 @@ Auto-approved via `Bash(tools/ha-curl.sh *)` in `~/.claude/settings.json`.
 
 ### Gemini CLI (Large File Analysis)
 
-Use `gemini -p` with `@path` syntax when files exceed context limits or you need cross-file analysis. Paths are relative to current working directory.
+Use `gemini -p` with `@path` syntax when files exceed context limits or you need cross-file analysis.
+
+**Shared Context:** Global and project-level `GEMINI.md` files are symlinked to `CLAUDE.md`. Project-specific memory at `~/.gemini/tmp/claude-homeassistant/memory/` is symlinked to Claude's memory at `~/.claude/projects/-home-stephen-code-claude-homeassistant/memory/`. Both tools share the same unified context and learning history.
 
 ```bash
 # Analyze automations + scripts together
@@ -99,6 +101,24 @@ gemini --all_files -p "Analyze the automation architecture and identify patterns
 **Before committing Python changes:** Run `make lint` (or `make lint-fix` to auto-fix)
 **After any changes with concurrency, parallel API calls, multi-step error handling, or HA automation state transitions:** Run `code-review:code-review` skill as "State Machine Auditor" (ordering deps, race conditions, exception handler completeness)
 **Before committing/finishing:** Use `reflect` skill to capture learnings (gotchas, corrections, new patterns)
+
+### Git Commit Trailers
+
+**Every commit message you create must end with these trailer lines** (separated from the body by a blank line):
+
+```
+Model used: <current-model-name>
+Co-authored-by: <current-tool> <noreply email>
+```
+
+- **Model name:** use your actual current model as shown in your system prompt (e.g. `glm-5.2`, `claude-sonnet-4-5`). This keeps attribution correct as models change.
+- **Tool + email:** attribute to whichever tool you're actually running in (identify it from your system prompt / identity, not from this file's name):
+  - Claude Code → `Claude <noreply@anthropic.com>`
+  - opencode → `opencode <noreply@opencode.ai>`
+  - Antigravity → `Antigravity <noreply@antigravity.google>`
+  - Other → `<tool-name> <noreply@<tool-domain>>`
+
+Only append for commits you create; do not add to commits authored by other tools or manual `git commit` runs.
 
 ## Backups as Version History
 
