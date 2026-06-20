@@ -5,12 +5,8 @@
   "hooks": {
     "enabled": true,
     "posttooluse": [
-      ".claude-code/hooks/yaml-formatter.sh",
       ".claude-code/hooks/posttooluse-ha-validation.sh",
       ".claude-code/hooks/posttooluse-python-quality.sh"
-    ],
-    "pretooluse": [
-      ".claude-code/hooks/pretooluse-ha-push-validation.sh"
     ]
   },
   "project": {
