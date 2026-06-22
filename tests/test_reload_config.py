@@ -3,8 +3,9 @@
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import requests
+import pytest
 
+from tools.common import HARequestError
 from tools.reload_config import detect_changed_services, reload_config, reload_service
 
 
@@ -14,6 +15,14 @@ def _diff_only(stdout):
         MagicMock(returncode=0, stdout=stdout),
         MagicMock(returncode=0, stdout=""),
     ]
+
+
+def _make_client():
+    """Return a mock HAClient with call_service stubbed to return True."""
+    client = MagicMock()
+    client.call_service.return_value = True
+    client.timeout = 30
+    return client
 
 
 class TestDetectChangedServices:
@@ -105,287 +114,189 @@ class TestDetectChangedServices:
 
 
 class TestReloadService:
-    def _headers(self):
-        return {"Authorization": "Bearer test", "Content-Type": "application/json"}
+    """reload_service now takes a HAClient instead of (url, headers, timeout)."""
 
-    def test_200_returns_service_and_true(self):
-        mock_response = MagicMock(status_code=200)
-        with patch("tools.reload_config.requests.post", return_value=mock_response):
-            result = reload_service(
-                "automation/reload", "http://test:8123", self._headers()
-            )
-        assert result == ("automation/reload", True)
+    def test_success_returns_service_and_true(self):
+        client = _make_client()
+        client.call_service.return_value = True
+        assert reload_service(client, "automation/reload") == (
+            "automation/reload",
+            True,
+        )
 
-    def test_500_returns_service_and_false(self):
-        mock_response = MagicMock(status_code=500)
-        with patch("tools.reload_config.requests.post", return_value=mock_response):
-            result = reload_service(
-                "automation/reload", "http://test:8123", self._headers()
-            )
-        assert result == ("automation/reload", False)
+    def test_failure_returns_service_and_false(self):
+        client = _make_client()
+        client.call_service.return_value = False
+        assert reload_service(client, "automation/reload") == (
+            "automation/reload",
+            False,
+        )
 
-    def test_timeout_returns_service_and_false(self):
-        with patch(
-            "tools.reload_config.requests.post", side_effect=requests.exceptions.Timeout
-        ):
-            result = reload_service(
-                "automation/reload", "http://test:8123", self._headers()
-            )
-        assert result == ("automation/reload", False)
+    def test_call_service_invoked_with_domain_and_action(self):
+        client = _make_client()
+        reload_service(client, "automation/reload")
+        client.call_service.assert_called_once_with("automation", "reload")
 
-    def test_connection_error_returns_service_and_false(self):
-        with patch(
-            "tools.reload_config.requests.post",
-            side_effect=requests.exceptions.ConnectionError,
-        ):
-            result = reload_service(
-                "automation/reload", "http://test:8123", self._headers()
-            )
-        assert result == ("automation/reload", False)
+    def test_core_config_service_dispatches_correctly(self):
+        client = _make_client()
+        reload_service(client, "homeassistant/reload_core_config")
+        client.call_service.assert_called_once_with(
+            "homeassistant", "reload_core_config"
+        )
 
 
 class TestReloadConfig:
+    """All tests stub HAClient.from_env so reload_config() never touches the network."""
+
+    @pytest.fixture(autouse=True)
+    def _stub_ha_client(self, monkeypatch):
+        """Replace HAClient.from_env with a mock-client factory.
+
+        Tests that need to assert on call_service behavior can read
+        `mock_client.call_service` directly.
+        """
+        client = _make_client()
+
+        def _factory():
+            return client
+
+        monkeypatch.setattr("tools.reload_config.HAClient.from_env", _factory)
+        # Also expose the client instance for assertions.
+        self._mock_client = client
+
     def test_success(self):
-        mock_response = MagicMock(status_code=200)
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"homeassistant/reload_core_config"},
-            ),
-            patch("tools.reload_config.requests.post", return_value=mock_response),
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"homeassistant/reload_core_config"},
         ):
             assert reload_config() is True
 
-    def test_no_token(self):
-        with (
-            patch.dict("os.environ", {"HA_TOKEN": ""}, clear=False),
-            patch("tools.reload_config.load_env_file"),
-        ):
-            assert reload_config() is False
-
     def test_api_failure(self):
-        mock_response = MagicMock(status_code=500)
-
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"homeassistant/reload_core_config"},
-            ),
-            patch("tools.reload_config.requests.post", return_value=mock_response),
+        self._mock_client.call_service.return_value = False
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"homeassistant/reload_core_config"},
         ):
             assert reload_config() is False
 
-    def test_timeout(self):
+    def test_from_env_raises_returns_false(self, capsys):
+        """If HAClient.from_env raises HARequestError, reload_config returns False."""
         with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
             patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"homeassistant/reload_core_config"},
+                "tools.reload_config.HAClient.from_env",
+                side_effect=HARequestError("HA_URL must start with http://"),
             ),
-            patch(
-                "tools.reload_config.requests.post",
-                side_effect=requests.exceptions.Timeout,
-            ),
-        ):
-            assert reload_config() is False
-
-    def test_connection_error(self):
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"homeassistant/reload_core_config"},
-            ),
-            patch(
-                "tools.reload_config.requests.post",
-                side_effect=requests.exceptions.ConnectionError,
-            ),
-        ):
-            assert reload_config() is False
-
-    def test_request_exception(self):
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"homeassistant/reload_core_config"},
-            ),
-            patch(
-                "tools.reload_config.requests.post",
-                side_effect=requests.exceptions.RequestException("unexpected"),
-            ),
-        ):
-            assert reload_config() is False
-
-    def test_invalid_ha_url(self):
-        with (
-            patch.dict("os.environ", {"HA_TOKEN": "test_token", "HA_URL": "not_a_url"}),
-            patch("tools.reload_config.load_env_file"),
-        ):
-            assert reload_config() is False
-
-    def test_detect_returns_none_reloads_all_services(self):
-        mock_response = MagicMock(status_code=200)
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch("tools.reload_config.detect_changed_services", return_value=None),
-            patch(
-                "tools.reload_config.requests.post", return_value=mock_response
-            ) as mock_post,
-        ):
-            result = reload_config()
-        assert result is True
-        assert mock_post.call_count == 4
-
-    def test_detect_returns_empty_set_reloads_all_services(self):
-        mock_response = MagicMock(status_code=200)
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch("tools.reload_config.detect_changed_services", return_value=set()),
-            patch(
-                "tools.reload_config.requests.post", return_value=mock_response
-            ) as mock_post,
-        ):
-            result = reload_config()
-        assert result is True
-        assert mock_post.call_count == 4
-
-    def test_detect_returns_one_service_makes_one_call(self):
-        mock_response = MagicMock(status_code=200)
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
             patch(
                 "tools.reload_config.detect_changed_services",
                 return_value={"automation/reload"},
             ),
+        ):
+            assert reload_config() is False
+        out = capsys.readouterr().out
+        assert "HA_URL must start with" in out
+
+    def test_from_env_token_error_includes_hint(self, capsys):
+        """Token-related errors print the 'create a token' hint."""
+        with (
             patch(
-                "tools.reload_config.requests.post", return_value=mock_response
-            ) as mock_post,
+                "tools.reload_config.HAClient.from_env",
+                side_effect=HARequestError("HA_TOKEN not found"),
+            ),
+            patch(
+                "tools.reload_config.detect_changed_services",
+                return_value={"automation/reload"},
+            ),
+        ):
+            assert reload_config() is False
+        out = capsys.readouterr().out
+        assert "long_lived_access_token" in out
+
+    def test_detect_returns_none_reloads_all_services(self):
+        with patch("tools.reload_config.detect_changed_services", return_value=None):
+            result = reload_config()
+        assert result is True
+        assert self._mock_client.call_service.call_count == 4
+
+    def test_detect_returns_empty_set_reloads_all_services(self):
+        with patch("tools.reload_config.detect_changed_services", return_value=set()):
+            result = reload_config()
+        assert result is True
+        assert self._mock_client.call_service.call_count == 4
+
+    def test_detect_returns_one_service_makes_one_call(self):
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"automation/reload"},
         ):
             result = reload_config()
         assert result is True
-        assert mock_post.call_count == 1
+        assert self._mock_client.call_service.call_count == 1
 
     def test_one_service_fails_returns_false(self):
-        def post_side_effect(url, **kwargs):
-            if "automation" in url:
-                return MagicMock(status_code=200)
-            return MagicMock(status_code=500)
-
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"automation/reload", "script/reload"},
-            ),
-            patch("tools.reload_config.requests.post", side_effect=post_side_effect),
+        # call_service returns True for the first call, False for the second.
+        self._mock_client.call_service.side_effect = [True, False]
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"automation/reload", "script/reload"},
         ):
             result = reload_config()
         assert result is False
 
     def test_prints_reloading_header(self, capsys):
-        mock_response = MagicMock(status_code=200)
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"automation/reload"},
-            ),
-            patch("tools.reload_config.requests.post", return_value=mock_response),
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"automation/reload"},
         ):
             reload_config()
         out = capsys.readouterr().out
-        assert "🔄 Reloading: automations" in out
+        assert "\U0001f504 Reloading: automations" in out
 
     def test_prints_success_per_service(self, capsys):
-        mock_response = MagicMock(status_code=200)
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"automation/reload"},
-            ),
-            patch("tools.reload_config.requests.post", return_value=mock_response),
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"automation/reload"},
         ):
             reload_config()
         out = capsys.readouterr().out
-        assert "✅ automations reloaded" in out
+        assert "\u2705 automations reloaded" in out
 
     def test_prints_failure_per_service(self, capsys):
-        mock_response = MagicMock(status_code=500)
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"script/reload"},
-            ),
-            patch("tools.reload_config.requests.post", return_value=mock_response),
+        self._mock_client.call_service.return_value = False
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"script/reload"},
         ):
             reload_config()
         out = capsys.readouterr().out
-        assert "❌ scripts failed to reload" in out
+        assert "\u274c scripts failed to reload" in out
 
     def test_core_config_reloads_before_domain_services(self):
+        """reload_core_config must run before any domain services in the same call."""
         call_order = []
 
-        def post_side_effect(url, **kwargs):
-            if "reload_core_config" in url:
-                call_order.append("core")
-            else:
-                call_order.append("domain")
-            return MagicMock(status_code=200)
+        def _track_call(domain, action, data=None):
+            call_order.append(f"{domain}/{action}")
+            return True
 
-        with (
-            patch.dict(
-                "os.environ", {"HA_TOKEN": "test_token", "HA_URL": "http://test:8123"}
-            ),
-            patch("tools.reload_config.load_env_file"),
-            patch(
-                "tools.reload_config.detect_changed_services",
-                return_value={"homeassistant/reload_core_config", "automation/reload"},
-            ),
-            patch("tools.reload_config.requests.post", side_effect=post_side_effect),
+        self._mock_client.call_service.side_effect = _track_call
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"homeassistant/reload_core_config", "automation/reload"},
         ):
             result = reload_config()
 
         assert result is True
-        assert call_order[0] == "core"
-        assert "domain" in call_order[1:]
+        assert call_order[0] == "homeassistant/reload_core_config"
+        assert "automation/reload" in call_order[1:]
+
+    def test_reload_timeout_overrides_client_timeout(self):
+        """Reload-specific timeout (HA_RELOAD_TIMEOUT) overrides the client default."""
+        with (
+            patch(
+                "tools.reload_config.detect_changed_services",
+                return_value={"automation/reload"},
+            ),
+            patch.dict("os.environ", {"HA_RELOAD_TIMEOUT": "60"}),
+        ):
+            reload_config()
+        assert self._mock_client.timeout == 60

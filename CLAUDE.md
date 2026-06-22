@@ -9,14 +9,19 @@ This repository manages Home Assistant configuration files with automated valida
 
 ## Project Structure
 
-- `config/automations.yaml` - **Primary file for automation work** (can be large — use Gemini CLI for full-file analysis)
+- `config/automations.yaml` - **Primary file for automation work** (can be large — use Antigravity CLI for full-file analysis)
 - `config/scripts.yaml` - Reusable scripts
 - `config/scripts/` - Shell helper scripts (e.g., `debug_log.sh`)
 - `config/configuration.yaml` - Main HA config (integrations, includes, helpers)
 - `config/blueprints/` - HA blueprints (automation/, script/, template/)
-- `config/.storage/core.entity_registry` - **Entity registry** (large JSON — use Gemini CLI for full searches, targeted `grep` for known IDs)
+- `config/.storage/core.entity_registry` - **Entity registry** (large JSON — use Antigravity CLI for full searches, targeted `grep` for known IDs)
 - `frigate/config.yml` - Frigate NVR configuration (addon slug: `ccab4aaf_frigate-fa-beta`)
-- `tools/` - Validation and testing scripts
+- `tools/` - Validation and testing scripts (now organized into subpackages)
+- `tools/ha_cli.py` - **Single CLI entry point** (e.g. `uv run python tools/ha_cli.py validate`)
+- `tools/commands/` - CLI subcommand implementations (validate/reload/entities/curl)
+- `tools/ha/client.py` - `HAClient` — shared HA REST API client
+- `tools/validators/` - Validator implementations (yaml.py, references.py, ha_official.py)
+- `tools/_dev/api_diagnostic.py` - Dev-only API diagnostic (archived; excluded from lint/wheel)
 - `Makefile` - Commands for pulling/pushing configuration
 - `Makefile.dev` - Dev-only commands (see `README-DEV.md`)
 
@@ -47,8 +52,8 @@ Copy `.env.example` to `.env` and configure:
 | `make test-ssh` | Test SSH connection to HA |
 | `make clean` | Remove temp files and caches |
 | `tools/ha-curl.sh` | Curl wrapper with auto-auth (see below) |
-| `tools/ha_api_diagnostic.py` | Comprehensive HA API endpoint testing |
-| `tools/ha_config_validator.py` | Deep validation using HA's `check_config` |
+| `tools/ha_cli.py` | Single CLI entry: `uv run python tools/ha_cli.py {validate\|reload\|entities\|curl}` |
+| `tools/_dev/api_diagnostic.py` | Dev-only comprehensive HA API endpoint testing (archived from main flow) |
 
 ### HA API Curl Wrapper
 Use `tools/ha-curl.sh` for HA API calls - it auto-loads credentials from `.env`:
@@ -64,30 +69,30 @@ tools/ha-curl.sh -X POST /api/services/light/turn_on -d '{"entity_id": "light.ki
 ```
 Auto-approved via `Bash(tools/ha-curl.sh *)` in `~/.claude/settings.json`.
 
-### Gemini CLI (Large File Analysis)
+### Antigravity CLI (`agy`) — Large File Analysis
 
-Use `gemini -p` with `@path` syntax when files exceed context limits or you need cross-file analysis.
+Use `agy -p` with `@path` syntax when files exceed context limits or you need cross-file analysis.
 
 **Shared Context:** Global and project-level `GEMINI.md` files are symlinked to `CLAUDE.md`. Project-specific memory at `~/.gemini/tmp/claude-homeassistant/memory/` is symlinked to Claude's memory at `~/.claude/projects/-home-stephen-code-claude-homeassistant/memory/`. Both tools share the same unified context and learning history.
 
 ```bash
 # Analyze automations + scripts together
-gemini -p "@config/automations.yaml @config/scripts.yaml Find all automations that reference the doorbell"
+agy -p "@config/automations.yaml @config/scripts.yaml Find all automations that reference the doorbell"
 
 # Search the entity registry (too large to read directly)
-gemini -p "@config/.storage/core.entity_registry Find all entities for device 'motion' in the basement"
+agy -p "@config/.storage/core.entity_registry Find all entities for device 'motion' in the basement"
 
 # Cross-reference entities against config
-gemini -p "@config/.storage/core.entity_registry @config/automations.yaml Find entity references that may be broken"
+agy -p "@config/.storage/core.entity_registry @config/automations.yaml Find entity references that may be broken"
 
 # Full config directory analysis
-gemini -p "@config/ Summarize all helpers defined across configuration files"
+agy -p "@config/ Summarize all helpers defined across configuration files"
 
 # Compare backup contents
-gemini -p "@/tmp/old_automations.yaml @config/automations.yaml What changed between these versions?"
+agy -p "@/tmp/old_automations.yaml @config/automations.yaml What changed between these versions?"
 
-# Whole project overview
-gemini --all_files -p "Analyze the automation architecture and identify patterns"
+# Whole project overview (replaces gemini --all_files)
+agy --add-dir . -p "Analyze the automation architecture and identify patterns"
 ```
 
 **When to use over direct file reads:** Full `automations.yaml` analysis, entity registry searches (>100KB JSON), cross-referencing multiple large YAML files, comparing backup extracts, `.storage/` file analysis.
@@ -125,7 +130,7 @@ Only append for commits you create; do not add to commits authored by other tool
 Config changes are often **not in git history** - they get pushed to HA and pulled back without commits. The `backups/` directory is the real historical record. See `home-assistant-backup` skill for full workflow.
 
 - **Extract a specific file:** `tar -xzOf backups/ha_config_<timestamp>.tar.gz config/automations.yaml`
-- **Compare backup versions:** Extract to temp files, then use Gemini CLI: `gemini -p "@/tmp/old.yaml @/tmp/new.yaml What changed?"`
+- **Compare backup versions:** Extract to temp files, then use Antigravity CLI: `agy -p "@/tmp/old.yaml @/tmp/new.yaml What changed?"`
 - **When reverting:** Don't blindly restore - ask about individual settings (e.g., timer durations) that may have been tuned independently of the change being reverted
 
 ## CI/CD
@@ -206,7 +211,7 @@ This project uses **separate exclude files** for pull vs push:
 
 **What this repo can manage (YAML files):** `automations.yaml`, `scripts.yaml`, `scenes.yaml`, `configuration.yaml`, `secrets.yaml`
 
-**`.storage/` files are read-only reference** — managed by HA at runtime. Never modify locally; use the HA UI for entity/device changes. Reading them for analysis is fine — use Gemini CLI for large files like `core.entity_registry`, or targeted `grep` for known IDs.
+**`.storage/` files are read-only reference** — managed by HA at runtime. Never modify locally; use the HA UI for entity/device changes. Reading them for analysis is fine — use Antigravity CLI for large files like `core.entity_registry`, or targeted `grep` for known IDs.
 
 ### HA Jinja2 Filter Availability
 HA uses a **curated subset of Jinja2 filters** — standard Jinja2 filters like `hash` are NOT available. Common available filters: `lower`, `upper`, `replace`, `truncate`, `length`, `int`, `float`, `round`, `default`, `select`, `map`, `join`, `sort`.
@@ -256,12 +261,20 @@ Shell scripts in `config/scripts/` must exist in the local repo, not just on the
 **The HA Lovelace REST API (`GET/POST /api/lovelace/config`) returns 404 in storage mode** — don't attempt it. SSH + direct file edit is the only approach.
 
 ### DashCast Gotchas
-- **Login screen instead of dashboard:** Need `trusted_users` (not just `allow_bypass_login`) in `auth_providers` when multiple HA users exist. Find user IDs via Gemini CLI: `gemini -p "@config/.storage/auth List all user names and IDs"` (or `grep -A5 '"name":' config/.storage/auth`)
+- **Login screen instead of dashboard:** Need `trusted_users` (not just `allow_bypass_login`) in `auth_providers` when multiple HA users exist. Find user IDs via Antigravity CLI: `agy -p "@config/.storage/auth List all user names and IDs"` (or `grep -A5 '"name":' config/.storage/auth`)
 - **Stopping DashCast on Nest Hub:** Use `homeassistant.turn_off`, NOT `media_player.turn_off` (which doesn't reliably close DashCast)
 
 ### HACS / Lovelace Cards
 - **"Configuration error":** Verify card is actually *installed* (not just known to HACS) — check `installed: True` in `.storage/hacs.repositories`. Test with minimal config first, check browser console (F12).
 - **advanced-camera-card + go2rtc:** Keep config minimal. No trailing slash on go2rtc URL. Don't add `modes:` array — use defaults.
+
+### Tools Refactor Patterns (Phase 1+)
+- **`contextlib.redirect_stdout` is NOT thread-safe.** It mutates `sys.stdout` globally. Three concurrent threads each entering `redirect_stdout(buf)` will deadlock silently. When running validators in parallel threads, read `instance.errors`/`warnings`/`info` lists directly instead of capturing stdout. Validators don't print during `validate_all()` anyway — only `print_results()` prints, and that's only called from `main()`.
+- **Backward-compat shim pattern for `patch()` targets:** `from X import *` re-exports module-level names so `patch("old_module.subprocess.run")` still resolves — `subprocess` is a singleton module object shared between shim and original. **But** this breaks silently if anyone adds `__all__` to the new module. Always pair shims with a `test_shim_compatibility.py` regression test that imports each old path and asserts the expected attributes resolve.
+- **`load_env_file()` in tests:** `HAClient.from_env()` calls it, which reads the project's real `.env` and overrides monkeypatched values. In `HAClient` tests, patch `tools.ha.client.load_env_file` to a no-op fixture so env-var assertions hold.
+- **In-process validator speedup is real but small:** Parallel execution of the 3 default validators takes ~6.6s (HA official subprocess dominates at 6.58s). Sequential would be ~7.1s. Speedup is marginal — the main win is structural (shared validator instances, structured error reporting) not raw speed.
+- **Subclass `__init__` kwarg forwarding:** When adding a new kwarg (like `quiet`) to a base class, every subclass that overrides `__init__` must explicitly accept and forward the kwarg via `super().__init__(config_dir, quiet=quiet)`. Otherwise `TypeError: __init__() got an unexpected keyword argument 'quiet'`. Check all subclasses when changing base class signatures.
+- **`pyproject.toml` exclude sections:** Adding a `tools/_dev/` directory requires updating FOUR exclude locations: `[tool.ruff] exclude`, `[tool.mypy] exclude`, `[tool.coverage.run] omit` (path pattern: `"*/tools/_dev/*"`), and `[tool.hatch.build] exclude`. Pre-commit's mypy hook has its OWN regex exclude (`.pre-commit-config.yaml`) separate from pyproject's `[tool.mypy] exclude`.
 
 ## Troubleshooting
 

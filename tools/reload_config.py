@@ -6,15 +6,13 @@ have been pushed to the instance. Uses git to detect which files changed
 and calls only the relevant reload services.
 """
 
-import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import requests
-
-from tools.common import DEFAULT_HA_URL, get_env_int, load_env_file, validate_ha_url
+from tools.common import HARequestError, get_env_int
+from tools.ha.client import HAClient
 
 FILE_TO_SERVICE = {
     "automations.yaml": "automation/reload",
@@ -85,51 +83,48 @@ def detect_changed_services(
     return services
 
 
-def reload_service(
-    service: str, ha_url: str, headers: dict, timeout: int = 30
-) -> tuple[str, bool]:
-    """Call a single HA reload service. Returns (service, success)."""
-    url = f"{ha_url}/api/services/{service}"
-    try:
-        response = requests.post(url, headers=headers, timeout=timeout)
-        return (service, response.status_code == 200)
-    except requests.RequestException:
-        return (service, False)
+def reload_service(client: HAClient, service: str) -> tuple[str, bool]:
+    """Call a single HA reload service. Returns (service, success).
+
+    Uses the shared HAClient so auth/timeout/JSON handling is consistent
+    with the rest of the codebase.
+    """
+    domain, _, action = service.partition("/")
+    ok = client.call_service(domain, action)
+    return (service, ok)
 
 
 def reload_config() -> bool:
     """Reload Home Assistant configuration via API."""
-    load_env_file()
-
-    ha_url = os.getenv("HA_URL", DEFAULT_HA_URL)
-    token = os.getenv("HA_TOKEN", "")
     git_timeout, git_timeout_warning = get_env_int("HA_GIT_TIMEOUT", 10)
     reload_timeout, reload_timeout_warning = get_env_int("HA_RELOAD_TIMEOUT", 30)
 
     for warning in [git_timeout_warning, reload_timeout_warning]:
         if warning:
-            print(f"⚠️  {warning}")
+            print(f"\u26a0\ufe0f  {warning}")
 
-    url_error = validate_ha_url(ha_url)
-    if url_error:
-        print(f"❌ Error: {url_error}")
+    try:
+        client = HAClient.from_env()
+    except HARequestError as e:
+        print(f"\u274c Error: {e}")
+        if "HA_TOKEN" in str(e):
+            print("   Create a .env file with: HA_TOKEN=your_long_lived_access_token")
+            print("   Get your token from Home Assistant Profile page")
         return False
 
-    if not token:
-        print("❌ Error: HA_TOKEN not found in environment or .env file")
-        print("   Create a .env file with: HA_TOKEN=your_long_lived_access_token")
-        print("   Get your token from Home Assistant Profile page")
-        return False
-
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    # Override client timeout with the reload-specific value (typically longer
+    # than the default request timeout because reloads block on disk I/O).
+    client.timeout = reload_timeout
 
     services = detect_changed_services(git_timeout=git_timeout)
     if not services:
-        print("⚠️  No config changes detected, reloading all domains to be safe")
+        print(
+            "\u26a0\ufe0f  No config changes detected, reloading all domains to be safe"
+        )
         services = set(ALL_SERVICES)
 
     labels = sorted(SERVICE_LABELS.get(s, s) for s in services)
-    print(f"🔄 Reloading: {', '.join(labels)}")
+    print(f"\U0001f504 Reloading: {', '.join(labels)}")
 
     # reload_core_config must run before domain reloads — automations/scripts
     # reference helpers and integrations that core config sets up.
@@ -138,13 +133,13 @@ def reload_config() -> bool:
     results = []
 
     if core_service in services:
-        results.append(reload_service(core_service, ha_url, headers, reload_timeout))
+        results.append(reload_service(client, core_service))
 
     if domain_services:
         with ThreadPoolExecutor() as executor:
             results.extend(
                 executor.map(
-                    lambda s: reload_service(s, ha_url, headers, reload_timeout),
+                    lambda s: reload_service(client, s),
                     domain_services,
                 )
             )
@@ -153,15 +148,15 @@ def reload_config() -> bool:
     for service, ok in results:
         label = SERVICE_LABELS.get(service, service)
         if ok:
-            print(f"  ✅ {label} reloaded")
+            print(f"  \u2705 {label} reloaded")
         else:
-            print(f"  ❌ {label} failed to reload")
+            print(f"  \u274c {label} failed to reload")
             all_ok = False
 
     if all_ok:
-        print("✅ All reloads completed successfully!")
+        print("\u2705 All reloads completed successfully!")
     else:
-        print("❌ Some reloads failed")
+        print("\u274c Some reloads failed")
 
     return all_ok
 

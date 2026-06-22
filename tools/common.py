@@ -121,14 +121,19 @@ def validate_ha_url(ha_url: str) -> str | None:
     return None
 
 
+class HARequestError(Exception):
+    """Raised when a Home Assistant REST API request fails."""
+
+
 class ValidatorBase:
     """Base class for Home Assistant configuration validators."""
 
     validator_name = "Configuration"
 
-    def __init__(self, config_dir: str = "config"):
+    def __init__(self, config_dir: str = "config", quiet: bool = False):
         """Initialize the validator with config directory."""
         self.config_dir = Path(config_dir).resolve()
+        self.quiet = quiet
         self.errors: list[str] = []
         self.warnings: list[str] = []
         self.info: list[str] = []
@@ -215,6 +220,9 @@ class ValidatorBase:
 
     def print_results(self):
         """Print validation results."""
+        if self.quiet:
+            return
+
         if self.info:
             print("INFO:")
             for info in self.info:
