@@ -41,3 +41,36 @@ def test_ha_official_validator_quiet_kwarg_accepted():
 
 def test_yaml_module_main_callable():
     assert callable(yaml_main)
+
+
+class TestFileDeps:
+    def test_yaml_validator_file_deps_yaml_files(self):
+        """YAMLValidator depends on top-level YAML files (base class default)."""
+        v = YAMLValidator()
+        deps = v.file_deps()
+        assert "*.yaml" in deps
+        assert "*.yml" in deps
+
+    def test_reference_validator_file_deps_includes_storage(self):
+        """ReferenceValidator depends on YAML files + .storage registries."""
+        v = ReferenceValidator()
+        deps = v.file_deps()
+        assert "*.yaml" in deps
+        assert ".storage/core.entity_registry" in deps
+        assert ".storage/core.device_registry" in deps
+        assert ".storage/core.area_registry" in deps
+
+    def test_ha_official_validator_file_deps(self):
+        """HAOfficialValidator uses base class default (top-level YAML)."""
+        v = HAOfficialValidator()
+        deps = v.file_deps()
+        assert "*.yaml" in deps
+        assert "*.yml" in deps
+
+    def test_file_deps_returns_strings(self):
+        for cls in [YAMLValidator, ReferenceValidator, HAOfficialValidator]:
+            v = cls()
+            deps = v.file_deps()
+            assert isinstance(deps, list)
+            for d in deps:
+                assert isinstance(d, str)

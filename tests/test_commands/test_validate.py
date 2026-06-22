@@ -29,24 +29,36 @@ class TestValidatorResult:
         assert r.passed is True
         assert r.duration == 0.5
 
+    def test_cached_defaults_to_false(self):
+        r = ValidatorResult("Test", True, "", "", 0.0)
+        assert r.cached is False
+
+    def test_cached_true(self):
+        r = ValidatorResult("Test", True, "", "", 0.0, cached=True)
+        assert r.cached is True
+
 
 class TestRunOne:
     def test_successful_validator(self, config_dir):
-        """A validator that passes returns passed=True with stdout captured."""
-        # Use the real YAML validator on a valid config
+        """A validator that passes returns passed=True."""
         from tools.validators.yaml import YAMLValidator
 
-        result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True)
+        result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=True)
         assert result.passed is True
         assert isinstance(result.duration, float)
         assert result.duration >= 0
+        assert result.cached is False
 
     def test_failing_validator(self, tmp_path):
         """A validator that finds errors returns passed=False."""
         from tools.validators.yaml import YAMLValidator
 
         result = _run_one(
-            YAMLValidator, "YAML", str(tmp_path / "nonexistent"), quiet=True
+            YAMLValidator,
+            "YAML",
+            str(tmp_path / "nonexistent"),
+            quiet=True,
+            force=True,
         )
         assert result.passed is False
 
@@ -57,7 +69,7 @@ class TestRunOne:
         with patch.object(
             YAMLValidator, "validate_all", side_effect=RuntimeError("boom")
         ):
-            result = _run_one(YAMLValidator, "YAML", "config", quiet=True)
+            result = _run_one(YAMLValidator, "YAML", "config", quiet=True, force=True)
         assert result.passed is False
         assert "Failed to run validator" in result.stderr
         assert "boom" in result.stderr
@@ -67,38 +79,143 @@ class TestRunOne:
         from tools.validators.yaml import YAMLValidator
 
         with patch.object(YAMLValidator, "validate_all", side_effect=SystemExit(0)):
-            result = _run_one(YAMLValidator, "YAML", "config", quiet=True)
+            result = _run_one(YAMLValidator, "YAML", "config", quiet=True, force=True)
         assert result.passed is True
 
     def test_system_exit_nonzero_treated_as_failure(self):
         from tools.validators.yaml import YAMLValidator
 
         with patch.object(YAMLValidator, "validate_all", side_effect=SystemExit(1)):
-            result = _run_one(YAMLValidator, "YAML", "config", quiet=True)
+            result = _run_one(YAMLValidator, "YAML", "config", quiet=True, force=True)
         assert result.passed is False
 
     def test_quiet_propagated_to_validator(self):
         """The quiet kwarg should reach the validator instance."""
         from tools.validators.yaml import YAMLValidator
 
-        with patch.object(YAMLValidator, "validate_all", return_value=True) as mock:
-            _run_one(YAMLValidator, "YAML", "config", quiet=True)
-        # Inspect the instance the mock was called on
-        instance = (
-            mock.call_args[0][0] if mock.call_args[0] else mock.call_args[1].get("self")
-        )
-        # Simpler: just verify call_args[0] is empty (unbound) or self was bound
-        # Actually validate_all is called as instance method, so self is implicit
-        # Inspect via patch.object target — but easier to just construct manually
-        # and assert.
         instance = YAMLValidator("config", quiet=True)
         assert instance.quiet is True
+
+    def test_cache_hit_returns_cached_result(self, config_dir):
+        """When file hash matches cache, validation is skipped."""
+        from tools.validators.yaml import YAMLValidator
+
+        hash_val = "abc123"
+        with (
+            patch("tools.commands.validate.compute_hash", return_value=hash_val),
+            patch(
+                "tools.commands.validate.load_cache",
+                return_value={"hash": hash_val, "passed": True, "duration": 0.42},
+            ),
+        ):
+            result = _run_one(
+                YAMLValidator, "YAML", config_dir, quiet=True, force=False
+            )
+        assert result.passed is True
+        assert result.cached is True
+        assert result.duration == 0.42
+
+    def test_cache_miss_runs_validator(self, config_dir):
+        """Hash mismatch runs full validation."""
+        from tools.validators.yaml import YAMLValidator
+
+        with (
+            patch("tools.commands.validate.compute_hash", return_value="newhash"),
+            patch(
+                "tools.commands.validate.load_cache",
+                return_value={"hash": "oldhash", "passed": True, "duration": 0.1},
+            ),
+        ):
+            result = _run_one(
+                YAMLValidator, "YAML", config_dir, quiet=True, force=False
+            )
+        assert result.cached is False
+
+    def test_force_bypasses_cache(self, config_dir):
+        """--force ignores cached result."""
+        from tools.validators.yaml import YAMLValidator
+
+        with (
+            patch("tools.commands.validate.compute_hash", return_value="abc"),
+            patch(
+                "tools.commands.validate.load_cache",
+                return_value={"hash": "abc", "passed": False, "duration": 0.1},
+            ),
+        ):
+            result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=True)
+        assert result.cached is False
+
+    def test_cache_failure_falls_through_to_run(self, config_dir):
+        """If load_cache raises, validation still runs."""
+        from tools.validators.yaml import YAMLValidator
+
+        with patch(
+            "tools.commands.validate.load_cache",
+            side_effect=OSError("disk full"),
+        ):
+            result = _run_one(
+                YAMLValidator, "YAML", config_dir, quiet=True, force=False
+            )
+        assert result.passed is True
+        assert result.cached is False
+
+    def test_save_cache_called_on_success(self, config_dir):
+        """On pass, result is cached using the pre-validation hash."""
+        from tools.validators.yaml import YAMLValidator
+
+        hash_val = "hash123"
+        with (
+            patch("tools.commands.validate.compute_hash", return_value=hash_val) as mh,
+            patch("tools.commands.validate.load_cache", return_value=None),
+            patch("tools.commands.validate.save_cache") as mock_save,
+        ):
+            result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=True)
+        assert result.passed is True
+        # compute_hash called once (no second call for save)
+        assert mh.call_count == 1
+        mock_save.assert_called_once()
+        args, kwargs = mock_save.call_args
+        assert args[2] == "YAML"  # description
+        assert args[3] == hash_val  # file_hash (reused from stash)
+        assert args[4] is True  # passed
+
+    def test_save_cache_not_called_on_failure(self, tmp_path):
+        """Failures are not cached — they always re-run."""
+        from tools.validators.yaml import YAMLValidator
+
+        with (
+            patch("tools.commands.validate.load_cache", return_value=None),
+            patch("tools.commands.validate.save_cache") as mock_save,
+        ):
+            result = _run_one(
+                YAMLValidator,
+                "YAML",
+                str(tmp_path / "nonexistent"),
+                quiet=True,
+                force=True,
+            )
+        assert result.passed is False
+        mock_save.assert_not_called()
+
+    def test_save_cache_failure_does_not_crash(self, config_dir):
+        """If saving cache throws, validation result is still returned."""
+        from tools.validators.yaml import YAMLValidator
+
+        with (
+            patch("tools.commands.validate.load_cache", return_value=None),
+            patch(
+                "tools.commands.validate.save_cache",
+                side_effect=OSError("disk full"),
+            ),
+        ):
+            result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=True)
+        assert result.passed is True
 
 
 class TestRunValidators:
     def test_returns_three_results(self, config_dir):
         """Default suite runs 3 validators (yaml, references, ha_official)."""
-        results = run_validators(config_dir, quiet=True)
+        results = run_validators(config_dir, quiet=True, force=True)
         assert len(results) == 3
         descriptions = {r.description for r in results}
         assert "YAML Syntax Validation" in descriptions
@@ -106,7 +223,7 @@ class TestRunValidators:
         assert "Official Home Assistant Configuration Validation" in descriptions
 
     def test_all_results_have_required_fields(self, config_dir):
-        results = run_validators(config_dir, quiet=True)
+        results = run_validators(config_dir, quiet=True, force=True)
         for r in results:
             assert isinstance(r.description, str)
             assert isinstance(r.passed, bool)
@@ -114,10 +231,45 @@ class TestRunValidators:
             assert isinstance(r.stderr, str)
             assert isinstance(r.duration, float)
 
+    def test_second_run_uses_real_cache(self, config_dir):
+        """End-to-end: first run populates cache; second run hits it."""
+        results1 = run_validators(config_dir, quiet=True, force=True)
+        # All should be non-cached first time (force=True)
+        for r in results1:
+            assert r.cached is False
+
+        results2 = run_validators(config_dir, quiet=True, force=False)
+        # Without --force, unchanged files should yield cache hits
+        cached_count = sum(1 for r in results2 if r.cached)
+        assert cached_count >= 1, "Expected at least one validator to hit cache"
+
+    def test_file_change_invalidates_cache(self, config_dir):
+        """Modifying a watched file invalidates that validator's cache."""
+        # First run: populate cache
+        run_validators(config_dir, quiet=True, force=True)
+
+        # Second run: should be cached
+        results2 = run_validators(config_dir, quiet=True, force=False)
+        # Count cached for YAML (fast enough to re-run, HA official dominates)
+        yaml_result = [r for r in results2 if "YAML" in r.description][0]
+        assert yaml_result.cached is True
+
+        # Touch a YAML file
+        import os
+
+        cf = os.path.join(config_dir, "configuration.yaml")
+        with open(cf, "a") as f:
+            f.write("\n# cache bust\n")
+
+        # Third run: YAML validator should re-run (no longer cached)
+        results3 = run_validators(config_dir, quiet=True, force=False)
+        yaml_result3 = [r for r in results3 if "YAML" in r.description][0]
+        assert yaml_result3.cached is False
+
 
 class TestRun:
-    def _args(self, config_dir=None, quiet=False):
-        return Namespace(config_dir=config_dir or "config", quiet=quiet)
+    def _args(self, config_dir=None, quiet=False, force=False):
+        return Namespace(config_dir=config_dir or "config", quiet=quiet, force=force)
 
     def test_all_pass_returns_zero(self, config_dir):
         with patch(
@@ -140,7 +292,6 @@ class TestRun:
         ):
             result = run(self._args(config_dir, quiet=True))
         assert result == 1
-        # Failure output is printed even in --quiet mode
         out = capsys.readouterr().out
         assert "FAILED" in out
         assert "broke" in out
@@ -152,7 +303,6 @@ class TestRun:
         ):
             run(self._args(config_dir, quiet=True))
         out = capsys.readouterr().out
-        # On all-pass + quiet, no banner output
         assert "Running all validators" not in out
         assert "TEST SUMMARY" not in out
 
@@ -176,6 +326,35 @@ class TestRun:
         out = capsys.readouterr().out
         assert "1.50s" in out
 
+    def test_cached_result_shows_cached_label(self, config_dir, capsys):
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[
+                ValidatorResult("V1", True, "ok", "", 0.0, cached=True),
+            ],
+        ):
+            run(self._args(config_dir, quiet=False))
+        out = capsys.readouterr().out
+        assert "(cached)" in out
+
+    def test_force_shows_cache_ignored_message(self, config_dir, capsys):
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+        ):
+            run(self._args(config_dir, quiet=False, force=True))
+        out = capsys.readouterr().out
+        assert "cache ignored" in out
+
+    def test_passes_force_to_run_validators(self, config_dir):
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+        ) as mock_rv:
+            run(self._args(config_dir, quiet=True, force=True))
+        # config_dir passed positionally, quiet + force as keywords
+        mock_rv.assert_called_once_with(config_dir, quiet=True, force=True)
+
 
 class TestAddParser:
     def test_subparser_registered_with_validate_name(self):
@@ -196,3 +375,21 @@ class TestAddParser:
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate"])
         assert callable(args.func)
+
+    def test_force_flag_defaults_false(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        validate.add_parser(subparsers)
+        args = parser.parse_args(["validate"])
+        assert args.force is False
+
+    def test_force_flag_set_true(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        validate.add_parser(subparsers)
+        args = parser.parse_args(["validate", "--force"])
+        assert args.force is True

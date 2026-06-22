@@ -138,6 +138,14 @@ class ValidatorBase:
         self.warnings: list[str] = []
         self.info: list[str] = []
 
+    def file_deps(self) -> list[str]:
+        """Glob patterns (relative to config_dir) for files this validator reads.
+
+        Used by the caching layer to determine when a cached result is stale.
+        Subclasses override this to declare their file dependencies.
+        """
+        return ["*.yaml", "*.yml"]
+
     def get_yaml_files(self) -> list[Path]:
         """Get all top-level YAML files in the config directory."""
         yaml_files: list[Path] = []
