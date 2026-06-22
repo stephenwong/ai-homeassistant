@@ -279,6 +279,11 @@ def main():
     parser.add_argument(
         "--full", "-f", action="store_true", help="Show full detailed output"
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit compact JSON output (machine-readable, no banners/emojis)",
+    )
 
     args = parser.parse_args()
 
@@ -302,6 +307,11 @@ def main():
     # Categorize entities
     categorized = categorize_entities(entities, area_names)
 
+    # JSON mode takes precedence — emit compact machine-readable output.
+    if args.json:
+        _emit_json(categorized, args)
+        return 0
+
     # Show output based on arguments
     if args.search:
         search_entities(categorized, args.search)
@@ -317,6 +327,54 @@ def main():
         print_summary(categorized)
 
     return 0
+
+
+def _emit_json(categorized: dict, args: argparse.Namespace) -> None:
+    """Emit compact JSON output for machine consumption.
+
+    Selectors (--domain, --area, --search) filter the same data the pretty
+    printers see; the schema is a flat list of ``{entity_id, name, area,
+    device_class, unit}`` dicts. Output goes to stdout as a single JSON array
+    (no banners, no emojis) — ideal for piping to ``jq`` or pasting into LLM
+    prompts where every byte costs tokens.
+    """
+    import json
+
+    if args.search:
+        query_lower = args.search.lower()
+        rows = [
+            e
+            for domain_entities in categorized["by_domain"].values()
+            for e in domain_entities
+            if query_lower in e["entity_id"].lower()
+            or query_lower in e["name"].lower()
+            or (e.get("device_class") and query_lower in e["device_class"].lower())
+        ]
+    elif args.domain:
+        rows = categorized["by_domain"].get(args.domain, [])
+    elif args.area:
+        rows = categorized["by_area"].get(args.area, [])
+    else:
+        # Default to automation-relevant set for compactness
+        rows = [
+            e
+            for domain_entities in categorized["automation_relevant"].values()
+            for e in domain_entities
+        ]
+
+    # Strip None values and shorten keys to keep payload compact.
+    compact = []
+    for e in sorted(rows, key=lambda x: x["entity_id"]):
+        row = {"e": e["entity_id"], "n": e["name"]}
+        if e.get("area") and e["area"] != "No Area":
+            row["a"] = e["area"]
+        if e.get("device_class"):
+            row["dc"] = e["device_class"]
+        if e.get("unit"):
+            row["u"] = e["unit"]
+        compact.append(row)
+
+    print(json.dumps(compact, separators=(",", ":")))
 
 
 if __name__ == "__main__":

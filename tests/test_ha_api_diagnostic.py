@@ -4,13 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-import tools.ha_api_diagnostic as diag
+import tools._dev.api_diagnostic as diag
 
 
 class TestGetConfig:
     def test_returns_config_dict(self):
         with (
-            patch("tools.ha_api_diagnostic.load_env_file"),
+            patch("tools._dev.api_diagnostic.load_env_file"),
             patch.dict(
                 "os.environ",
                 {"HA_URL": "http://test:8123", "HA_TOKEN": "test_token"},
@@ -22,7 +22,7 @@ class TestGetConfig:
 
     def test_default_values(self):
         with (
-            patch("tools.ha_api_diagnostic.load_env_file"),
+            patch("tools._dev.api_diagnostic.load_env_file"),
             patch.dict("os.environ", {}, clear=True),
         ):
             config = diag.get_config()
@@ -36,7 +36,9 @@ class TestApiConnection:
         mock_response.status_code = 200
         mock_response.json.return_value = {"message": "API running"}
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_api_connection("http://test:8123", "token")
             assert result is True
             captured = capsys.readouterr()
@@ -47,13 +49,15 @@ class TestApiConnection:
         mock_response.status_code = 401
         mock_response.text = "Unauthorized"
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_api_connection("http://test:8123", "token")
             assert result is False
 
     def test_exception(self, capsys):
         with patch(
-            "tools.ha_api_diagnostic.requests.get",
+            "tools._dev.api_diagnostic.requests.get",
             side_effect=requests.exceptions.RequestException("connection failed"),
         ):
             result = diag.test_api_connection("http://test:8123", "token")
@@ -65,7 +69,9 @@ class TestApiConnection:
         mock_response.json.side_effect = ValueError("bad json")
         mock_response.text = "not-json"
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_api_connection("http://test:8123", "token")
             assert result is False
 
@@ -76,7 +82,9 @@ class TestApiEndpoints:
         mock_response.status_code = 200
         mock_response.json.return_value = [{"entity_id": "test.entity"}]
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_api_endpoints("http://test:8123", "token")
             assert len(result) > 0
 
@@ -85,7 +93,9 @@ class TestApiEndpoints:
         mock_response.status_code = 404
         mock_response.text = "Not found"
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_api_endpoints("http://test:8123", "token")
             assert len(result) == 0
 
@@ -94,7 +104,9 @@ class TestApiEndpoints:
         mock_response.status_code = 200
         mock_response.json.return_value = {"key": "value", "key2": "value2"}
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_api_endpoints("http://test:8123", "token")
             assert len(result) > 0
 
@@ -104,13 +116,15 @@ class TestApiEndpoints:
         mock_response.json.side_effect = ValueError("not json")
         mock_response.text = "plain text response"
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_api_endpoints("http://test:8123", "token")
             assert len(result) > 0
 
     def test_exception(self, capsys):
         with patch(
-            "tools.ha_api_diagnostic.requests.get",
+            "tools._dev.api_diagnostic.requests.get",
             side_effect=requests.exceptions.RequestException("timeout"),
         ):
             result = diag.test_api_endpoints("http://test:8123", "token")
@@ -130,7 +144,9 @@ class TestEntityRegistryRead:
             }
         ]
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_entity_registry_read("http://test:8123", "token")
             assert len(result) == 1
 
@@ -139,13 +155,15 @@ class TestEntityRegistryRead:
         mock_response.status_code = 401
         mock_response.text = "Unauthorized"
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_entity_registry_read("http://test:8123", "token")
             assert result == []
 
     def test_exception(self, capsys):
         with patch(
-            "tools.ha_api_diagnostic.requests.get",
+            "tools._dev.api_diagnostic.requests.get",
             side_effect=requests.exceptions.RequestException("error"),
         ):
             result = diag.test_entity_registry_read("http://test:8123", "token")
@@ -157,7 +175,9 @@ class TestEntityRegistryRead:
         mock_response.json.side_effect = ValueError("invalid json")
         mock_response.text = "nope"
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_entity_registry_read("http://test:8123", "token")
             assert result == []
 
@@ -170,7 +190,9 @@ class TestStatesEndpoint:
             {"entity_id": "sensor.test", "attributes": {"unit": "C"}}
         ]
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_states_endpoint("http://test:8123", "token")
             assert result is True
 
@@ -179,7 +201,9 @@ class TestStatesEndpoint:
         mock_response.status_code = 200
         mock_response.json.return_value = []
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_states_endpoint("http://test:8123", "token")
             assert result is False
 
@@ -188,13 +212,15 @@ class TestStatesEndpoint:
         mock_response.status_code = 500
         mock_response.text = "Error"
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_states_endpoint("http://test:8123", "token")
             assert result is False
 
     def test_exception(self, capsys):
         with patch(
-            "tools.ha_api_diagnostic.requests.get",
+            "tools._dev.api_diagnostic.requests.get",
             side_effect=requests.exceptions.RequestException("error"),
         ):
             result = diag.test_states_endpoint("http://test:8123", "token")
@@ -206,7 +232,9 @@ class TestStatesEndpoint:
         mock_response.json.side_effect = ValueError("invalid json")
         mock_response.text = "plain text"
 
-        with patch("tools.ha_api_diagnostic.requests.get", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.get", return_value=mock_response
+        ):
             result = diag.test_states_endpoint("http://test:8123", "token")
             assert result is False
 
@@ -221,7 +249,9 @@ class TestEntityRename:
         mock_response.status_code = 200
         entity_data = [{"entity_id": "sensor.test"}]
 
-        with patch("tools.ha_api_diagnostic.requests.post", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.post", return_value=mock_response
+        ):
             result = diag.test_entity_rename("http://test:8123", "token", entity_data)
             assert result is True
 
@@ -231,7 +261,9 @@ class TestEntityRename:
         mock_response.text = "Method not allowed"
         entity_data = [{"entity_id": "sensor.test"}]
 
-        with patch("tools.ha_api_diagnostic.requests.post", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.post", return_value=mock_response
+        ):
             result = diag.test_entity_rename("http://test:8123", "token", entity_data)
             assert result is False
 
@@ -239,7 +271,7 @@ class TestEntityRename:
         entity_data = [{"entity_id": "sensor.test"}]
         # Both methods raise exceptions
         with patch(
-            "tools.ha_api_diagnostic.requests.post",
+            "tools._dev.api_diagnostic.requests.post",
             side_effect=requests.exceptions.RequestException("error"),
         ):
             result = diag.test_entity_rename("http://test:8123", "token", entity_data)
@@ -257,7 +289,9 @@ class TestServiceCallMethod:
         mock_response.status_code = 200
         entity_data = [{"entity_id": "sensor.test"}]
 
-        with patch("tools.ha_api_diagnostic.requests.post", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.post", return_value=mock_response
+        ):
             diag.test_service_call_method("http://test:8123", "token", entity_data)
             captured = capsys.readouterr()
             assert "successful" in captured.out
@@ -268,7 +302,9 @@ class TestServiceCallMethod:
         mock_response.text = "Not found"
         entity_data = [{"entity_id": "sensor.test"}]
 
-        with patch("tools.ha_api_diagnostic.requests.post", return_value=mock_response):
+        with patch(
+            "tools._dev.api_diagnostic.requests.post", return_value=mock_response
+        ):
             diag.test_service_call_method("http://test:8123", "token", entity_data)
             captured = capsys.readouterr()
             assert "failed" in captured.out
@@ -276,7 +312,7 @@ class TestServiceCallMethod:
     def test_exception(self, capsys):
         entity_data = [{"entity_id": "sensor.test"}]
         with patch(
-            "tools.ha_api_diagnostic.requests.post",
+            "tools._dev.api_diagnostic.requests.post",
             side_effect=requests.exceptions.RequestException("error"),
         ):
             diag.test_service_call_method("http://test:8123", "token", entity_data)
@@ -297,7 +333,7 @@ class TestMainFunction:
 
     def test_main_no_token(self, capsys):
         with (
-            patch("tools.ha_api_diagnostic.load_env_file"),
+            patch("tools._dev.api_diagnostic.load_env_file"),
             patch.dict("os.environ", {"HA_URL": "http://test:8123"}, clear=True),
         ):
             diag.main()
@@ -306,13 +342,13 @@ class TestMainFunction:
 
     def test_main_connection_fails(self, capsys):
         with (
-            patch("tools.ha_api_diagnostic.load_env_file"),
+            patch("tools._dev.api_diagnostic.load_env_file"),
             patch.dict(
                 "os.environ",
                 {"HA_URL": "http://test:8123", "HA_TOKEN": "test_token"},
             ),
             patch(
-                "tools.ha_api_diagnostic.test_api_connection",
+                "tools._dev.api_diagnostic.test_api_connection",
                 return_value=False,
             ),
         ):
@@ -322,30 +358,30 @@ class TestMainFunction:
 
     def test_main_full_run(self, capsys):
         with (
-            patch("tools.ha_api_diagnostic.load_env_file"),
+            patch("tools._dev.api_diagnostic.load_env_file"),
             patch.dict(
                 "os.environ",
                 {"HA_URL": "http://test:8123", "HA_TOKEN": "test_token"},
             ),
             patch(
-                "tools.ha_api_diagnostic.test_api_connection",
+                "tools._dev.api_diagnostic.test_api_connection",
                 return_value=True,
             ),
             patch(
-                "tools.ha_api_diagnostic.test_api_endpoints",
+                "tools._dev.api_diagnostic.test_api_endpoints",
                 return_value=["/api/states"],
             ),
             patch(
-                "tools.ha_api_diagnostic.test_entity_registry_read",
+                "tools._dev.api_diagnostic.test_entity_registry_read",
                 return_value=[{"entity_id": "sensor.test"}],
             ),
             patch(
-                "tools.ha_api_diagnostic.test_states_endpoint",
+                "tools._dev.api_diagnostic.test_states_endpoint",
                 return_value=True,
             ),
-            patch("tools.ha_api_diagnostic.test_entity_rename"),
-            patch("tools.ha_api_diagnostic.test_service_call_method"),
-            patch("tools.ha_api_diagnostic.show_websocket_info"),
+            patch("tools._dev.api_diagnostic.test_entity_rename"),
+            patch("tools._dev.api_diagnostic.test_service_call_method"),
+            patch("tools._dev.api_diagnostic.show_websocket_info"),
         ):
             diag.main()
             captured = capsys.readouterr()

@@ -5,6 +5,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["tools"]
 
+[tool.hatch.build]
+exclude = ["tools/_dev"]
+
 [project]
 name = "ha-config-tools"
 version = "1.0.0"
@@ -43,6 +46,7 @@ exclude = [
     "dist",
     "config",
     "temp",
+    "tools/_dev",
 ]
 
 [tool.ruff.lint]
@@ -84,6 +88,7 @@ exclude = [
     ".venv/",
     "build/",
     "dist/",
+    "tools/_dev/",
 ]
 
 [[tool.mypy.overrides]]
@@ -120,6 +125,7 @@ omit = [
     "*/__pycache__/*",
     "*/venv/*",
     "*/.venv/*",
+    "*/tools/_dev/*",
 ]
 
 [tool.coverage.report]

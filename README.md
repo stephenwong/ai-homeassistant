@@ -237,15 +237,28 @@ xcode-select --install  # Installs Command Line Tools including make
 │   └── .storage/          # Entity registry (pulled from HA)
 ├── tools/                 # Validation and management scripts
 │   ├── common.py          # Shared utilities (ValidatorBase, HAYamlLoader)
-│   ├── run_tests.py       # Main test suite runner
-│   ├── yaml_validator.py  # YAML syntax validation
-│   ├── reference_validator.py # Entity reference validation
-│   ├── ha_official_validator.py # Official HA validation
-│   ├── ha_config_validator.py # Deep validation via HA check_config
+│   ├── ha_cli.py          # Single CLI entry: `uv run python tools/ha_cli.py <cmd>`
+│   ├── commands/          # CLI subcommand implementations
+│   │   ├── validate.py    # `ha_cli validate` (in-process, parallel validators)
+│   │   ├── reload.py      # `ha_cli reload`
+│   │   ├── entities.py    # `ha_cli entities` (incl. `--json` mode)
+│   │   └── curl.py        # `ha_cli curl` (wraps ha-curl.sh, adds --filter)
+│   ├── ha/                # Shared HA REST API client
+│   │   └── client.py      # HAClient class (from_env, get/post/call_service)
+│   ├── validators/        # Validator implementations (importable, not subprocess-spawned)
+│   │   ├── yaml.py        # YAML syntax validation
+│   │   ├── references.py  # Entity reference validation
+│   │   └── ha_official.py # Official HA validation
+│   ├── yaml_validator.py        # Backward-compat shim → tools/validators/yaml.py
+│   ├── reference_validator.py   # Backward-compat shim → tools/validators/references.py
+│   ├── ha_official_validator.py # Backward-compat shim → tools/validators/ha_official.py
+│   ├── run_tests.py       # Backward-compat shim → `ha_cli validate`
+│   ├── ha_config_validator.py # Deep validation via HA check_config (standalone, not in suite)
 │   ├── entity_explorer.py # Entity discovery tool
 │   ├── ha-curl.sh         # HA API curl wrapper with auto-auth
-│   ├── ha_api_diagnostic.py # Comprehensive API testing
-│   ├── reload_config.py   # Reload HA config via API
+│   ├── _dev/              # Dev-only diagnostic scripts (excluded from lint/coverage/wheel)
+│   │   └── api_diagnostic.py # Comprehensive API testing (archived from main flow)
+│   ├── reload_config.py   # Reload HA config via API (uses HAClient)
 │   ├── generate_changelog.py # Backup changelog generation
 │   ├── search_backups.py  # Full-text search across backups
 │   └── prune_backups.py   # Smart backup retention pruning
@@ -271,6 +284,17 @@ make backup    # Create timestamped backup
 make validate  # Run all validation tests
 ```
 
+### Single CLI Entry (preferred for new code)
+```bash
+uv run python tools/ha_cli.py validate             # Run all 3 validators in-process
+uv run python tools/ha_cli.py validate --quiet     # Suppress success output (used by hooks)
+uv run python tools/ha_cli.py reload               # Reload changed HA config via API
+uv run python tools/ha_cli.py entities --json      # Compact JSON output (token-efficient)
+uv run python tools/ha_cli.py entities --domain light --json
+uv run python tools/ha_cli.py curl /api/states     # Wraps ha-curl.sh
+uv run python tools/ha_cli.py curl /api/states --filter '. | length'  # Pipes through jq
+```
+
 ### Entity Discovery
 ```bash
 make entities                           # Show entity summary
@@ -278,9 +302,10 @@ make entities ARGS='--domain climate'   # Climate entities only
 make entities ARGS='--search motion'    # Search for motion sensors
 make entities ARGS='--area kitchen'     # Kitchen entities only
 make entities ARGS='--full'            # Complete detailed output
+make entities ARGS='--json'            # Compact JSON (single line, no banners)
 ```
 
-### Individual Validators
+### Individual Validators (backward-compat shims still work)
 ```bash
 uv run python tools/yaml_validator.py         # YAML syntax only
 uv run python tools/reference_validator.py    # Entity references only
