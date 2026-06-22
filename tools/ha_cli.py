@@ -10,6 +10,7 @@ Subcommands:
     reload      Reload HA configuration via API.
     entities    Browse the entity registry.
     curl        Call HA REST API (wraps tools/ha-curl.sh).
+    edit        Edit automations/scripts with safe round-trip YAML.
 
 Backward-compat: ``python tools/run_tests.py`` delegates to ``ha_cli validate``.
 """
@@ -19,7 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from tools.commands import curl, entities, reload, validate
+from tools.commands import curl, edit, entities, reload, validate
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     reload.add_parser(subparsers)
     entities.add_parser(subparsers)
     curl.add_parser(subparsers)
+    edit.add_parser(subparsers)
 
     return parser
 
