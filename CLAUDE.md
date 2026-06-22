@@ -152,6 +152,35 @@ Run `make lint` locally before pushing to catch CI failures early. Use `make lin
 
 Implications: Frigate can use aggressive detection (Hailo), streams use hardware transcoding (QuickSync).
 
+## MCP Server (ha-mcp)
+
+The `ha-mcp` add-on provides natural-language HA control via MCP tools. Configured in `opencode.json` as a remote MCP server.
+
+### Setup
+1. **Install add-on:** Supervisor → Add-on Store → ⋮ → Repositories → `https://github.com/homeassistant-ai/ha-mcp`
+2. **Start** the "Home Assistant MCP Server" add-on
+3. **Copy the MCP URL** from add-on logs (format: `http://<ip>:9583/private_<token>`)
+4. **Add to `opencode.json`:**
+   ```json
+   "mcp": {
+     "ha-mcp": {
+       "type": "remote",
+       "url": "http://<ip>:9583/private_<token>"
+     }
+   }
+   ```
+5. **Restart opencode** for the config to take effect
+
+### Capabilities (v7.8.1)
+- 88+ tools for entity listing, service calls, history, config inspection
+- Skills: `home-assistant-best-practices` (triggers on automation/script/dashboard work)
+- Resources: read skill guides via `skill://` URIs
+
+### Troubleshooting
+- **Server not reachable:** Verify add-on is running (`ha addon info` via SSH)
+- **Connection refused:** Check HA host IP and that port 9583 is accessible from your machine
+- **Config not loaded:** Open `opencode.json` must have `$schema` field; restart opencode after changes
+
 ## Integrations
 
 - **Zigbee2MQTT**: `config/zigbee2mqtt/configuration.yaml` + `coordinator_backup.json` (addon slug: `45df7312_zigbee2mqtt`) — pulled locally via `make pull`, excluded from push except `configuration.yaml`
