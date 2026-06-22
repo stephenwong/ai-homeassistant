@@ -10,7 +10,7 @@
   "mcp": {
     "ha-mcp": {
       "type": "remote",
-      "url": "http://192.168.50.10:9583/private_REDACTED"
+      "url": "{env:HA_MCP_URL}"
     }
   }
 }

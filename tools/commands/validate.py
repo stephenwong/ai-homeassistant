@@ -67,11 +67,15 @@ def _run_one(
     name = cls.__name__
 
     # Compute hash once — reuse for both cache check and cache save.
+    # Skip caching entirely if the validator declares no file dependencies
+    # (e.g. HAOfficialValidator, whose result depends on the HA environment).
+    file_deps = instance.file_deps()
     fhash: str | None = None
-    with contextlib.suppress(Exception):
-        fhash = compute_hash(instance.config_dir, instance.file_deps())
+    if file_deps:
+        with contextlib.suppress(Exception):
+            fhash = compute_hash(instance.config_dir, file_deps)
 
-    # --- cache check (skip when --force) ---
+    # --- cache check (skip when --force or when file_deps is empty) ---
     if not force and fhash is not None:
         try:
             cached = load_cache(instance.config_dir, name)

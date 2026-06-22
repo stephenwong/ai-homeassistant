@@ -87,6 +87,13 @@ class TestLoadCache:
         result = load_cache(tmp_path, "Nonexistent")
         assert result is None
 
+    def test_missing_cache_does_not_create_directory(self, tmp_path):
+        """A read-only check should not create .cache/validators/ on disk."""
+        result = load_cache(tmp_path, "Nonexistent")
+        assert result is None
+        cache_dir = tmp_path / ".cache" / "validators"
+        assert not cache_dir.exists()
+
     def test_invalid_json_returns_none(self, tmp_path):
         cache_dir = tmp_path / ".cache" / "validators"
         cache_dir.mkdir(parents=True)

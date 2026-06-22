@@ -13,7 +13,12 @@ from tools.common import ValidatorBase, get_env_int
 
 
 class HAOfficialValidator(ValidatorBase):
-    """Validates Home Assistant configuration using the official HA package."""
+    """Validates Home Assistant configuration using the official HA package.
+
+    This validator depends on the installed HA version and Python packages,
+    not just config files. It declares no file dependencies so the caching
+    layer never caches it.
+    """
 
     validator_name = "Home Assistant configuration"
 
@@ -21,6 +26,10 @@ class HAOfficialValidator(ValidatorBase):
         """Initialize validator and timeout configuration."""
         super().__init__(config_dir, quiet=quiet)
         self.validation_timeout = self._get_timeout("HA_VALIDATION_TIMEOUT", 120)
+
+    def file_deps(self) -> list[str]:
+        """Return an empty list — result depends on HA environment, not files."""
+        return []
 
     def _get_timeout(self, env_name: str, default: int) -> int:
         """Read timeout env vars with validation."""

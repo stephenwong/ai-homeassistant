@@ -74,11 +74,9 @@ def run(args: argparse.Namespace) -> int:
             )
         else:
             # Pipe curl → jq
-            curl_proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
+            curl_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=sys.stderr)
             try:
-                subprocess.run(
+                jq_result = subprocess.run(
                     ["jq", args.filter],
                     stdin=curl_proc.stdout,
                     check=False,
@@ -86,7 +84,9 @@ def run(args: argparse.Namespace) -> int:
                 if curl_proc.stdout is not None:
                     curl_proc.stdout.close()
                 curl_proc.wait()
-                return curl_proc.returncode if curl_proc.returncode == 0 else 1
+                if curl_proc.returncode != 0:
+                    return 1
+                return 1 if jq_result.returncode != 0 else 0
             except Exception as e:
                 print(f"\u274c jq failed: {e}", file=sys.stderr)
                 return 1

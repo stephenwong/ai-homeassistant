@@ -42,8 +42,13 @@ def cache_path(config_dir: Path, name: str) -> Path:
 
 
 def load_cache(config_dir: Path, name: str) -> dict | None:
-    """Load a cached validator result. Returns None on any failure."""
-    path = cache_path(config_dir, name)
+    """Load a cached validator result. Returns None on any failure.
+
+    Does NOT create directories — only reads from existing cache files.
+    """
+    path = config_dir / CACHE_DIR_NAME / f"{name}.json"
+    if not path.is_file():
+        return None
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)

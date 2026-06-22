@@ -87,10 +87,14 @@ def reload_service(client: HAClient, service: str) -> tuple[str, bool]:
     """Call a single HA reload service. Returns (service, success).
 
     Uses the shared HAClient so auth/timeout/JSON handling is consistent
-    with the rest of the codebase.
+    with the rest of the codebase. Network errors are caught so one failing
+    service doesn't abort the batch.
     """
     domain, _, action = service.partition("/")
-    ok = client.call_service(domain, action)
+    try:
+        ok = client.call_service(domain, action)
+    except HARequestError:
+        ok = False
     return (service, ok)
 
 

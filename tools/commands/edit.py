@@ -24,12 +24,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description="View, add, update, or remove automations/scripts.",
     )
     parser.add_argument(
-        "config_dir",
-        nargs="?",
-        default="config",
-        help="Path to the config directory (default: config)",
-    )
-    parser.add_argument(
         "file",
         help="Target file basename (automations, scripts).",
     )
@@ -38,6 +32,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         nargs="?",
         default=None,
         help="Automation alias or script name to operate on.",
+    )
+    parser.add_argument(
+        "--config-dir",
+        "-c",
+        default="config",
+        help="Path to the config directory (default: config)",
     )
     parser.add_argument(
         "--show",
@@ -119,18 +119,12 @@ def run(args: argparse.Namespace) -> int:
     editor = YAMLEditor(target_file)
 
     try:
-        if args.show:
-            return _run_show(editor, args.alias)
-
         if args.add is not None:
             return _run_add(editor, args.add, args.quiet)
 
-        if not any([args.show, args.set, args.remove]):
-            print(
-                "Error: no action specified. Use --show, --set, --add, or --remove.",
-                file=sys.stderr,
-            )
-            return 1
+        # --show (or default), --set, --remove
+        if args.show or not any([args.set, args.remove]):
+            return _run_show(editor, args.alias)
 
         if args.alias is None:
             print("Error: alias required for --set or --remove", file=sys.stderr)
@@ -197,7 +191,11 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
         print("Error: --add value must be a JSON object", file=sys.stderr)
         return 1
 
-    ftype = _detect_file_type(editor) if editor.path.exists() else "list"
+    if editor.path.exists():
+        ftype = _detect_file_type(editor)
+    else:
+        # Infer type from file basename for new files
+        ftype = "dict" if editor.path.name == "scripts.yaml" else "list"
     try:
         if ftype == "dict":
             key = str(entry.get("id") or entry.get("alias") or "")

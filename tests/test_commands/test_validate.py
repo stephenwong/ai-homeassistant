@@ -243,6 +243,37 @@ class TestRunValidators:
         cached_count = sum(1 for r in results2 if r.cached)
         assert cached_count >= 1, "Expected at least one validator to hit cache"
 
+    def test_ha_official_is_never_cached(self, config_dir, monkeypatch):
+        """HAOfficialValidator depends on the HA environment, not just files."""
+        from tools.validators.ha_official import HAOfficialValidator
+
+        monkeypatch.setattr(HAOfficialValidator, "validate_all", lambda self: True)
+        monkeypatch.setattr(HAOfficialValidator, "file_deps", lambda self: [])
+        with (
+            patch("tools.commands.validate.compute_hash", return_value="hash"),
+            patch(
+                "tools.commands.validate.load_cache",
+                return_value={
+                    "hash": "hash",
+                    "passed": True,
+                    "duration": 0.1,
+                },
+            ),
+            patch("tools.commands.validate.save_cache") as mock_save,
+        ):
+            result = _run_one(
+                HAOfficialValidator,
+                "HA Official",
+                config_dir,
+                quiet=True,
+                force=False,
+            )
+        # Even with a cache hit, should run (not cached)
+        assert result.cached is False
+        assert result.passed is True
+        # And should not save (since file_deps is empty, no hash computed)
+        mock_save.assert_not_called()
+
     def test_file_change_invalidates_cache(self, config_dir):
         """Modifying a watched file invalidates that validator's cache."""
         # First run: populate cache

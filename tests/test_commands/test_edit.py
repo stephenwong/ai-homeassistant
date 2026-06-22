@@ -12,18 +12,32 @@ class TestAddParser:
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
         add_parser(subparsers)
-        args = parser.parse_args(["edit", "config", "automations"])
+        args = parser.parse_args(["edit", "automations"])
         assert args.command == "edit"
         assert args.file == "automations"
 
-    def test_attaches_run_func(self):
+    def test_alias_positional_parsed_correctly(self):
+        """edit <file> <alias> --show should parse alias as a positional."""
         import argparse
 
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
         add_parser(subparsers)
-        args = parser.parse_args(["edit", "config", "automations", "--show"])
-        assert callable(args.func)
+        args = parser.parse_args(["edit", "automations", "Turn on Alarm", "--show"])
+        assert args.file == "automations"
+        assert args.alias == "Turn on Alarm"
+        assert args.show is True
+
+    def test_config_dir_flag_defaults(self):
+        """--config-dir should default to 'config'."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        add_parser(subparsers)
+        args = parser.parse_args(["edit", "automations", "--show"])
+        assert args.config_dir == "config"
+        assert args.file == "automations"
 
 
 def _write_file(cfg_dir, basename, content):
@@ -299,11 +313,30 @@ class TestEdgeCases:
         assert isinstance(data, dict)
         assert "notify" in data
 
-    def test_no_action_prints_error(self, capsys):
-        result = run(self._ns())
-        assert result == 1
+    def test_add_to_new_scripts_file_creates_dict(self, tmp_path):
+        """--add to a non-existent scripts file creates a dict, not a list."""
+        args = self._ns(
+            config_dir=str(tmp_path),
+            file="scripts",
+            add='{"alias":"Notify","id":"notify","sequence":[]}',
+        )
+        result = run(args)
+        assert result == 0
+        import yaml
+
+        data = yaml.safe_load((tmp_path / "scripts.yaml").read_text())
+        assert isinstance(data, dict)
+        assert "notify" in data
+
+    def test_no_action_defaults_to_show(self, tmp_path, capsys):
+        """No flag defaults to --show (lists aliases or errors if no file)."""
+        args = self._ns(config_dir=str(tmp_path), show=False)
+        result = run(args)
+        assert (
+            result == 1
+        )  # file not found since tmp_path doesn't have automations.yaml
         err = capsys.readouterr().err
-        assert "no action" in err.lower()
+        assert "not found" in err.lower()
 
     def test_missing_alias_for_set_errors(self, capsys):
         result = run(self._ns(set=["x=y"]))

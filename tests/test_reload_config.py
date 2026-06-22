@@ -144,6 +144,17 @@ class TestReloadService:
             "homeassistant", "reload_core_config"
         )
 
+    def test_request_error_returns_service_and_false(self):
+        """Network errors (HARequestError) should be caught, not propagated."""
+        client = _make_client()
+        client.call_service.side_effect = HARequestError(
+            "POST /api/services/automation/reload failed: timeout"
+        )
+        assert reload_service(client, "automation/reload") == (
+            "automation/reload",
+            False,
+        )
+
 
 class TestReloadConfig:
     """All tests stub HAClient.from_env so reload_config() never touches the network."""

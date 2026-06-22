@@ -122,3 +122,33 @@ class TestRun:
         assert "jq not installed" in err
         # Should have called subprocess.run (passthrough), not Popen
         mock_run.assert_called_once()
+
+    def test_filter_propagates_jq_failure(self, monkeypatch):
+        """When curl succeeds but jq fails, return 1 (not curl's 0)."""
+        monkeypatch.setattr(curl_cmd, "_HA_CURL", Path(__file__))
+        mock_curl_proc = MagicMock()
+        mock_curl_proc.returncode = 0
+        mock_curl_proc.stdout = MagicMock()
+        jq_result = MagicMock(returncode=3)
+        with (
+            patch("tools.commands.curl.shutil.which", return_value="/usr/bin/jq"),
+            patch("tools.commands.curl.subprocess.Popen", return_value=mock_curl_proc),
+            patch("tools.commands.curl.subprocess.run", return_value=jq_result),
+        ):
+            args = Namespace(endpoint="/api/", method="GET", data=None, filter=".bad")
+            assert curl_cmd.run(args) == 1
+
+    def test_filter_returns_zero_on_both_success(self, monkeypatch):
+        """When curl and jq both succeed, return 0."""
+        monkeypatch.setattr(curl_cmd, "_HA_CURL", Path(__file__))
+        mock_curl_proc = MagicMock()
+        mock_curl_proc.returncode = 0
+        mock_curl_proc.stdout = MagicMock()
+        jq_result = MagicMock(returncode=0)
+        with (
+            patch("tools.commands.curl.shutil.which", return_value="/usr/bin/jq"),
+            patch("tools.commands.curl.subprocess.Popen", return_value=mock_curl_proc),
+            patch("tools.commands.curl.subprocess.run", return_value=jq_result),
+        ):
+            args = Namespace(endpoint="/api/", method="GET", data=None, filter=".")
+            assert curl_cmd.run(args) == 0

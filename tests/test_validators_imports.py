@@ -61,11 +61,10 @@ class TestFileDeps:
         assert ".storage/core.area_registry" in deps
 
     def test_ha_official_validator_file_deps(self):
-        """HAOfficialValidator uses base class default (top-level YAML)."""
+        """HAOfficialValidator returns empty deps (result depends on HA env)."""
         v = HAOfficialValidator()
         deps = v.file_deps()
-        assert "*.yaml" in deps
-        assert "*.yml" in deps
+        assert deps == []
 
     def test_file_deps_returns_strings(self):
         for cls in [YAMLValidator, ReferenceValidator, HAOfficialValidator]:

@@ -9,18 +9,26 @@ This repository manages Home Assistant configuration files with automated valida
 
 ## Project Structure
 
-- `config/automations.yaml` - **Primary file for automation work** (can be large — use Antigravity CLI for full-file analysis)
+> **Note:** `AGENTS.md` and `GEMINI.md` are gitignored symlinks to `CLAUDE.md` so other AI tools read the same context.
+
+### HA Configuration Files
+- `config/automations.yaml` - **Primary file for automation work** (use `ha_cli edit automations` to list/show specific entries; use MCP tools for live analysis)
 - `config/scripts.yaml` - Reusable scripts
 - `config/scripts/` - Shell helper scripts (e.g., `debug_log.sh`)
 - `config/configuration.yaml` - Main HA config (integrations, includes, helpers)
 - `config/blueprints/` - HA blueprints (automation/, script/, template/)
-- `config/.storage/core.entity_registry` - **Entity registry** (large JSON — use Antigravity CLI for full searches, targeted `grep` for known IDs)
+- `config/.storage/core.entity_registry` - **Entity registry** (large JSON — use MCP tools for live queries, `ha_cli entities` for local searches, targeted `grep` for known IDs)
 - `frigate/config.yml` - Frigate NVR configuration (addon slug: `ccab4aaf_frigate-fa-beta`)
-- `tools/` - Validation and testing scripts (now organized into subpackages)
+
+### Tools Package (`tools/`)
 - `tools/ha_cli.py` - **Single CLI entry point** (e.g. `uv run python tools/ha_cli.py validate`)
-- `tools/commands/` - CLI subcommand implementations (validate/reload/entities/curl)
-- `tools/ha/client.py` - `HAClient` — shared HA REST API client
-- `tools/validators/` - Validator implementations (yaml.py, references.py, ha_official.py)
+- `tools/commands/` - CLI subcommand implementations (`validate`, `reload`, `entities`, `curl`, `edit`)
+- `tools/ha/client.py` - `HAClient` — shared HA REST API client (importable: `from tools.ha.client import HAClient`)
+- `tools/ha/yaml_editor.py` - `YAMLEditor` — round-trip YAML editing with comment preservation (importable: `from tools.ha.yaml_editor import YAMLEditor`)
+- `tools/validators/` - Validator implementations (`yaml.py`, `references.py`, `ha_official.py`)
+- `tools/cache.py` - SHA256 file-hash caching for validator results
+- `tools/common.py` - Shared utilities (env loading, path helpers)
+- `tools/{run_tests,yaml_validator,reference_validator,ha_official_validator,reload_config,entity_explorer}.py` - **Backward-compat shims** that delegate to the new package. Old scripts/Makefile targets still work; prefer `ha_cli` for new work.
 - `tools/_dev/api_diagnostic.py` - Dev-only API diagnostic (archived; excluded from lint/wheel)
 - `Makefile` - Commands for pulling/pushing configuration
 - `Makefile.dev` - Dev-only commands (see `README-DEV.md`)
@@ -31,6 +39,7 @@ Copy `.env.example` to `.env` and configure:
 - `HA_TOKEN` - Long-lived access token (Profile → Security → Create Token)
 - `HA_URL` - e.g., `http://homeassistant.local:8123`
 - `HA_HOST` - SSH host for rsync (must match `~/.ssh/config`)
+- `HA_MCP_URL` - ha-mcp MCP server URL from add-on logs
 
 ## Commands
 
@@ -41,71 +50,116 @@ Copy `.env.example` to `.env` and configure:
 | `make backup` | Create timestamped backup (with auto-changelog) |
 | `make validate` | Validate YAML syntax, entity refs, device IDs, HA config |
 | `make setup` | Install Python dependencies via uv |
-| `make status` | Show config status and entity counts |
+| `make status` | Show config status and entity examples |
 | `make reload` | Reload HA config (API call, no push) |
 | `make entities` | Explore available entities |
 | `make entities ARGS='--search TERM'` | Search entities by name |
 | `make backup-search PATTERN='text'` | Search all backups for a pattern |
-| `make format-yaml` | Format YAML files (`FILES='...'` for specific files) |
+| `make changelog BACKUP='path'` | Generate changelog for a backup |
 | `make lint` | Run Python linting and format checks (ruff) |
 | `make lint-fix` | Auto-fix Python lint and formatting issues |
 | `make test-ssh` | Test SSH connection to HA |
 | `make clean` | Remove temp files and caches |
 | `tools/ha-curl.sh` | Curl wrapper with auto-auth (see below) |
-| `tools/ha_cli.py` | Single CLI entry: `uv run python tools/ha_cli.py {validate\|reload\|entities\|curl}` |
+| `tools/ha_cli.py` | Single CLI entry: `uv run python tools/ha_cli.py {validate\|reload\|entities\|curl\|edit}` |
 | `tools/_dev/api_diagnostic.py` | Dev-only comprehensive HA API endpoint testing (archived from main flow) |
 
-### HA API Curl Wrapper
-Use `tools/ha-curl.sh` for HA API calls - it auto-loads credentials from `.env`:
+### HA API Access — Three Tiers
+
+| Need | Tool | Example |
+|------|------|---------|
+| **Live HA interaction** (read entities, call services) | **MCP tools** (ha-mcp) | Ask in natural language (see MCP Server section below) |
+| **Scripted API calls** | `ha_cli curl` or `tools/ha-curl.sh` | `uv run python tools/ha_cli.py curl /api/states/sensor.test` |
+| **Importable client** | `HAClient` | `from tools.ha.client import HAClient` |
+
+#### ha_cli curl (wraps ha-curl.sh)
 ```bash
-# GET request
+# GET with jq filter
+uv run python tools/ha_cli.py curl /api/states --filter '. | length'
+
+# POST
+uv run python tools/ha_cli.py curl /api/services/light/turn_on --post --data '{"entity_id": "light.kitchen"}'
+```
+
+#### ha-curl.sh (direct, auto-loads .env credentials)
+```bash
 tools/ha-curl.sh /api/states/sensor.test
-
-# POST request
-tools/ha-curl.sh -X POST /api/states/sensor.test -d '{"state": "on"}'
-
-# With extra curl options
 tools/ha-curl.sh -X POST /api/services/light/turn_on -d '{"entity_id": "light.kitchen"}'
 ```
 Auto-approved via `Bash(tools/ha-curl.sh *)` in `~/.claude/settings.json`.
 
-### Antigravity CLI (`agy`) — Large File Analysis
+### Validator Caching
 
-Use `agy -p` with `@path` syntax when files exceed context limits or you need cross-file analysis.
+Validators cache results in `config/.cache/validators/<ClassName>.json` keyed by SHA256 of all files each validator depends on (`file_deps()` glob patterns). Cached results are reused on subsequent runs when file contents haven't changed.
 
-**Shared Context:** Global and project-level `GEMINI.md` files are symlinked to `CLAUDE.md`. Project-specific memory at `~/.gemini/tmp/claude-homeassistant/memory/` is symlinked to Claude's memory at `~/.claude/projects/-home-stephen-code-claude-homeassistant/memory/`. Both tools share the same unified context and learning history.
+- **Automatic:** Caching is transparent — unchanged files return cached results instantly.
+- **Force refresh:** `uv run python tools/ha_cli.py validate --force` re-runs all validators and refreshes cache.
+- **Only successful results cached:** Validation failures always re-run.
+- **Cleared by:** Deleting `config/.cache/validators/` (or `git clean -fdX config/.cache/` since `.cache/` is gitignored).
+
+### Safe YAML Editing (ha_cli edit)
+
+**Prefer `ha_cli edit` over manual YAML editing** — it uses `ruamel.yaml` for round-trip editing that preserves comments, formatting, and key ordering. Operates on `automations.yaml` (list) and `scripts.yaml` (dict).
 
 ```bash
-# Analyze automations + scripts together
-agy -p "@config/automations.yaml @config/scripts.yaml Find all automations that reference the doorbell"
+# List all automation aliases
+uv run python tools/ha_cli.py edit automations
 
-# Search the entity registry (too large to read directly)
-agy -p "@config/.storage/core.entity_registry Find all entities for device 'motion' in the basement"
+# Show a specific automation
+uv run python tools/ha_cli.py edit automations "Turn on Alarm"
 
-# Cross-reference entities against config
-agy -p "@config/.storage/core.entity_registry @config/automations.yaml Find entity references that may be broken"
+# Add a new automation from JSON
+uv run python tools/ha_cli.py edit automations --add '{"alias": "New Automation", "trigger": [], "action": []}'
 
-# Full config directory analysis
-agy -p "@config/ Summarize all helpers defined across configuration files"
+# Update fields on an existing automation
+uv run python tools/ha_cli.py edit automations "Turn on Alarm" --set mode=single icon=mdi:shield
 
-# Compare backup contents
-agy -p "@/tmp/old_automations.yaml @config/automations.yaml What changed between these versions?"
-
-# Whole project overview (replaces gemini --all_files)
-agy --add-dir . -p "Analyze the automation architecture and identify patterns"
+# Remove an automation
+uv run python tools/ha_cli.py edit automations "Old Automation" --remove
 ```
 
-**When to use over direct file reads:** Full `automations.yaml` analysis, entity registry searches (>100KB JSON), cross-referencing multiple large YAML files, comparing backup extracts, `.storage/` file analysis.
+**Programmatic editing:** `from tools.ha.yaml_editor import YAMLEditor` — use `add_automation`, `update_automation`, `remove_automation`, `add_script`, `update_script`, `remove_script`.
+
+### Importable Modules
+
+For Python scripts/tests, import from the package directly:
+
+```python
+from tools.ha.client import HAClient        # REST API client
+from tools.ha.yaml_editor import YAMLEditor  # Round-trip YAML editing
+from tools.validators.yaml import YAMLValidator
+from tools.validators.references import ReferenceValidator
+from tools.validators.ha_official import HAOfficialValidator
+```
+
+`HAClient` is constructed via `HAClient.from_env()` (reads `.env` for `HA_TOKEN`/`HA_URL`).
+
+### MCP Server (ha-mcp)
+
+The `ha-mcp` add-on provides 88+ MCP tools for natural-language HA control (entity listing, service calls, history, config inspection). Configured in `opencode.json` as a remote MCP server. Includes the `home-assistant-best-practices` skill (triggers on automation/script/dashboard work).
+
+**Setup:** Install the "Home Assistant MCP Server" add-on (repo: `https://github.com/homeassistant-ai/ha-mcp`), start it, copy the MCP URL from add-on logs (format: `http://<ip>:9583/private_<token>`), add to `opencode.json` under `mcp.ha-mcp` with `type: "remote"` and `"url": "{env:HA_MCP_URL}"`, set `HA_MCP_URL` in `.env`, and restart opencode.
+
+**Troubleshooting:** Verify add-on is running (`ha addon info` via SSH); check HA host IP and port 9583 accessibility; ensure `opencode.json` has `$schema` field and restart after changes.
 
 ## Development Workflow
 
 **Before feature work:** Use `home-assistant-backup` skill (pull → backup → prune)
 **Creating automations:** Use `home-assistant-automation` skill
 **Debugging issues:** Use `home-assistant-debugging` skill
-**Python changes:** Follow TDD — write tests first, confirm red, then implement
+**Python changes:** **Always use TDD** — write tests first, confirm red, then implement. No exceptions. This reduces AI slop by forcing concrete specifications before implementation.
+**Editing YAML:** Prefer `ha_cli edit` over manual editing — it uses `ruamel.yaml` for round-trip editing that preserves comments and formatting. Use MCP tools for live entity/service queries instead of manual curl.
 **Before committing Python changes:** Run `make lint` (or `make lint-fix` to auto-fix)
 **After any changes with concurrency, parallel API calls, multi-step error handling, or HA automation state transitions:** Run `code-review:code-review` skill as "State Machine Auditor" (ordering deps, race conditions, exception handler completeness)
+**Rubber duck review:** Before considering work done, run a review pass in a separate agent at least once. After each review, ask the user if they want to review again. Keep asking — do not assume one pass is enough.
 **Before committing/finishing:** Use `reflect` skill to capture learnings (gotchas, corrections, new patterns)
+
+### Python Tooling Patterns
+- **`contextlib.redirect_stdout` is NOT thread-safe.** It mutates `sys.stdout` globally. Three concurrent threads each entering `redirect_stdout(buf)` will deadlock silently. When running validators in parallel threads, read `instance.errors`/`warnings`/`info` lists directly instead of capturing stdout.
+- **Backward-compat shim pattern for `patch()` targets:** `from X import *` re-exports module-level names so `patch("old_module.subprocess.run")` still resolves — `subprocess` is a singleton module object shared between shim and original. **But** this breaks silently if anyone adds `__all__` to the new module. Always pair shims with a `test_shim_compatibility.py` regression test that imports each old path and asserts the expected attributes resolve.
+- **`load_env_file()` in tests:** `HAClient.from_env()` calls it, which reads the project's real `.env` and overrides monkeypatched values. In `HAClient` tests, patch `tools.ha.client.load_env_file` to a no-op fixture so env-var assertions hold.
+- **Subclass `__init__` kwarg forwarding:** When adding a new kwarg (like `quiet`) to a base class, every subclass that overrides `__init__` must explicitly accept and forward the kwarg via `super().__init__(config_dir, quiet=quiet)`. Otherwise `TypeError: __init__() got an unexpected keyword argument 'quiet'`. Check all subclasses when changing base class signatures.
+- **`pyproject.toml` exclude sections:** Adding a `tools/_dev/` directory requires updating FOUR exclude locations: `[tool.ruff] exclude`, `[tool.mypy] exclude`, `[tool.coverage.run] omit` (path pattern: `"*/tools/_dev/*"`), and `[tool.hatch.build] exclude`. Pre-commit's mypy hook has its OWN regex exclude (`.pre-commit-config.yaml`) separate from pyproject's `[tool.mypy] exclude`.
 
 ### Git Commit Trailers
 
@@ -130,7 +184,7 @@ Only append for commits you create; do not add to commits authored by other tool
 Config changes are often **not in git history** - they get pushed to HA and pulled back without commits. The `backups/` directory is the real historical record. See `home-assistant-backup` skill for full workflow.
 
 - **Extract a specific file:** `tar -xzOf backups/ha_config_<timestamp>.tar.gz config/automations.yaml`
-- **Compare backup versions:** Extract to temp files, then use Antigravity CLI: `agy -p "@/tmp/old.yaml @/tmp/new.yaml What changed?"`
+- **Compare backup versions:** Extract to temp files (`tar -xzOf backups/ha_config_<ts>.tar.gz config/automations.yaml > /tmp/old.yaml`), then diff or read both
 - **When reverting:** Don't blindly restore - ask about individual settings (e.g., timer durations) that may have been tuned independently of the change being reverted
 
 ## CI/CD
@@ -138,7 +192,7 @@ Config changes are often **not in git history** - they get pushed to HA and pull
 GitHub Actions runs on push/PR to main:
 
 **`.github/workflows/test.yml`:**
-- **lint**: `ruff format --check`, `ruff check`, and `mypy` (on `tools/` and `tests/`)
+- **lint**: `ruff format --check` and `ruff check` (on `tools/`+`tests/`), `mypy` (on `tools/`)
 - **test**: `pytest tests/`
 
 **`.github/workflows/codeql.yml`:** CodeQL Python analysis (weekly + on push/PR)
@@ -151,35 +205,6 @@ Run `make lint` locally before pushing to catch CI failures early. Use `make lin
 **Zigbee:** SMLIGHT SLZB-06Mg24 (Ethernet-attached, PoE)
 
 Implications: Frigate can use aggressive detection (Hailo), streams use hardware transcoding (QuickSync).
-
-## MCP Server (ha-mcp)
-
-The `ha-mcp` add-on provides natural-language HA control via MCP tools. Configured in `opencode.json` as a remote MCP server.
-
-### Setup
-1. **Install add-on:** Supervisor → Add-on Store → ⋮ → Repositories → `https://github.com/homeassistant-ai/ha-mcp`
-2. **Start** the "Home Assistant MCP Server" add-on
-3. **Copy the MCP URL** from add-on logs (format: `http://<ip>:9583/private_<token>`)
-4. **Add to `opencode.json`:**
-   ```json
-   "mcp": {
-     "ha-mcp": {
-       "type": "remote",
-       "url": "http://<ip>:9583/private_<token>"
-     }
-   }
-   ```
-5. **Restart opencode** for the config to take effect
-
-### Capabilities (v7.8.1)
-- 88+ tools for entity listing, service calls, history, config inspection
-- Skills: `home-assistant-best-practices` (triggers on automation/script/dashboard work)
-- Resources: read skill guides via `skill://` URIs
-
-### Troubleshooting
-- **Server not reachable:** Verify add-on is running (`ha addon info` via SSH)
-- **Connection refused:** Check HA host IP and that port 9583 is accessible from your machine
-- **Config not loaded:** Open `opencode.json` must have `$schema` field; restart opencode after changes
 
 ## Integrations
 
@@ -240,7 +265,7 @@ This project uses **separate exclude files** for pull vs push:
 
 **What this repo can manage (YAML files):** `automations.yaml`, `scripts.yaml`, `scenes.yaml`, `configuration.yaml`, `secrets.yaml`
 
-**`.storage/` files are read-only reference** — managed by HA at runtime. Never modify locally; use the HA UI for entity/device changes. Reading them for analysis is fine — use Antigravity CLI for large files like `core.entity_registry`, or targeted `grep` for known IDs.
+**`.storage/` files are read-only reference** — managed by HA at runtime. Never modify locally; use the HA UI for entity/device changes. Reading them for analysis is fine — use MCP tools for live queries, or targeted `grep` for known IDs.
 
 ### HA Jinja2 Filter Availability
 HA uses a **curated subset of Jinja2 filters** — standard Jinja2 filters like `hash` are NOT available. Common available filters: `lower`, `upper`, `replace`, `truncate`, `length`, `int`, `float`, `round`, `default`, `select`, `map`, `join`, `sort`.
@@ -290,20 +315,12 @@ Shell scripts in `config/scripts/` must exist in the local repo, not just on the
 **The HA Lovelace REST API (`GET/POST /api/lovelace/config`) returns 404 in storage mode** — don't attempt it. SSH + direct file edit is the only approach.
 
 ### DashCast Gotchas
-- **Login screen instead of dashboard:** Need `trusted_users` (not just `allow_bypass_login`) in `auth_providers` when multiple HA users exist. Find user IDs via Antigravity CLI: `agy -p "@config/.storage/auth List all user names and IDs"` (or `grep -A5 '"name":' config/.storage/auth`)
+- **Login screen instead of dashboard:** Need `trusted_users` (not just `allow_bypass_login`) in `auth_providers` when multiple HA users exist. Find user IDs via MCP tools or `ha_cli curl /api/users` (or `grep -A5 '"name":' config/.storage/auth`)
 - **Stopping DashCast on Nest Hub:** Use `homeassistant.turn_off`, NOT `media_player.turn_off` (which doesn't reliably close DashCast)
 
 ### HACS / Lovelace Cards
 - **"Configuration error":** Verify card is actually *installed* (not just known to HACS) — check `installed: True` in `.storage/hacs.repositories`. Test with minimal config first, check browser console (F12).
 - **advanced-camera-card + go2rtc:** Keep config minimal. No trailing slash on go2rtc URL. Don't add `modes:` array — use defaults.
-
-### Tools Refactor Patterns (Phase 1+)
-- **`contextlib.redirect_stdout` is NOT thread-safe.** It mutates `sys.stdout` globally. Three concurrent threads each entering `redirect_stdout(buf)` will deadlock silently. When running validators in parallel threads, read `instance.errors`/`warnings`/`info` lists directly instead of capturing stdout. Validators don't print during `validate_all()` anyway — only `print_results()` prints, and that's only called from `main()`.
-- **Backward-compat shim pattern for `patch()` targets:** `from X import *` re-exports module-level names so `patch("old_module.subprocess.run")` still resolves — `subprocess` is a singleton module object shared between shim and original. **But** this breaks silently if anyone adds `__all__` to the new module. Always pair shims with a `test_shim_compatibility.py` regression test that imports each old path and asserts the expected attributes resolve.
-- **`load_env_file()` in tests:** `HAClient.from_env()` calls it, which reads the project's real `.env` and overrides monkeypatched values. In `HAClient` tests, patch `tools.ha.client.load_env_file` to a no-op fixture so env-var assertions hold.
-- **In-process validator speedup is real but small:** Parallel execution of the 3 default validators takes ~6.6s (HA official subprocess dominates at 6.58s). Sequential would be ~7.1s. Speedup is marginal — the main win is structural (shared validator instances, structured error reporting) not raw speed.
-- **Subclass `__init__` kwarg forwarding:** When adding a new kwarg (like `quiet`) to a base class, every subclass that overrides `__init__` must explicitly accept and forward the kwarg via `super().__init__(config_dir, quiet=quiet)`. Otherwise `TypeError: __init__() got an unexpected keyword argument 'quiet'`. Check all subclasses when changing base class signatures.
-- **`pyproject.toml` exclude sections:** Adding a `tools/_dev/` directory requires updating FOUR exclude locations: `[tool.ruff] exclude`, `[tool.mypy] exclude`, `[tool.coverage.run] omit` (path pattern: `"*/tools/_dev/*"`), and `[tool.hatch.build] exclude`. Pre-commit's mypy hook has its OWN regex exclude (`.pre-commit-config.yaml`) separate from pyproject's `[tool.mypy] exclude`.
 
 ## Troubleshooting
 
@@ -314,5 +331,5 @@ Shell scripts in `config/scripts/` must exist in the local repo, not just on the
 5. **View HA logs**: `ssh homeassistant "ha core logs" | tail -100` (or `--follow` for real-time)
 6. **False Frigate alerts**: Check zoned vs unzoned sensors, increase `inertia`/`loitering_time` in zone config
 7. **Restart Frigate addon**: Use SSH: `ssh homeassistant "ha apps restart ccab4aaf_frigate-fa-beta"`. The Supervisor API returns 401 with long-lived access tokens — use SSH instead.
-8. **Z2M entity_ids stuck as hex after recovery**: HA's `deleted_entities` preserves old entity_ids. Stop HA, clean Z2M entries from both `entities` and `deleted_entities` in `core.entity_registry` (and `devices`/`deleted_devices` in `core.device_registry`), then restart. See MEMORY.md for full Z2M recovery notes.
-9. **"Incorrect config" / package install errors in `make validate` output**: Expected when `[tool.uv] override-dependencies` forces newer versions (e.g., `aiohttp>=3.13.4`) than HA's exact pins (`aiohttp==3.13.3`). HA's `check_config` tries to install integration packages via pip; pip fails because the overridden version conflicts with HA's metadata. These errors are filtered as false positives in `ha_official_validator.py` — "Successful config (partial)" with exit 0 is the correct result. `make pull`/`make validate` still exit 0 successfully.
+8. **Z2M entity_ids stuck as hex after recovery**: HA's `deleted_entities` preserves old entity_ids. Stop HA, clean Z2M entries from both `entities` and `deleted_entities` in `core.entity_registry` (and `devices`/`deleted_devices` in `core.device_registry`), then restart.
+9. **"Incorrect config" / package install errors in `make validate` output**: Expected when `[tool.uv] override-dependencies` forces newer versions than HA's exact pins. HA's `check_config` tries to install integration packages via pip; pip fails because the overridden version conflicts with HA's metadata. These errors are filtered as false positives in `ha_official_validator.py` — "Successful config (partial)" with exit 0 is the correct result. `make pull`/`make validate` still exit 0 successfully.
