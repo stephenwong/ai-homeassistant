@@ -1,84 +1,28 @@
-> [!NOTE]
-> This is a personal fork of [philippb/claude-homeassistant](https://github.com/philippb/claude-homeassistant). All original credit goes to philippb — this repo contains my own customizations, skills, and tooling built on top of their work.
+# Home Assistant Configuration Management Toolkit
 
-# Home Assistant Configuration Management with Claude Code
+A toolkit for managing Home Assistant configurations — automated validation, safe deployment, round-trip YAML editing, and entity discovery. Designed to work alongside AI coding assistants, but fully usable standalone.
 
-A comprehensive system for managing Home Assistant configurations with automated validation, testing, and deployment - all enhanced by Claude Code for natural language automation creation.
+## ✨ Features
 
-[![](https://github.com/user-attachments/assets/e4bb0179-a649-42d6-98f1-d8c29d5e84a3)](https://youtu.be/70VUzSw15-4)
-Click to play
+- 🛡️ **Multi-Layer Validation** — YAML syntax, entity references, and official HA `check_config` — runs before any push
+- ✏️ **Safe YAML Editing** — `ha_cli edit` preserves comments, formatting, and key ordering (ruamel.yaml round-trip)
+- ⚡ **Validator Caching** — SHA256-based caching skips re-validation when files haven't changed
+- 🚀 **Safe Deployments** — `make push` validates first, blocks invalid configs from reaching HA
+- 🔍 **Entity Discovery** — Search and explore entities by name, domain, area, or state
+- 🤖 **AI Assistant Ready** — MCP server integration, instruction files, and pre-built skills for AI coding assistants
+- 📦 **Importable Python Modules** — `HAClient`, `YAMLEditor`, and validators for scripts and tests
+- 💾 **Backup System** — Timestamped config backups with changelogs and full-text search
 
-## 🌟 Features
+## 🚀 Quick Start
 
-- **🤖 AI-Powered Automation Creation**: Use Claude Code to write automations in plain English
-- **🛡️ Multi-Layer Validation**: Comprehensive validation prevents broken configurations
-- **🔄 Safe Deployments**: Pre-push validation blocks invalid configs from reaching HA
-- **🔍 Entity Discovery**: Advanced tools to explore and search available entities
-- **⚡ Automated Hooks**: Validation runs automatically on file changes
-- **📊 Entity Registry Integration**: Real-time validation against your actual HA setup
-
-## 📦 Easy Installation (For Beginners)
-
-**New to command line tools? No problem!** We've made it super easy to get started.
-
-### One-Click Setup Scripts
-
-Download the project and run the setup script for your operating system:
-
-#### **For Mac Users:**
-1. Download or clone this repository ([quick tutorial](https://youtu.be/q9wc7hUrW8U?si=_eT7nL8R8xXec7hL))
-2. Open Terminal and navigate to the project folder ([how to use Terminal on Mac](https://youtu.be/aj9QWELAv9o?si=jx5HexpF60q3ZxO4))
-3. Run the setup script:
-```bash
-./setup-mac.sh
-```
-
-#### **For Windows Users:**
-1. Download or clone this repository ([quick tutorial](https://youtu.be/q9wc7hUrW8U?si=_eT7nL8R8xXec7hL))
-2. Open Command Prompt and navigate to the project folder ([how to use terminal on Win](https://youtu.be/8gUvxU7EoNE?si=BCgFIU8ng_ebhWaR))
-3. Run the setup script:
-```cmd
-setup-windows.bat
-```
-
-### What the Scripts Do
-- ✅ Check that you have all required software (Python, Git, etc.)
-- ✅ Download and install Claude Code automatically if missing
-- ✅ Install any missing dependencies automatically
-- ✅ Set up the Python environment with all needed packages
-- ✅ Guide you through the next steps
-
-### After Setup
-1. **Configure your Home Assistant connection** (the script will show you how)
-2. **Open Claude Code** ([download here](https://claude.com/solutions/coding) if not installed) and navigate to your project folder
-3. **Pull your configuration** by typing `make pull` in Claude Code
-4. **Start creating automations** with Claude Code!
-
-**That's it!** The scripts handle all the technical setup for you. Claude Code makes running commands super easy - just type them directly!
-
----
-
-## 🚀 Quick Start (Advanced Users)
-
-This repository provides a complete framework for managing Home Assistant configurations with Claude Code. Here's how it works:
-
-### Repository Structure
-- **Template Configs**: The `config/` folder contains sanitized example configurations (no secrets)
-- **Validation Tools**: The `tools/` folder has all validation scripts
-- **Management Commands**: The `Makefile` contains pull/push commands
-- **Development Setup**: `pyproject.toml` and other dev files for tooling
-
-### User Workflow
-
-#### 1. Clone Repository
+### 📥 1. Clone and Set Up
 ```bash
 git clone git@github.com:stephenwong/claude-homeassistant.git
 cd claude-homeassistant
 make setup  # Installs dependencies via uv
 ```
 
-#### 2. Configure Connection
-Copy the example environment file and configure your settings:
+### ⚙️ 2. Configure Connection
 ```bash
 cp .env.example .env
 # Edit .env with your actual Home Assistant details
@@ -86,46 +30,38 @@ cp .env.example .env
 
 The `.env` file should contain:
 ```bash
-# Home Assistant Configuration
+# Home Assistant API
 HA_TOKEN=your_home_assistant_token
 HA_URL=http://your_homeassistant_host:8123
+
+# MCP Server (for AI assistant integration)
+HA_MCP_URL=http://your_homeassistant_ip:9583/private_your_token_here
 
 # SSH Configuration for rsync operations
 HA_HOST=your_homeassistant_host
 HA_REMOTE_PATH=/config/
 
-# Local Configuration (optional - defaults provided)
+# Local Configuration (optional — defaults provided)
 LOCAL_CONFIG_PATH=config/
 BACKUP_DIR=backups
-TOOLS_PATH=tools
 ```
 
-#### 2b. Set Up SSH Access to Home Assistant
+### 🔑 3. Set Up SSH Access
 
-**Required**: Install the [Advanced SSH & Web Terminal](https://github.com/hassio-addons/addon-ssh) add-on for Home Assistant, which provides SSH/SFTP access needed for the rsync operations in this project.
+Install the [Advanced SSH & Web Terminal](https://github.com/hassio-addons/addon-ssh) add-on for Home Assistant, which provides SSH/SFTP access needed for rsync operations.
 
 <details>
 <summary><strong>Click to expand SSH setup instructions</strong></summary>
 
 ##### Generate SSH Key Pair (if you don't have one)
-
 ```bash
-# Generate a new SSH key pair for Home Assistant
 ssh-keygen -t ed25519 -f ~/.ssh/homeassistant -C "your-email@example.com"
-
-# Verify the key files were created
-ls -l ~/.ssh/homeassistant*
 ```
-
-This creates:
-- `~/.ssh/homeassistant` (private key - keep this secure)
-- `~/.ssh/homeassistant.pub` (public key - this goes into HA)
 
 ##### Configure Advanced SSH & Web Terminal Add-on
 
-1. Install the **Advanced SSH & Web Terminal** add-on in Home Assistant
-2. Configure the add-on with this YAML configuration:
-
+1. Install the add-on in Home Assistant
+2. Configure with your public key:
 ```yaml
 username: root
 password: ""
@@ -138,407 +74,277 @@ allow_agent_forwarding: false
 allow_remote_port_forwarding: false
 allow_tcp_forwarding: false
 ```
+3. Start the add-on
 
-**Important**: Replace the `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...` line with the contents of your `~/.ssh/homeassistant.pub` file.
+##### Configure SSH Client
 
-3. Start the add-on and ensure it's running
-
-##### Configure SSH Client on Your Computer
-
-Create or edit your SSH config file (`~/.ssh/config`):
-
+Create or edit `~/.ssh/config`:
 ```
-# Home Assistant SSH Configuration
 Host homeassistant
-  HostName homeassistant.local  # or your HA IP address
+  HostName homeassistant.local
   User root
   IdentityFile ~/.ssh/homeassistant
   StrictHostKeyChecking no
 ```
 
-**Note**: Replace `homeassistant.local` with your Home Assistant's IP address if hostname resolution doesn't work.
-
-##### Test SSH Connection
-
+##### Test Connection
 ```bash
-# Test the SSH connection
 ssh homeassistant
-
-# You should see:
-# Welcome to the Home Assistant command line.
 ```
-
-If successful, you can exit with `exit` or `Ctrl+D`.
 
 </details>
 
-#### 2c. Get Your Home Assistant Token
+### 🎫 4. Get Your Home Assistant Token
 
-To get your `HA_TOKEN`:
-1. Go to Home Assistant → Settings → People → Your Profile
-2. Scroll to "Long-lived access tokens"
-3. Click "Create Token"
-4. Give it a name like "Claude Home Assistant"
-5. Copy the token and paste it as `HA_TOKEN` value in your `.env` file
+1. Home Assistant → Settings → People → Your Profile
+2. Scroll to "Long-lived access tokens" → Create Token
+3. Copy the token into `.env` as `HA_TOKEN`
 
-#### 3. Pull Your Real Configuration
+### ⬇️ 5. Pull Your Configuration
 ```bash
-make pull  # Downloads YOUR actual HA config, overwriting template files
+make pull  # Downloads your actual HA config
 ```
 
-**Important**: This step replaces the template `config/` folder with your real Home Assistant configuration files.
+### 🛠️ 6. Work with Your Configuration
 
-#### 4. Work with Your Configuration
-- Edit your real configs locally with full validation
-- Use Claude Code to create automations in natural language
-- Validation hooks automatically check syntax and entity references
-
-#### 5. Push Changes Back
+Edit configs locally with full validation, push back when ready:
 ```bash
-make push  # Uploads changes back to your HA instance (with validation)
+make push  # Validates then uploads to HA
 ```
-
-### How It Works
-
-1. **Template Start**: You begin with example configs showing proper structure
-2. **Real Data**: First `make pull` overwrites templates with your actual HA setup
-3. **Local Development**: Edit real configs locally with validation safety
-4. **Safe Deployment**: `make push` validates before uploading to prevent broken configs
-
-This gives you a complete development environment while only modifying your HA instance when completed.
-
-## ⚙️ Prerequisites
-
-### Make Command
-
-This project uses `make` commands for configuration management. If you don't have `make` installed:
-
-**macOS:**
-```bash
-xcode-select --install  # Installs Command Line Tools including make
-```
-
-**Windows:**
-- **Option 1**: Use WSL (Windows Subsystem for Linux) - recommended
-- **Option 2**: Install via Chocolatey: `choco install make`
-- **Option 3**: Use Git Bash (includes make)
-- **Option 4**: Install MinGW-w64
-
-**Alternative**: If you can't install `make`, you can run the underlying commands directly by checking the `Makefile` for the actual command syntax.
 
 ## 📁 Project Structure
 
 ```
-├── config/                 # Home Assistant configuration files, downloaded from HA via script
+├── config/                      # Home Assistant configuration
 │   ├── configuration.yaml
-│   ├── automations.yaml
+│   ├── automations.yaml         # Primary file for automation work
 │   ├── scripts.yaml
-│   ├── blueprints/        # HA blueprints (automation/, script/, template/)
-│   └── .storage/          # Entity registry (pulled from HA)
-├── tools/                 # Validation and management scripts
-│   ├── common.py          # Shared utilities (ValidatorBase, HAYamlLoader)
-│   ├── ha_cli.py          # Single CLI entry: `uv run python tools/ha_cli.py <cmd>`
-│   ├── commands/          # CLI subcommand implementations
-│   │   ├── validate.py    # `ha_cli validate` (in-process, parallel validators)
-│   │   ├── reload.py      # `ha_cli reload`
-│   │   ├── entities.py    # `ha_cli entities` (incl. `--json` mode)
-│   │   └── curl.py        # `ha_cli curl` (wraps ha-curl.sh, adds --filter)
-│   ├── ha/                # Shared HA REST API client
-│   │   └── client.py      # HAClient class (from_env, get/post/call_service)
-│   ├── validators/        # Validator implementations (importable, not subprocess-spawned)
-│   │   ├── yaml.py        # YAML syntax validation
-│   │   ├── references.py  # Entity reference validation
-│   │   └── ha_official.py # Official HA validation
-│   ├── yaml_validator.py        # Backward-compat shim → tools/validators/yaml.py
-│   ├── reference_validator.py   # Backward-compat shim → tools/validators/references.py
-│   ├── ha_official_validator.py # Backward-compat shim → tools/validators/ha_official.py
-│   ├── run_tests.py       # Backward-compat shim → `ha_cli validate`
-│   ├── ha_config_validator.py # Deep validation via HA check_config (standalone, not in suite)
-│   ├── entity_explorer.py # Entity discovery tool
-│   ├── ha-curl.sh         # HA API curl wrapper with auto-auth
-│   ├── _dev/              # Dev-only diagnostic scripts (excluded from lint/coverage/wheel)
-│   │   └── api_diagnostic.py # Comprehensive API testing (archived from main flow)
-│   ├── reload_config.py   # Reload HA config via API (uses HAClient)
-│   ├── generate_changelog.py # Backup changelog generation
-│   ├── search_backups.py  # Full-text search across backups
-│   └── prune_backups.py   # Smart backup retention pruning
-├── tests/                 # Unit tests (pytest)
-├── backups/               # Timestamped config backups with changelogs
-├── .claude-code/          # Claude Code project settings
-│   ├── hooks/             # Automated validation hooks
-│   ├── plugins/           # Custom skills (automation, backup, debugging, reflect)
-│   └── settings.json      # Project configuration
-├── .env.example           # Environment configuration template
-├── Makefile               # Management commands
-├── Makefile.dev           # Development-specific commands (see README-DEV.md)
-└── CLAUDE.md              # Claude Code instructions
+│   ├── scripts/                 # Shell helper scripts
+│   ├── blueprints/              # HA blueprints (automation/, script/, template/)
+│   └── .storage/                # Entity registry (read-only reference)
+├── frigate/                     # Frigate NVR configuration
+├── tools/                       # Validation and management scripts
+│   ├── ha_cli.py                # Single CLI entry point
+│   ├── commands/                # CLI subcommands (validate, reload, entities, curl, edit)
+│   ├── ha/                      # Shared modules
+│   │   ├── client.py            # HAClient — REST API client
+│   │   └── yaml_editor.py       # YAMLEditor — round-trip YAML editing
+│   ├── validators/              # Validator implementations (yaml, references, ha_official)
+│   ├── cache.py                 # SHA256 file-hash caching
+│   ├── common.py                # Shared utilities
+│   ├── generate_changelog.py    # Backup changelog generation
+│   ├── search_backups.py        # Full-text search across backups
+│   ├── prune_backups.py         # Smart backup retention pruning
+│   └── ha-curl.sh               # Curl wrapper with auto-auth
+├── tests/                       # Unit tests (pytest)
+├── backups/                     # Timestamped config backups with changelogs
+├── CLAUDE.md                    # AI assistant instructions (also AGENTS.md, GEMINI.md symlinks)
+├── opencode.json                # Example MCP server configuration for opencode
+├── .env.example                 # Environment configuration template
+├── Makefile                     # Management commands (pull, push, validate, etc.)
+├── Makefile.dev                 # Development-specific commands
+└── pyproject.toml               # Python project configuration
 ```
 
-## 🛠️ Available Commands
+## 🛠️ Commands
 
-### Configuration Management
+### 🎮 Primary CLI (`ha_cli`)
 ```bash
-make pull      # Pull latest config from Home Assistant
-make push      # Push local config to HA (with validation)
-make backup    # Create timestamped backup
-make validate  # Run all validation tests
-```
+# Validation
+uv run python tools/ha_cli.py validate              # Run all validators
+uv run python tools/ha_cli.py validate --force      # Force re-run (skip cache)
+uv run python tools/ha_cli.py validate --quiet      # Suppress success output
 
-### Single CLI Entry (preferred for new code)
-```bash
-uv run python tools/ha_cli.py validate             # Run all 3 validators in-process
-uv run python tools/ha_cli.py validate --quiet     # Suppress success output (used by hooks)
-uv run python tools/ha_cli.py reload               # Reload changed HA config via API
-uv run python tools/ha_cli.py entities --json      # Compact JSON output (token-efficient)
+# YAML Editing
+uv run python tools/ha_cli.py edit automations                 # List all automations
+uv run python tools/ha_cli.py edit automations "Name"          # Show one automation
+uv run python tools/ha_cli.py edit automations --add '{"alias":"...","trigger":[],"action":[]}'
+uv run python tools/ha_cli.py edit automations "Name" --set mode=single icon=mdi:shield
+uv run python tools/ha_cli.py edit automations "Name" --remove
+
+# Entity Discovery
+uv run python tools/ha_cli.py entities                        # Entity summary
+uv run python tools/ha_cli.py entities --json                 # Compact JSON output
 uv run python tools/ha_cli.py entities --domain light --json
-uv run python tools/ha_cli.py curl /api/states     # Wraps ha-curl.sh
-uv run python tools/ha_cli.py curl /api/states --filter '. | length'  # Pipes through jq
+uv run python tools/ha_cli.py entities --search motion
+
+# API Calls
+uv run python tools/ha_cli.py curl /api/states
+uv run python tools/ha_cli.py curl /api/states --filter '. | length'
+uv run python tools/ha_cli.py curl /api/services/light/turn_on --post --data '{"entity_id":"light.kitchen"}'
+
+# Reload
+uv run python tools/ha_cli.py reload
 ```
 
-### Entity Discovery
-```bash
-make entities                           # Show entity summary
-make entities ARGS='--domain climate'   # Climate entities only
-make entities ARGS='--search motion'    # Search for motion sensors
-make entities ARGS='--area kitchen'     # Kitchen entities only
-make entities ARGS='--full'            # Complete detailed output
-make entities ARGS='--json'            # Compact JSON (single line, no banners)
-```
+### 🏗️ Make Targets
 
-### Individual Validators (backward-compat shims still work)
-```bash
-uv run python tools/yaml_validator.py         # YAML syntax only
-uv run python tools/reference_validator.py    # Entity references only
-uv run python tools/ha_official_validator.py  # Official HA validation
-```
+| Command | Purpose |
+|---------|---------|
+| `make pull` | Sync config from HA (includes Z2M and Frigate configs) |
+| `make push` | Push config (validates first, then rsyncs) |
+| `make validate` | Run all validation tests |
+| `make backup` | Create timestamped backup (with auto-changelog) |
+| `make setup` | Install Python dependencies via uv |
+| `make status` | Show config status and entity counts |
+| `make reload` | Reload HA config via API (no push) |
+| `make entities` | Explore entities (pass `ARGS='--search TERM'`) |
+| `make lint` | Run ruff format check + lint |
+| `make lint-fix` | Auto-fix ruff format and lint issues |
+| `make backup-search PATTERN='text'` | Search all backups for a pattern |
+| `make changelog BACKUP='path'` | Generate changelog for a backup |
+| `make test-ssh` | Test SSH connection to HA |
+| `make clean` | Remove temp files and caches |
 
-## 🔧 Validation System
+## ✏️ YAML Editing (`ha_cli edit`)
 
-The system provides three layers of validation:
-
-### 1. YAML Syntax Validation
-- Validates YAML syntax with HA-specific tags (`!include`, `!secret`, `!input`)
-- Checks file encoding (UTF-8 required)
-- Validates basic HA file structures
-
-### 2. Entity Reference Validation
-- Verifies all entity references exist in your HA instance
-- Checks device and area references
-- Warns about disabled entities
-- Extracts entities from Jinja2 templates
-- Recognizes config-defined entities (input helpers, template sensors, scripts, scenes, zones, automations)
-- Diagnostic warnings for entities found in restore state but missing from registry
-
-### 3. Official HA Validation
-- Uses Home Assistant's own validation tools
-- Most comprehensive check available
-- Catches integration-specific issues
-- **"Successful config (partial)"** is the normal local result — some integration packages can't install locally due to version pin differences, but this is expected and doesn't indicate a real config problem
-
-## 🤖 Claude Code Integration
-
-### Automated Validation Hooks
-
-Two hooks ensure configuration safety:
-
-1. **Post-Edit Hook**: Runs validation after editing YAML files
-2. **Pre-Push Hook**: Validates before syncing to HA (blocks if invalid)
-
-### Entity Naming Convention
-
-This system supports standardized entity naming:
-
-**Format: `location_room_device_sensor`**
-
-Examples:
-```
-binary_sensor.home_basement_motion_battery
-media_player.office_kitchen_sonos
-climate.home_living_room_heatpump
-```
-
-### Natural Language Automation Creation
-
-With Claude Code, you can:
-
-1. **Describe automations in English**:
-   ```
-   "Turn off all lights at midnight on weekdays"
-   ```
-
-2. **Claude writes the YAML**:
-   ```yaml
-   - id: weekday_midnight_lights_off
-     alias: "Weekday Midnight Lights Off"
-     triggers:
-       - trigger: time
-         at: "00:00:00"
-     conditions:
-       - condition: time
-         weekday: [mon, tue, wed, thu, fri]
-     actions:
-       - action: light.turn_off
-         target:
-           entity_id: all
-   ```
-
-3. **Automatic validation ensures correctness**
-4. **Deploy safely with `make push`**
-
-## 📊 Entity Discovery
-
-The entity explorer helps you understand what's available:
+**Prefer `ha_cli edit` over manual YAML editing** — it uses `ruamel.yaml` for round-trip editing that preserves comments, formatting, and key ordering. Operates on `automations.yaml` (list) and `scripts.yaml` (dict).
 
 ```bash
-# Find all motion sensors
-uv run python tools/entity_explorer.py --search motion
+# List all automation aliases
+uv run python tools/ha_cli.py edit automations
 
-# Show all climate controls
-uv run python tools/entity_explorer.py --domain climate
+# Show a specific automation
+uv run python tools/ha_cli.py edit automations "Turn on Alarm"
 
-# Kitchen devices only
-uv run python tools/entity_explorer.py --area kitchen
+# Add a new automation
+uv run python tools/ha_cli.py edit automations --add '{"alias":"New Automation","trigger":[],"action":[]}'
+
+# Update fields on an existing automation
+uv run python tools/ha_cli.py edit automations "Turn on Alarm" --set mode=single icon=mdi:shield
+
+# Remove an automation
+uv run python tools/ha_cli.py edit automations "Old Automation" --remove
 ```
 
-## 🔒 Security & Best Practices
+Programmatic editing is also available:
+```python
+from tools.ha.yaml_editor import YAMLEditor
+editor = YAMLEditor("config")
+editor.add_automation({"alias": "...", "trigger": [...], "action": [...]})
+```
 
-- **Secrets Management**: `secrets.yaml` is excluded from validation
-- **SSH Authentication**: Uses SSH keys for secure HA access
-- **No Credentials Stored**: Repository contains no sensitive data
-- **Pre-Push Validation**: Prevents broken configs from reaching HA
-- **Backup System**: Automatic timestamped backups before changes
+## 🛡️ Validation System
 
-## 🐛 Troubleshooting
+Three layers run on every `make validate` (and before every `make push`):
 
-### Validation Errors
-1. Check YAML syntax first: `uv run python tools/yaml_validator.py`
-2. Verify entity references: `uv run python tools/reference_validator.py`
-3. Check HA logs if official validation fails
+### 📝 1. YAML Syntax
+Validates YAML syntax with HA-specific tags (`!include`, `!secret`, `!input`), file encoding, and basic HA file structures.
 
-### SSH Connection Issues
+### 🔗 2. Entity References
+Verifies all entity references exist in your HA instance. Checks device and area references, warns about disabled entities, extracts entities from Jinja2 templates, and recognizes config-defined entities.
 
-<details>
-<summary><strong>Click to expand SSH troubleshooting</strong></summary>
+### 🏛️ 3. Official HA Validation
+Uses Home Assistant's own `check_config`. **"Successful config (partial)"** is the normal local result — some integration packages can't install locally due to version pin differences, but this is expected and doesn't indicate a real config problem.
 
-#### Common SSH Problems and Solutions
+### ⚡ Validator Caching
 
-1. **Connection refused or timeout**:
-   ```bash
-   # Test if the SSH add-on is running
-   ssh homeassistant
-   # If this fails, check if the Advanced SSH & Web Terminal add-on is started in HA
-   ```
+Validators cache results in `config/.cache/validators/` keyed by SHA256 of dependent files. Unchanged files return cached results instantly.
 
-2. **Permission denied (publickey)**:
-   ```bash
-   # Check SSH key permissions
-   chmod 600 ~/.ssh/homeassistant
-   chmod 644 ~/.ssh/homeassistant.pub
+- **Automatic:** Caching is transparent — no action needed
+- **Force refresh:** `ha_cli validate --force` re-runs all validators
+- **Only successful results cached:** Failures always re-run
+- **Clear cache:** Delete `config/.cache/validators/` (or `git clean -fdX config/.cache/`)
 
-   # Verify your public key is correctly added to the HA SSH add-on config
-   cat ~/.ssh/homeassistant.pub
-   ```
+## 📦 Importable Modules
 
-3. **Host key verification failed**:
-   ```bash
-   # Remove old host key and try again
-   ssh-keygen -R homeassistant.local
-   # Or if using IP address:
-   ssh-keygen -R 192.168.1.100
-   ```
+For Python scripts and tests, import from the package directly:
 
-4. **SSH config issues**:
-   ```bash
-   # Test connection with verbose output
-   ssh -v homeassistant
+```python
+from tools.ha.client import HAClient              # REST API client
+from tools.ha.yaml_editor import YAMLEditor        # Round-trip YAML editing
+from tools.validators.yaml import YAMLValidator
+from tools.validators.references import ReferenceValidator
+from tools.validators.ha_official import HAOfficialValidator
+```
 
-   # Check your SSH config
-   cat ~/.ssh/config
-   ```
+`HAClient` is constructed via `HAClient.from_env()` (reads `.env` for `HA_TOKEN`/`HA_URL`).
 
-5. **Advanced SSH & Web Terminal not responding**:
-   - Restart the add-on in Home Assistant
-   - Check Home Assistant logs for SSH add-on errors
-   - Verify the add-on configuration YAML is valid
+## 🤖 AI Assistant Integration
 
-#### Verifying Your Setup
+This toolkit is designed to work with AI coding assistants. Three components enable this:
 
-Run these commands to verify everything is configured correctly:
+### 🔌 MCP Server (ha-mcp)
 
+The [ha-mcp](https://github.com/homeassistant-ai/ha-mcp) add-on provides 88+ MCP tools for natural-language HA control — entity listing, service calls, history, config inspection, automation creation, and more.
+
+**Setup:**
+1. Install the "Home Assistant MCP Server" add-on
+2. Start it and copy the MCP URL from add-on logs (format: `http://<ip>:9583/private_<token>`)
+3. Set `HA_MCP_URL` in `.env`
+4. Configure your AI tool's MCP settings to point to this URL
+
+Compatible with any AI coding assistant that supports MCP (opencode, Claude Code, etc.).
+
+### 📋 Instruction Files
+
+`CLAUDE.md` provides comprehensive project context to AI assistants — entity naming conventions, critical gotchas, hardware details, integration info, and troubleshooting tips. `AGENTS.md` and `GEMINI.md` are symlinks so other AI tools read the same instructions.
+
+### 🧩 Skills
+
+Pre-built skill workflows in `.agents/skills/` guide AI assistants through common tasks:
+
+| Skill | Purpose |
+|-------|---------|
+| **home-assistant-automation** | Structured workflow for creating and modifying automations |
+| **home-assistant-backup** | Pull → backup → prune with smart retention |
+| **home-assistant-debugging** | Systematic approach to investigating HA issues |
+| **reflect** | Capture learnings after completing work to prevent recurrence |
+
+### 📡 HA API Access Tiers
+
+| Need | Tool |
+|------|------|
+| **Live HA interaction** (read entities, call services) | MCP tools (ha-mcp) |
+| **Scripted API calls** | `ha_cli curl` or `tools/ha-curl.sh` |
+| **Importable client** | `HAClient` (`from tools.ha.client import HAClient`) |
+
+## 🏷️ Entity Naming Convention
+
+Format: `location_room_device_sensor`
+- **location**: `home`, `office`, `cabin`
+- **room**: `basement`, `kitchen`, `driveway`
+- **device**: `motion`, `heatpump`, `lock`
+- **sensor**: `battery`, `temperature`, `status`
+
+Examples: `binary_sensor.home_basement_motion_battery`, `climate.office_living_room_thermostat`
+
+## 🔒 Security
+
+- 🔐 **Secrets Management**: `secrets.yaml` is excluded from validation
+- 🔑 **SSH Authentication**: Uses SSH keys for secure HA access
+- 🕵️ **No Credentials Stored**: Repository contains no sensitive data
+- 🛡️ **Pre-Push Validation**: Prevents broken configs from reaching HA
+- 💾 **Backup System**: Automatic timestamped backups before changes
+
+## 🔧 Troubleshooting
+
+### ❌ Validation Errors
+1. Check YAML syntax: `uv run python tools/ha_cli.py validate`
+2. View HA logs: `ssh homeassistant "ha core logs" | tail -100`
+
+### 🔌 SSH Connection Issues
 ```bash
-# 1. Check SSH key files exist and have correct permissions
-ls -la ~/.ssh/homeassistant*
+# Test connection
+ssh homeassistant
 
-# 2. Check SSH config
-grep -A 5 "Host homeassistant" ~/.ssh/config
+# Check key permissions
+chmod 600 ~/.ssh/homeassistant
 
-# 3. Test SSH connection
-ssh homeassistant "ls /config"
-
-# 4. Test rsync (what make pull/push uses)
-rsync -avz --dry-run homeassistant:/config/ ./test/
+# Test with verbose output
+ssh -v homeassistant
 ```
 
-</details>
-
-### Missing Dependencies
+### 📦 Missing Dependencies
 ```bash
 uv sync
 ```
 
-## 🔧 Configuration
-
-### Environment Variables
-Configure via `.env` file in project root (copy from `.env.example`):
-
+### ✅ Before Pushing Code
 ```bash
-cp .env.example .env
+make lint        # Check formatting and lint
+make lint-fix    # Auto-fix issues
 ```
-
-Available variables:
-```bash
-# Home Assistant Configuration
-HA_TOKEN=your_home_assistant_token       # HA API token
-HA_URL=http://your_homeassistant_host:8123  # HA instance URL
-
-# SSH Configuration for rsync operations
-HA_HOST=your_homeassistant_host          # SSH hostname for HA
-HA_REMOTE_PATH=/config/                  # Remote config path
-
-# Local Configuration (optional - defaults provided)
-LOCAL_CONFIG_PATH=config/                # Local config directory
-BACKUP_DIR=backups                       # Backup directory
-TOOLS_PATH=tools                        # Tools directory
-```
-
-### Claude Code Settings
-Located in `.claude-code/settings.json` — configures hooks, validation, plugin marketplace, and development tooling. See the file for full details.
-
-## Custom Claude Code Skills
-
-These are my own additions — Claude Code skills that guide workflows for common Home Assistant tasks. They live in `.claude-code/plugins/home-assistant/skills/` and are invoked via slash commands in Claude Code.
-
-| Skill | Command | Description |
-|-------|---------|-------------|
-| **Automation** | `/home-assistant-automation` | Structured workflow for creating and modifying automations — handles entity discovery, design, implementation, and validation |
-| **Backup** | `/home-assistant-backup` | Pulls latest config, creates a timestamped backup, and prunes old backups with smart retention (7-day keep-all, then daily, then weekly). Supports `--dry-run` preview. |
-| **Debugging** | `/home-assistant-debugging` | Systematic approach to investigating HA issues — entity behavior problems, automation failures, template sensor bugs |
-| **Reflect** | `/reflect` | Captures learnings after completing work — records gotchas, corrections, and new patterns into CLAUDE.md, MEMORY.md, or skills to prevent recurrence |
-
-### Other Customizations
-
-- **Claude Code hooks** (`.claude-code/hooks/`): Auto-validation on YAML edits, pre-push config checking, Python quality checks, YAML formatting
-- **Backup tooling** (`tools/generate_changelog.py`, `tools/prune_backups.py`, `tools/search_backups.py`): Changelog generation, smart retention pruning, full-text search across backup history
-- **`make lint` / `make lint-fix`**: Local ruff linting to catch CI failures before pushing
-- **`CLAUDE.md`**: Extensive project context with HA-specific gotchas, entity naming conventions, streaming patterns, and debugging tips
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all validations pass
-5. Submit a pull request
 
 ## 📄 License
 
@@ -547,9 +353,5 @@ Apache 2.0
 ## 🙏 Acknowledgments
 
 - [Home Assistant](https://home-assistant.io) for the amazing platform
-- [Claude Code](https://claude.ai) for AI-powered development
+- [philippb/claude-homeassistant](https://github.com/philippb/claude-homeassistant) — the original project this fork builds upon
 - The HA community for validation best practices
-
----
-
-**Ready to revolutionize your Home Assistant automation workflow?** Start by describing what you want in plain English and let Claude Code handle the rest! 🚀
