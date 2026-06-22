@@ -112,6 +112,10 @@ def run(args: argparse.Namespace) -> int:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 
+    if args.alias is None and (args.set or args.remove):
+        print("Error: alias required for --set or --remove", file=sys.stderr)
+        return 1
+
     if not target_file.exists() and not args.add:
         print(f"Error: file not found: {target_file}", file=sys.stderr)
         return 1
@@ -125,10 +129,6 @@ def run(args: argparse.Namespace) -> int:
         # --show (or default), --set, --remove
         if args.show or not any([args.set, args.remove]):
             return _run_show(editor, args.alias)
-
-        if args.alias is None:
-            print("Error: alias required for --set or --remove", file=sys.stderr)
-            return 1
 
         alias: str = args.alias  # type: ignore[assignment]
 

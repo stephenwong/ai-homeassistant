@@ -134,6 +134,7 @@ class YAMLEditor:
         if self._data is None:
             self._data = []
         self._require_list("add automation")
+        assert isinstance(self._data, list)
         self._data.append(automation)
 
     def add_script(self, key: str, script: dict) -> None:
@@ -146,6 +147,7 @@ class YAMLEditor:
         if self._data is None:
             self._data = {}
         self._require_dict("add script")
+        assert isinstance(self._data, dict)
         if key in self._data:
             raise ValueError(f"Script '{key}' already exists")
         self._data[key] = script
@@ -157,6 +159,7 @@ class YAMLEditor:
         Raises ValueError if the alias is not found.
         """
         self._require_list("update automation")
+        assert isinstance(self._data, list)
         idx = self.find_automation(alias)
         if idx is None:
             raise ValueError(f"Automation with alias '{alias}' not found")
@@ -171,6 +174,7 @@ class YAMLEditor:
         Raises ValueError if the key is not found.
         """
         self._require_dict("update script")
+        assert isinstance(self._data, dict)
         if key not in self._data:
             raise ValueError(f"Script '{key}' not found")
         target = self._data[key]
@@ -184,6 +188,7 @@ class YAMLEditor:
         Raises ValueError if the alias is not found.
         """
         self._require_list("remove automation")
+        assert isinstance(self._data, list)
         idx = self.find_automation(alias)
         if idx is None:
             raise ValueError(f"Automation with alias '{alias}' not found")
@@ -196,6 +201,7 @@ class YAMLEditor:
         Raises ValueError if the key is not found.
         """
         self._require_dict("remove script")
+        assert isinstance(self._data, dict)
         if key not in self._data:
             raise ValueError(f"Script '{key}' not found")
         del self._data[key]
