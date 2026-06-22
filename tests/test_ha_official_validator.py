@@ -48,41 +48,25 @@ class TestHAOfficialValidatorMain:
         assert exc.value.code == 1
 
 
-class TestIsIgnorableMessage:
-    def test_turbojpeg_warning(self, validator):
-        msg = "Unable to locate turbojpeg library"
-        assert validator.is_ignorable_message(msg) is True
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Unable to locate turbojpeg library",
+        "libturbojpeg not found",
+        "Camera snapshot performance will be sub-optimal",
+        "TurboJPEGSingleton warning",
+        "selector']['reorder'] is not valid",
+        "Traceback (most recent call last):",
+        "RuntimeError: something",
+    ],
+)
+def test_ignorable_message(validator, message):
+    assert validator.is_ignorable_message(message) is True
 
-    def test_libturbojpeg(self, validator):
-        assert validator.is_ignorable_message("libturbojpeg not found") is True
 
-    def test_camera_snapshot_warning(self, validator):
-        assert (
-            validator.is_ignorable_message(
-                "Camera snapshot performance will be sub-optimal"
-            )
-            is True
-        )
-
-    def test_turbojpeg_singleton(self, validator):
-        assert validator.is_ignorable_message("TurboJPEGSingleton warning") is True
-
-    def test_blueprint_selector(self, validator):
-        assert (
-            validator.is_ignorable_message("selector']['reorder'] is not valid") is True
-        )
-
-    def test_traceback_line(self, validator):
-        assert (
-            validator.is_ignorable_message("Traceback (most recent call last):") is True
-        )
-
-    def test_runtime_error(self, validator):
-        assert validator.is_ignorable_message("RuntimeError: something") is True
-
-    def test_normal_error_not_ignorable(self, validator):
-        msg = "Invalid configuration for sensor"
-        assert validator.is_ignorable_message(msg) is False
+def test_normal_error_not_ignorable(validator):
+    msg = "Invalid configuration for sensor"
+    assert validator.is_ignorable_message(msg) is False
 
 
 class TestIsIgnorableTracebackLine:

@@ -21,13 +21,29 @@ from tools.yaml_validator import YAMLValidator
 from tools.yaml_validator import main as yaml_main
 
 
-def test_yaml_shim_exposes_class():
-    assert yaml_shim.YAMLValidator is YAMLValidator
+@pytest.mark.parametrize(
+    "shim,class_name,ref_class",
+    [
+        (yaml_shim, "YAMLValidator", YAMLValidator),
+        (reference_shim, "ReferenceValidator", ReferenceValidator),
+        (ha_official_shim, "HAOfficialValidator", HAOfficialValidator),
+    ],
+)
+def test_shim_exposes_class(shim, class_name, ref_class):
+    assert getattr(shim, class_name) is ref_class
 
 
-def test_yaml_shim_exposes_main():
-    assert callable(yaml_shim.main)
-    assert yaml_shim.main is yaml_main
+@pytest.mark.parametrize(
+    "shim,main_name,ref_main",
+    [
+        (yaml_shim, "main", yaml_main),
+        (reference_shim, "main", reference_main),
+        (ha_official_shim, "main", ha_official_main),
+    ],
+)
+def test_shim_exposes_main(shim, main_name, ref_main):
+    assert callable(getattr(shim, main_name))
+    assert getattr(shim, main_name) is ref_main
 
 
 def test_yaml_shim_subprocess_attribute():
@@ -39,46 +55,21 @@ def test_yaml_shim_argparse_attribute():
     assert yaml_shim.argparse is argparse
 
 
-def test_reference_shim_exposes_class():
-    assert reference_shim.ReferenceValidator is ReferenceValidator
-
-
-def test_reference_shim_exposes_main():
-    assert callable(reference_shim.main)
-    assert reference_shim.main is reference_main
-
-
-def test_ha_official_shim_exposes_class():
-    assert ha_official_shim.HAOfficialValidator is HAOfficialValidator
-
-
-def test_ha_official_shim_exposes_main():
-    assert callable(ha_official_shim.main)
-    assert ha_official_shim.main is ha_official_main
-
-
 def test_ha_official_shim_subprocess_attribute():
-    """`patch('tools.ha_official_validator.subprocess.run')` must resolve.
-
-    Verified by tests/test_ha_official_validator.py lines 36, 167, 179, 186,
-    194, 202, 226 — all use this dotted path.
-    """
+    """`patch('tools.ha_official_validator.subprocess.run')` must resolve."""
     assert ha_official_shim.subprocess is subprocess
 
 
-def test_yaml_validator_quiet_kwarg_via_shim():
-    """End-to-end: construct via old path with quiet kwarg."""
-    v = YAMLValidator(quiet=True)
-    assert v.quiet is True
-
-
-def test_reference_validator_quiet_kwarg_via_shim():
-    v = ReferenceValidator(quiet=True)
-    assert v.quiet is True
-
-
-def test_ha_official_validator_quiet_kwarg_via_shim():
-    v = HAOfficialValidator(quiet=True)
+@pytest.mark.parametrize(
+    "cls",
+    [
+        YAMLValidator,
+        ReferenceValidator,
+        HAOfficialValidator,
+    ],
+)
+def test_shim_quiet_kwarg(cls):
+    v = cls(quiet=True)
     assert v.quiet is True
 
 

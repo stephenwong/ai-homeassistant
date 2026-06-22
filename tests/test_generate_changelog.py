@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from tools.generate_changelog import (
     changelog_path_for,
     extract_files,
@@ -15,46 +17,26 @@ from tools.generate_changelog import (
 )
 
 
-class TestShouldInclude:
-    def test_yaml_included(self):
-        assert should_include("config/automations.yaml") is True
-
-    def test_yml_included(self):
-        assert should_include("config/test.yml") is True
-
-    def test_sh_included(self):
-        assert should_include("scripts/debug.sh") is True
-
-    def test_py_included(self):
-        assert should_include("tools/test.py") is True
-
-    def test_json_included(self):
-        assert should_include("config/data.json") is True
-
-    def test_storage_excluded(self):
-        assert should_include("config/.storage/core.entity_registry") is False
-
-    def test_zigbee_state_excluded(self):
-        assert should_include("zigbee2mqtt/state.json") is False
-
-    def test_zigbee_log_excluded(self):
-        assert should_include("zigbee2mqtt/log/2026-01-01.log") is False
-
-    def test_db_excluded(self):
-        assert should_include("config/home-assistant_v2.db") is False
-
-    def test_pycache_excluded(self):
-        assert should_include("tools/__pycache__/test.pyc") is False
-
-    def test_pyc_excluded(self):
-        assert should_include("tools/test.pyc") is False
-
-    def test_no_extension_included(self):
-        # Files with no extension are included (likely config)
-        assert should_include("Makefile") is True
-
-    def test_binary_excluded(self):
-        assert should_include("image.png") is False
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("config/automations.yaml", True),
+        ("config/test.yml", True),
+        ("scripts/debug.sh", True),
+        ("tools/test.py", True),
+        ("config/data.json", True),
+        ("config/.storage/core.entity_registry", False),
+        ("zigbee2mqtt/state.json", False),
+        ("zigbee2mqtt/log/2026-01-01.log", False),
+        ("config/home-assistant_v2.db", False),
+        ("tools/__pycache__/test.pyc", False),
+        ("tools/test.pyc", False),
+        ("Makefile", True),
+        ("image.png", False),
+    ],
+)
+def test_should_include(path, expected):
+    assert should_include(path) is expected
 
 
 def _make_tar(tmp_path, files_dict):

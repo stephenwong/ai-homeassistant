@@ -10,7 +10,7 @@
   "mcp": {
     "ha-mcp": {
       "type": "remote",
-      "url": "{env:HA_MCP_URL}"
+      "url": "{file:.ha-mcp-url}"
     }
   }
 }

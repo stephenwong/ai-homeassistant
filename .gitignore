@@ -54,6 +54,7 @@ backups/
 *.temp
 .cache/
 temp/
+tmp/
 
 # Logs
 *.log
@@ -61,6 +62,7 @@ temp/
 # Environment variables
 .env
 .env.local
+.ha-mcp-url
 
 # Node modules (if using any JS tools)
 node_modules/

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 
-def _write_automations(path: Path, content: str) -> None:
+def _write_yaml(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
@@ -34,7 +34,7 @@ def test_round_trip_preserves_content(tmp_path):
   mode: single
 """
     path = tmp_path / "automations.yaml"
-    _write_automations(path, yaml_content)
+    _write_yaml(path, yaml_content)
 
     editor = YAMLEditor(path)
     data = editor.load()
@@ -59,7 +59,7 @@ def test_round_trip_preserves_comments(tmp_path):
 # A footer comment
 """
     path = tmp_path / "automations.yaml"
-    _write_automations(path, yaml_content)
+    _write_yaml(path, yaml_content)
 
     editor = YAMLEditor(path)
     data = editor.load()
@@ -96,7 +96,7 @@ def test_round_trip_preserves_order(tmp_path):
   mode: single
 """
     path = tmp_path / "automations.yaml"
-    _write_automations(path, yaml_content)
+    _write_yaml(path, yaml_content)
 
     editor = YAMLEditor(path)
     data = editor.load()
@@ -114,7 +114,7 @@ def test_load_empty_file(tmp_path):
     from tools.ha.yaml_editor import YAMLEditor
 
     path = tmp_path / "empty.yaml"
-    _write_automations(path, "")
+    _write_yaml(path, "")
 
     editor = YAMLEditor(path)
     data = editor.load()
@@ -154,7 +154,7 @@ notify_on_doorbell:
         message: Ding!
 """
     path = tmp_path / "scripts.yaml"
-    _write_automations(path, yaml_content)
+    _write_yaml(path, yaml_content)
 
     editor = YAMLEditor(path)
     data = editor.load()
@@ -210,7 +210,7 @@ class TestFindAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         idx = editor.find_automation("Evening Scene")
@@ -220,7 +220,7 @@ class TestFindAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         idx = editor.find_automation("Nonexistent Automation")
@@ -230,7 +230,7 @@ class TestFindAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, "[]")
+        _write_yaml(path, "[]")
 
         editor = YAMLEditor(path)
         idx = editor.find_automation("Anything")
@@ -242,7 +242,7 @@ class TestAddAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         new = {
@@ -264,7 +264,7 @@ class TestAddAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, "[]")
+        _write_yaml(path, "[]")
 
         editor = YAMLEditor(path)
         editor.add_automation(
@@ -289,7 +289,7 @@ class TestUpdateAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         editor.update_automation("Evening Scene", {"description": "Updated"})
@@ -304,7 +304,7 @@ class TestUpdateAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         editor.update_automation("Doorbell Alert", {"max_exceeded": "silent"})
@@ -317,7 +317,7 @@ class TestUpdateAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         with pytest.raises(ValueError, match="Not Found"):
@@ -329,7 +329,7 @@ class TestRemoveAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         editor.remove_automation("Evening Scene")
@@ -346,7 +346,7 @@ class TestRemoveAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         with pytest.raises(ValueError, match="Not Found"):
@@ -356,7 +356,7 @@ class TestRemoveAutomation:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(
+        _write_yaml(
             path,
             """\
 - id: only
@@ -381,7 +381,7 @@ class TestSaveInPlace:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         editor.add_automation(
@@ -426,7 +426,7 @@ class TestAtomicSave:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         editor.add_automation(
@@ -455,7 +455,7 @@ class TestAtomicSave:
         from tools.ha.yaml_editor import ValidationError, YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         editor.add_automation(
@@ -485,7 +485,7 @@ class TestAtomicSave:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
 
         editor = YAMLEditor(path)
         editor.add_automation(
@@ -540,7 +540,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         assert editor.find_script("morning_routine") is True
 
@@ -548,7 +548,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         assert editor.find_script("nonexistent") is False
 
@@ -556,7 +556,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
         editor = YAMLEditor(path)
         assert editor.find_script("anything") is False
 
@@ -564,7 +564,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         editor.add_script("new_script", {"alias": "New Script", "sequence": []})
         editor.save()
@@ -577,7 +577,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         with pytest.raises(ValueError, match="already exists"):
             editor.add_script("morning_routine", {"sequence": []})
@@ -586,7 +586,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "automations.yaml"
-        _write_automations(path, AUTOMATIONS_FIXTURE)
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
         editor = YAMLEditor(path)
         with pytest.raises(TypeError, match="expected a dict"):
             editor.add_script("x", {"sequence": []})
@@ -595,7 +595,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         editor.update_script("morning_routine", {"description": "Updated"})
         editor.save()
@@ -606,7 +606,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         with pytest.raises(ValueError, match="not found"):
             editor.update_script("ghost", {"x": 1})
@@ -615,7 +615,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         editor.remove_script("evening_scene")
         editor.save()
@@ -627,7 +627,7 @@ class TestDictHelpers:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         with pytest.raises(ValueError, match="not found"):
             editor.remove_script("ghost")
@@ -638,7 +638,7 @@ class TestTypeGuard:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         with pytest.raises(TypeError, match="expected a list"):
             editor.add_automation({"alias": "X"})
@@ -647,7 +647,7 @@ class TestTypeGuard:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         with pytest.raises(TypeError, match="expected a list"):
             editor.update_automation("x", {})
@@ -656,7 +656,7 @@ class TestTypeGuard:
         from tools.ha.yaml_editor import YAMLEditor
 
         path = tmp_path / "scripts.yaml"
-        _write_automations(path, SCRIPTS_FIXTURE)
+        _write_yaml(path, SCRIPTS_FIXTURE)
         editor = YAMLEditor(path)
         with pytest.raises(TypeError, match="expected a list"):
             editor.remove_automation("x")

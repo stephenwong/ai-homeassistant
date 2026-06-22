@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tools.common import (
@@ -17,36 +18,21 @@ from tools.common import (
 )
 
 
-class TestHAYamlLoader:
-    """Test HA-specific YAML tag handling."""
-
-    def test_include_tag(self):
-        result = yaml.load("key: !include file.yaml", Loader=HAYamlLoader)
-        assert result == {"key": "!include file.yaml"}
-
-    def test_include_dir_named_tag(self):
-        result = yaml.load("key: !include_dir_named mydir", Loader=HAYamlLoader)
-        assert result == {"key": "!include_dir_named mydir"}
-
-    def test_include_dir_merge_named_tag(self):
-        result = yaml.load("key: !include_dir_merge_named mydir", Loader=HAYamlLoader)
-        assert result == {"key": "!include_dir_merge_named mydir"}
-
-    def test_include_dir_merge_list_tag(self):
-        result = yaml.load("key: !include_dir_merge_list mydir", Loader=HAYamlLoader)
-        assert result == {"key": "!include_dir_merge_list mydir"}
-
-    def test_include_dir_list_tag(self):
-        result = yaml.load("key: !include_dir_list mydir", Loader=HAYamlLoader)
-        assert result == {"key": "!include_dir_list mydir"}
-
-    def test_input_tag(self):
-        result = yaml.load("key: !input sensor_name", Loader=HAYamlLoader)
-        assert result == {"key": "!input sensor_name"}
-
-    def test_secret_tag(self):
-        result = yaml.load("key: !secret api_key", Loader=HAYamlLoader)
-        assert result == {"key": "!secret api_key"}
+@pytest.mark.parametrize(
+    "tag,argument",
+    [
+        ("!include", "file.yaml"),
+        ("!include_dir_named", "mydir"),
+        ("!include_dir_merge_named", "mydir"),
+        ("!include_dir_merge_list", "mydir"),
+        ("!include_dir_list", "mydir"),
+        ("!input", "sensor_name"),
+        ("!secret", "api_key"),
+    ],
+)
+def test_ha_tag_loader(tag, argument):
+    result = yaml.load(f"key: {tag} {argument}", Loader=HAYamlLoader)
+    assert result == {"key": f"{tag} {argument}"}
 
 
 class TestLoadEnvFile:
@@ -62,7 +48,7 @@ class TestLoadEnvFile:
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    def test_load_env_file_sets_variables(self, monkeypatch):
+    def test_load_env_file_sets_variables(self):
         env_content = 'HA_TOKEN=test_token_123\nHA_URL="http://localhost:8123"\n'
         # Create .env in the parent of tools/
         env_path = Path(__file__).parent.parent / ".env"
@@ -80,7 +66,7 @@ class TestLoadEnvFile:
             elif not existed:
                 env_path.unlink(missing_ok=True)
 
-    def test_load_env_file_skips_comments(self, monkeypatch):
+    def test_load_env_file_skips_comments(self):
         env_path = Path(__file__).parent.parent / ".env"
         existed = env_path.exists()
         old_content = env_path.read_text() if existed else None
@@ -95,7 +81,7 @@ class TestLoadEnvFile:
             elif not existed:
                 env_path.unlink(missing_ok=True)
 
-    def test_load_env_file_skips_empty_lines(self, monkeypatch):
+    def test_load_env_file_skips_empty_lines(self):
         env_path = Path(__file__).parent.parent / ".env"
         existed = env_path.exists()
         old_content = env_path.read_text() if existed else None

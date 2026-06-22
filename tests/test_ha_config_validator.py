@@ -3,7 +3,7 @@
 import shutil
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -306,17 +306,37 @@ class TestRunHACheckConfig:
         with patch(
             "tools.ha_config_validator.subprocess.run",
         ) as mock_run:
-            # First call for check_ha_installation succeeds
             mock_result = MagicMock()
             mock_result.returncode = 0
             mock_result.stdout = "2024.1.0"
-            # Second call for actual check times out
             mock_run.side_effect = [
                 mock_result,
                 subprocess.TimeoutExpired(cmd="hass", timeout=60),
             ]
             assert validator.run_ha_check_config() is False
             assert any("timed out" in e for e in validator.errors)
+            mock_run.assert_has_calls(
+                [
+                    call(
+                        ["hass", "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.install_check_timeout,
+                    ),
+                    call(
+                        [
+                            "hass",
+                            "--config",
+                            str(config_dir),
+                            "--script",
+                            "check_config",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.validation_timeout,
+                    ),
+                ]
+            )
 
     def test_successful_check(self, config_dir, validator):
         mock_install = MagicMock()
@@ -330,9 +350,31 @@ class TestRunHACheckConfig:
 
         with patch(
             "tools.ha_config_validator.subprocess.run",
-            side_effect=[mock_install, mock_check],
-        ):
+        ) as mock_run:
+            mock_run.side_effect = [mock_install, mock_check]
             assert validator.run_ha_check_config() is True
+            mock_run.assert_has_calls(
+                [
+                    call(
+                        ["hass", "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.install_check_timeout,
+                    ),
+                    call(
+                        [
+                            "hass",
+                            "--config",
+                            str(config_dir),
+                            "--script",
+                            "check_config",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.validation_timeout,
+                    ),
+                ]
+            )
 
     def test_fallback_to_python_module(self, config_dir, validator):
         """Cover lines 76-85: hass gives 'No module named', falls back to python -m."""
@@ -352,9 +394,45 @@ class TestRunHACheckConfig:
 
         with patch(
             "tools.ha_config_validator.subprocess.run",
-            side_effect=[mock_install, mock_hass_fail, mock_python_success],
-        ):
+        ) as mock_run:
+            mock_run.side_effect = [mock_install, mock_hass_fail, mock_python_success]
             assert validator.run_ha_check_config() is True
+            mock_run.assert_has_calls(
+                [
+                    call(
+                        ["hass", "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.install_check_timeout,
+                    ),
+                    call(
+                        [
+                            "hass",
+                            "--config",
+                            str(config_dir),
+                            "--script",
+                            "check_config",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.validation_timeout,
+                    ),
+                    call(
+                        [
+                            "python",
+                            "-m",
+                            "homeassistant",
+                            "--config",
+                            str(config_dir),
+                            "--script",
+                            "check_config",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.validation_timeout,
+                    ),
+                ]
+            )
 
     def test_check_with_stderr(self, config_dir, validator):
         """Cover line 92: stderr is parsed via parse_check_config_errors."""
@@ -369,11 +447,32 @@ class TestRunHACheckConfig:
 
         with patch(
             "tools.ha_config_validator.subprocess.run",
-            side_effect=[mock_install, mock_check],
-        ):
+        ) as mock_run:
+            mock_run.side_effect = [mock_install, mock_check]
             validator.run_ha_check_config()
-            # stderr should have been parsed
             assert any("some warning text" in e for e in validator.errors)
+            mock_run.assert_has_calls(
+                [
+                    call(
+                        ["hass", "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.install_check_timeout,
+                    ),
+                    call(
+                        [
+                            "hass",
+                            "--config",
+                            str(config_dir),
+                            "--script",
+                            "check_config",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.validation_timeout,
+                    ),
+                ]
+            )
 
     def test_exception_falls_back_to_basic(self, config_dir, validator):
         """Cover lines 99-101: exception in run_ha_check_config falls back to basic."""
@@ -388,12 +487,33 @@ class TestRunHACheckConfig:
 
         with patch(
             "tools.ha_config_validator.subprocess.run",
-            side_effect=[mock_install, RuntimeError("unexpected")],
-        ):
+        ) as mock_run:
+            mock_run.side_effect = [mock_install, RuntimeError("unexpected")]
             result = validator.run_ha_check_config()
-            # Falls back to basic validation which succeeds with valid config
             assert result is True
             assert any("Failed to run" in e for e in validator.errors)
+            mock_run.assert_has_calls(
+                [
+                    call(
+                        ["hass", "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.install_check_timeout,
+                    ),
+                    call(
+                        [
+                            "hass",
+                            "--config",
+                            str(config_dir),
+                            "--script",
+                            "check_config",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=validator.validation_timeout,
+                    ),
+                ]
+            )
 
 
 class TestHAConfigValidatorMain:
