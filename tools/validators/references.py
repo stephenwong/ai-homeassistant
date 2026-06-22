@@ -65,6 +65,17 @@ class ReferenceValidator(ValidatorBase):
         self._restore_entities: set[str] | None = None
         self._config_defined_entities: set[str] | None = None
 
+    def file_deps(self) -> list[str]:
+        return [
+            "*.yaml",
+            "*.yml",
+            ".storage/core.entity_registry",
+            ".storage/core.device_registry",
+            ".storage/core.area_registry",
+            ".storage/core.zone",
+            ".storage/core.restore_state",
+        ]
+
     @classmethod
     def _slugify_object_id(cls, value: str) -> str:
         """Best-effort HA-like slugify for deriving object_ids from names."""
