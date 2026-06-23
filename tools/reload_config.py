@@ -6,6 +6,7 @@ have been pushed to the instance. Uses git to detect which files changed
 and calls only the relevant reload services.
 """
 
+import functools
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -143,7 +144,7 @@ def reload_config() -> bool:
         with ThreadPoolExecutor() as executor:
             results.extend(
                 executor.map(
-                    lambda s: reload_service(client, s),
+                    functools.partial(reload_service, client),
                     domain_services,
                 )
             )

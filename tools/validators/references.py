@@ -489,8 +489,7 @@ class ReferenceValidator(ValidatorBase):
     def is_uuid_format(self, value: str) -> bool:
         """Check if a string matches UUID format (32 hex characters)."""
         # UUID format: 8-4-4-4-12 hex digits, but HA often stores without hyphens
-        uuid_pattern = r"^[a-f0-9]{32}$"
-        return bool(re.match(uuid_pattern, value))
+        return bool(re.fullmatch(r"[a-f0-9]{32}", value))
 
     def is_template(self, value: str) -> bool:
         """Check if value is a Jinja2 template expression."""
@@ -656,11 +655,8 @@ class ReferenceValidator(ValidatorBase):
         if file_path.name == "secrets.yaml":
             return True  # Skip secrets file
 
-        try:
-            with open(file_path, encoding="utf-8") as f:
-                data = yaml.load(f, Loader=HAYamlLoader)
-        except Exception as e:
-            self.errors.append(f"{file_path}: Failed to load YAML - {e}")
+        data, ok = self.load_yaml_checked(file_path)
+        if not ok:
             return False
 
         if data is None:

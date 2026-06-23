@@ -5,8 +5,6 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from tools.common import ValidatorBase
 
 
@@ -17,18 +15,8 @@ class YAMLValidator(ValidatorBase):
 
     def validate_yaml_syntax(self, file_path: Path) -> bool:
         """Validate YAML syntax of a single file."""
-        try:
-            self.load_yaml(file_path)
-            return True
-        except yaml.YAMLError as e:
-            self.errors.append(f"{file_path}: YAML syntax error - {e}")
-            return False
-        except UnicodeDecodeError as e:
-            self.errors.append(f"{file_path}: Encoding error - {e}")
-            return False
-        except Exception as e:
-            self.errors.append(f"{file_path}: Unexpected error - {e}")
-            return False
+        _, ok = self.load_yaml_checked(file_path)
+        return ok
 
     def validate_file_encoding(self, file_path: Path) -> bool:
         """Ensure file is UTF-8 encoded as required by Home Assistant."""
@@ -134,18 +122,8 @@ class YAMLValidator(ValidatorBase):
                 continue
 
             # Parse once; catches encoding errors and YAML syntax errors
-            try:
-                data = self.load_yaml(file_path)
-            except yaml.YAMLError as e:
-                self.errors.append(f"{file_path}: YAML syntax error - {e}")
-                all_valid = False
-                continue
-            except UnicodeDecodeError as e:
-                self.errors.append(f"{file_path}: Encoding error - {e}")
-                all_valid = False
-                continue
-            except Exception as e:
-                self.errors.append(f"{file_path}: Unexpected error - {e}")
+            data, ok = self.load_yaml_checked(file_path)
+            if not ok:
                 all_valid = False
                 continue
 

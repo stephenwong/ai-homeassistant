@@ -46,9 +46,9 @@ class TestAddParser:
 
 
 class TestRun:
-    def test_dispatches_to_entity_explorer_main(self):
-        """run() should call entity_explorer.main() and rebuild argv correctly."""
-        with patch("tools.commands.entities.entity_explorer.main", return_value=0):
+    def test_passes_flags_as_argv(self):
+        """run() passes correct argv list to entity_explorer.main()."""
+        with patch("tools.commands.entities.entity_explorer.main", return_value=0) as m:
             args = Namespace(
                 config="config",
                 domain=None,
@@ -58,6 +58,27 @@ class TestRun:
                 json=False,
             )
             assert entities_cmd.run(args) == 0
+            m.assert_called_once()
+            passed_argv = m.call_args.args[0]
+            assert isinstance(passed_argv, list)
+            assert "--search" in passed_argv
+            assert "temp" in passed_argv
+
+    def test_passes_json_flag(self):
+        """--json should appear in the argv passed to entity_explorer.main()."""
+        with patch("tools.commands.entities.entity_explorer.main", return_value=0) as m:
+            args = Namespace(
+                config="config",
+                domain=None,
+                area=None,
+                search=None,
+                full=False,
+                json=True,
+            )
+            entities_cmd.run(args)
+            m.assert_called_once()
+            passed_argv = m.call_args.args[0]
+            assert "--json" in passed_argv
 
     def test_propagates_nonzero_exit_code(self):
         with patch("tools.commands.entities.entity_explorer.main", return_value=1):
@@ -70,22 +91,6 @@ class TestRun:
                 json=False,
             )
             assert entities_cmd.run(args) == 1
-
-    def test_json_flag_transmitted(self):
-        """--json should reach entity_explorer.main via sys.argv."""
-        import sys
-
-        with patch("tools.commands.entities.entity_explorer.main", return_value=0):
-            args = Namespace(
-                config="config",
-                domain=None,
-                area=None,
-                search=None,
-                full=False,
-                json=True,
-            )
-            entities_cmd.run(args)
-            assert "--json" in sys.argv
 
     def test_non_int_return_coerced_to_zero(self):
         with patch("tools.commands.entities.entity_explorer.main", return_value=None):

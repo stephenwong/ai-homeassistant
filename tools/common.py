@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import yaml
@@ -16,60 +17,28 @@ class HAYamlLoader(yaml.SafeLoader):
     pass
 
 
-def include_constructor(loader, node):
-    """Handle !include tag."""
-    filename = loader.construct_scalar(node)
-    return f"!include {filename}"
+_HA_TAGS = [
+    "!include",
+    "!include_dir_named",
+    "!include_dir_merge_named",
+    "!include_dir_merge_list",
+    "!include_dir_list",
+    "!input",
+    "!secret",
+]
 
 
-def include_dir_named_constructor(loader, node):
-    """Handle !include_dir_named tag."""
-    dirname = loader.construct_scalar(node)
-    return f"!include_dir_named {dirname}"
+def _make_tag_constructor(tag: str):
+    """Return a constructor that round-trips a HA YAML tag as a plain string."""
+
+    def constructor(loader, node):
+        return f"{tag} {loader.construct_scalar(node)}"
+
+    return constructor
 
 
-def include_dir_merge_named_constructor(loader, node):
-    """Handle !include_dir_merge_named tag."""
-    dirname = loader.construct_scalar(node)
-    return f"!include_dir_merge_named {dirname}"
-
-
-def include_dir_merge_list_constructor(loader, node):
-    """Handle !include_dir_merge_list tag."""
-    dirname = loader.construct_scalar(node)
-    return f"!include_dir_merge_list {dirname}"
-
-
-def include_dir_list_constructor(loader, node):
-    """Handle !include_dir_list tag."""
-    dirname = loader.construct_scalar(node)
-    return f"!include_dir_list {dirname}"
-
-
-def input_constructor(loader, node):
-    """Handle !input tag for blueprints."""
-    input_name = loader.construct_scalar(node)
-    return f"!input {input_name}"
-
-
-def secret_constructor(loader, node):
-    """Handle !secret tag."""
-    secret_name = loader.construct_scalar(node)
-    return f"!secret {secret_name}"
-
-
-# Register custom constructors
-HAYamlLoader.add_constructor("!include", include_constructor)
-HAYamlLoader.add_constructor("!include_dir_named", include_dir_named_constructor)
-HAYamlLoader.add_constructor(
-    "!include_dir_merge_named", include_dir_merge_named_constructor
-)
-HAYamlLoader.add_constructor(
-    "!include_dir_merge_list", include_dir_merge_list_constructor
-)
-HAYamlLoader.add_constructor("!include_dir_list", include_dir_list_constructor)
-HAYamlLoader.add_constructor("!input", input_constructor)
-HAYamlLoader.add_constructor("!secret", secret_constructor)
+for _tag in _HA_TAGS:
+    HAYamlLoader.add_constructor(_tag, _make_tag_constructor(_tag))
 
 DEFAULT_HA_URL = "http://homeassistant.local:8123"
 
@@ -157,6 +126,25 @@ class ValidatorBase:
         """Load a YAML file with HA-aware loader and UTF-8 encoding."""
         with open(file_path, encoding="utf-8") as f:
             return yaml.load(f, Loader=HAYamlLoader)
+
+    def load_yaml_checked(self, file_path: Path) -> tuple[Any, bool]:
+        """Load YAML, recording any error to ``self.errors``.
+
+        Returns:
+            (data, ok). On failure, data is None, ok is False, and an error
+            message has been appended to self.errors. On success ok is True;
+            data may be None for an empty document.
+        """
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                return yaml.load(f, Loader=HAYamlLoader), True
+        except yaml.YAMLError as e:
+            self.errors.append(f"{file_path}: YAML syntax error - {e}")
+        except UnicodeDecodeError as e:
+            self.errors.append(f"{file_path}: Encoding error - {e}")
+        except OSError as e:
+            self.errors.append(f"{file_path}: Could not read file - {e}")
+        return None, False
 
     def check_automations_structure(self, automations: list, source: str) -> bool:
         """Validate parsed automations list structure.

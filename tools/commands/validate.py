@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from tools.cache import compute_hash, load_cache, save_cache
-from tools.common import get_env_int
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.references import ReferenceValidator
 from tools.validators.yaml import YAMLValidator
@@ -247,7 +246,3 @@ def run(args: argparse.Namespace) -> int:
         print()
 
     return 0 if all_passed else 1
-
-
-# Backwards-compat: external callers (e.g. CI) sometimes read this constant.
-DEFAULT_VALIDATOR_TIMEOUT = get_env_int("HA_RUNNER_TIMEOUT", 120)[0]

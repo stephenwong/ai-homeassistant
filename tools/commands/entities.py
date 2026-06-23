@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 
 from tools import entity_explorer
 
@@ -43,8 +42,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``entities`` subcommand. Returns exit code."""
-    # Rebuild sys.argv so entity_explorer.main()'s argparse sees our flags.
-    argv = ["entities"]
+    argv: list[str] = []
     if args.config:
         argv.extend(["--config", args.config])
     if args.domain:
@@ -57,6 +55,5 @@ def run(args: argparse.Namespace) -> int:
         argv.append("--full")
     if args.json:
         argv.append("--json")
-    sys.argv = argv
-    result = entity_explorer.main()
+    result = entity_explorer.main(argv)
     return int(result) if isinstance(result, int) else 0

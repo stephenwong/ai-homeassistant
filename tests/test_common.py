@@ -288,3 +288,50 @@ class TestValidatorBase:
         v.print_results()
         captured = capsys.readouterr()
         assert "Test info" in captured.out
+
+
+class TestLoadYamlChecked:
+    """Tests for ValidatorBase.load_yaml_checked."""
+
+    def test_valid_file_returns_data_and_ok(self, tmp_path):
+        from tools.common import ValidatorBase
+
+        f = tmp_path / "good.yaml"
+        f.write_text("key: value\n", encoding="utf-8")
+        v = ValidatorBase(str(tmp_path))
+        data, ok = v.load_yaml_checked(f)
+        assert ok is True
+        assert data == {"key": "value"}
+        assert not v.errors
+
+    def test_empty_file_returns_none_and_ok(self, tmp_path):
+        from tools.common import ValidatorBase
+
+        f = tmp_path / "empty.yaml"
+        f.write_text("", encoding="utf-8")
+        v = ValidatorBase(str(tmp_path))
+        data, ok = v.load_yaml_checked(f)
+        assert ok is True
+        assert data is None
+        assert not v.errors
+
+    def test_malformed_yaml_records_error_and_returns_false(self, tmp_path):
+        from tools.common import ValidatorBase
+
+        f = tmp_path / "bad.yaml"
+        f.write_text("key: [\n", encoding="utf-8")
+        v = ValidatorBase(str(tmp_path))
+        data, ok = v.load_yaml_checked(f)
+        assert ok is False
+        assert data is None
+        assert any("bad.yaml" in e for e in v.errors)
+
+    def test_nonexistent_file_records_error_and_returns_false(self, tmp_path):
+        from tools.common import ValidatorBase
+
+        f = tmp_path / "nonexistent.yaml"
+        v = ValidatorBase(str(tmp_path))
+        data, ok = v.load_yaml_checked(f)
+        assert ok is False
+        assert data is None
+        assert any("nonexistent.yaml" in e for e in v.errors)

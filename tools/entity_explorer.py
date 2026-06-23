@@ -261,8 +261,8 @@ def search_entities(categorized: dict, query: str):
         print(f"   {entity['entity_id']}{device_class_str}{unit_str}{area_str}")
 
 
-def main():
-    """Run main function."""
+def main(argv: list[str] | None = None):
+    """Run main function. If argv is None, falls back to sys.argv[1:] for CLI use."""
     parser = argparse.ArgumentParser(
         description="Explore Home Assistant Entity Registry"
     )
@@ -285,7 +285,7 @@ def main():
         help="Emit compact JSON output (machine-readable, no banners/emojis)",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     config_path = Path(args.config)
     if not config_path.exists():
@@ -338,8 +338,6 @@ def _emit_json(categorized: dict, args: argparse.Namespace) -> None:
     (no banners, no emojis) — ideal for piping to ``jq`` or pasting into LLM
     prompts where every byte costs tokens.
     """
-    import json
-
     if args.search:
         query_lower = args.search.lower()
         rows = [

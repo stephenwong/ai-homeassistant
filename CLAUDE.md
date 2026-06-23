@@ -160,6 +160,7 @@ The `ha-mcp` add-on provides 88+ MCP tools for natural-language HA control (enti
 - **`load_env_file()` in tests:** `HAClient.from_env()` calls it, which reads the project's real `.env` and overrides monkeypatched values. In `HAClient` tests, patch `tools.ha.client.load_env_file` to a no-op fixture so env-var assertions hold.
 - **Subclass `__init__` kwarg forwarding:** When adding a new kwarg (like `quiet`) to a base class, every subclass that overrides `__init__` must explicitly accept and forward the kwarg via `super().__init__(config_dir, quiet=quiet)`. Otherwise `TypeError: __init__() got an unexpected keyword argument 'quiet'`. Check all subclasses when changing base class signatures.
 - **`pyproject.toml` exclude sections:** Adding a `tools/_dev/` directory requires updating FOUR exclude locations: `[tool.ruff] exclude`, `[tool.mypy] exclude`, `[tool.coverage.run] omit` (path pattern: `"*/tools/_dev/*"`), and `[tool.hatch.build] exclude`. Pre-commit's mypy hook has its OWN regex exclude (`.pre-commit-config.yaml`) separate from pyproject's `[tool.mypy] exclude`.
+- **Python 3.14 unparenthesized `except A, B, C:` is canonical, NOT a bug.** Python 3.14 relaxed the grammar to accept comma-separated exception types without parens (compiles identically to `except (A, B, C):`). `ruff format` targeting `py314` actively *removes* the parens as "unnecessary." Do NOT flag `except OSError, ValueError:` as a syntax error in review — it's the formatter-enforced style. Only applies on 3.14+; on older Python it's a `SyntaxError`.
 
 ### Git Commit Trailers
 
