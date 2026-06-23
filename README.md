@@ -17,8 +17,8 @@ A toolkit for managing Home Assistant configurations — automated validation, s
 
 ### 📥 1. Clone and Set Up
 ```bash
-git clone git@github.com:stephenwong/claude-homeassistant.git
-cd claude-homeassistant
+git clone git@github.com:stephenwong/ai-homeassistant.git
+cd ai-homeassistant
 make setup  # Installs dependencies via uv
 ```
 

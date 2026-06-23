@@ -382,6 +382,6 @@ echo TIP: Use Git Bash instead of CMD for best compatibility
 echo --------------------------------------------------------
 echo.
 echo Documentation: README.md
-echo Issues: https://github.com/philippb/claude-homeassistant/issues
+echo Issues: https://github.com/stephenwong/ai-homeassistant/issues
 echo.
 pause
