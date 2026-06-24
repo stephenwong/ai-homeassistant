@@ -18,7 +18,7 @@ A toolkit for managing Home Assistant configurations — automated validation, s
 ```mermaid
 flowchart LR
     subgraph HA["🏠 Home Assistant"]
-        ha_config["/config/"]
+        ha_config["config/"]
         ha_api["REST API"]
         mcp["MCP Server"]
     end
