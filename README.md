@@ -94,6 +94,19 @@ flowchart TB
 > **5. Trace root cause** — Use MCP tools for live entity state, automation traces, and template rendering.  
 > **6. Fix, validate, push** — Once the root cause is found, apply the fix and resume the normal create/edit flow above.
 
+### 📡 Access Points
+
+The toolkit communicates with Home Assistant through four distinct channels, each serving a different purpose:
+
+| Access Method | Protocol | Config | Used By | Why It's Needed |
+|---------------|----------|--------|---------|-----------------|
+| **rsync** over SSH | SSH/SFTP | `HA_HOST` | `make pull`, `make push` | Bulk transfer of the entire config directory tree. Rsync is incremental (only changed files) and is the only way to move `.storage/` registries, `zigbee2mqtt/` config, and YAML files between HA and the dev machine. |
+| **REST API** | HTTP (port 8123) | `HA_URL` + `HA_TOKEN` | `HAClient`, `ha_cli curl`, `make reload`, ServiceValidator, TemplateValidator | Standard HA programmatic interface. Service calls, state queries, config reloads, and template rendering. Validators query `/api/services` and `/api/template` at validation time to catch issues before they reach the server. |
+| **MCP Server** | HTTP (port 9583) | `HA_MCP_URL` | AI assistants (opencode, Claude Code) | High-level natural-language HA control designed for AI agents. 88+ tools for entity listing, config inspection, automation management, history queries, and service calls — without needing raw API requests. Triggered by the automation, backup, and debugging skills. |
+| **SSH shell** | SSH | `HA_HOST` | `ha core logs`, addon restart, Lovelace edits | Server-side commands that the REST API can't do. Log viewing (`ha core logs --follow`), addon management (`ha apps restart` for Frigate/Z2M), and direct `.storage/` file edits for Lovelace (which returns 404 from the REST API in storage mode). |
+
+> **One host, four channels.** `HA_HOST` powers both rsync and SSH shell via the same [Advanced SSH & Web Terminal](https://github.com/hassio-addons/addon-ssh) add-on. `HA_URL` and `HA_MCP_URL` are separate HTTP endpoints on the same HA instance.
+
 ## 🚀 Quick Start
 
 ### 📥 1. Clone and Set Up
