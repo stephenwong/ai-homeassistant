@@ -13,6 +13,45 @@ A toolkit for managing Home Assistant configurations — automated validation, s
 - 📦 **Importable Python Modules** — `HAClient`, `YAMLEditor`, and validators for scripts and tests
 - 💾 **Backup System** — Timestamped config backups with changelogs and full-text search
 
+## 🔄 How It Works
+
+```mermaid
+flowchart LR
+    subgraph HA["🏠 Home Assistant"]
+        ha_config["/config/"]
+        ha_api["REST API"]
+        mcp["MCP Server"]
+    end
+
+    subgraph Dev["💻 Dev Machine"]
+        local_config["config/"]
+        validators["6-layer validation"]
+        backups["backups/"]
+        editor["AI-assisted editing"]
+    end
+
+    %% Pull flow
+    ha_config -->|"make pull (rsync)"| local_config
+    local_config -->|"make backup (tarball)"| backups
+
+    %% Edit & Validate
+    backups -.->|"restore if needed"| local_config
+    local_config --> validators
+    mcp -->|"entity lookup, state read"| editor
+    ha_api -->|"service catalog, template render"| validators
+    validators -->|"pass?"| local_config
+
+    %% Push flow
+    local_config -->|"make push (validate + rsync)"| ha_config
+    ha_api -->|"make reload"| ha_config
+```
+
+> **1. Pull** — `make pull` syncs config from HA via rsync, triggers validation for integrity.  
+> **2. Backup** — `make backup` creates a timestamped tarball + changelog before making changes.  
+> **3. Edit** — Modify config files locally. `ha_cli edit` preserves YAML formatting. MCP tools provide live entity lookups.  
+> **4. Validate** — `make validate` runs 6 validators: YAML syntax, entity/device/area references, duplicate automation IDs, service references, Jinja2 template linting, and official HA `check_config`.  
+> **5. Push** — `make push` validates then rsyncs to HA, blocking broken configs from reaching the server. HA reloads the new configuration automatically.
+
 ## 🚀 Quick Start
 
 ### 📥 1. Clone and Set Up
