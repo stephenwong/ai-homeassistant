@@ -25,10 +25,10 @@ This repository manages Home Assistant configuration files with automated valida
 - `tools/commands/` - CLI subcommand implementations (`validate`, `reload`, `entities`, `curl`, `edit`)
 - `tools/ha/client.py` - `HAClient` — shared HA REST API client (importable: `from tools.ha.client import HAClient`)
 - `tools/ha/yaml_editor.py` - `YAMLEditor` — round-trip YAML editing with comment preservation (importable: `from tools.ha.yaml_editor import YAMLEditor`)
-- `tools/validators/` - Validator implementations (`yaml.py`, `references.py`, `ha_official.py`)
+- `tools/validators/` - Validator implementations (`yaml.py`, `references.py`, `duplicate_ids.py`, `services.py`, `templates.py`, `ha_official.py`)
 - `tools/cache.py` - SHA256 file-hash caching for validator results
 - `tools/common.py` - Shared utilities (env loading, path helpers)
-- `tools/{run_tests,yaml_validator,reference_validator,ha_official_validator,reload_config,entity_explorer}.py` - **Backward-compat shims** that delegate to the new package. Old scripts/Makefile targets still work; prefer `ha_cli` for new work.
+- `tools/{run_tests,yaml_validator,reference_validator,duplicate_id_validator,service_validator,template_validator,ha_official_validator,reload_config,entity_explorer}.py` - **Backward-compat shims** that delegate to the new package. Old scripts/Makefile targets still work; prefer `ha_cli` for new work.
 - `tools/_dev/api_diagnostic.py` - Dev-only API diagnostic (archived; excluded from lint/wheel)
 - `Makefile` - Commands for pulling/pushing configuration
 - `Makefile.dev` - Dev-only commands (see `README-DEV.md`)
@@ -48,7 +48,7 @@ Copy `.env.example` to `.env` and configure:
 | `make pull` | Sync config from HA (includes Z2M config) |
 | `make push` | Push config (with validation) |
 | `make backup` | Create timestamped backup (with auto-changelog) |
-| `make validate` | Validate YAML syntax, entity refs, device IDs, HA config |
+| `make validate` | Validate YAML syntax, entity refs, duplicate IDs, services, templates, HA config |
 | `make setup` | Install Python dependencies via uv |
 | `make status` | Show config status and entity examples |
 | `make reload` | Reload HA config (API call, no push) |
@@ -127,9 +127,12 @@ For Python scripts/tests, import from the package directly:
 ```python
 from tools.ha.client import HAClient        # REST API client
 from tools.ha.yaml_editor import YAMLEditor  # Round-trip YAML editing
-from tools.validators.yaml import YAMLValidator
+from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.references import ReferenceValidator
+from tools.validators.services import ServiceValidator
+from tools.validators.templates import TemplateValidator
 from tools.validators.ha_official import HAOfficialValidator
+from tools.validators.yaml import YAMLValidator
 ```
 
 `HAClient` is constructed via `HAClient.from_env()` (reads `.env` for `HA_TOKEN`/`HA_URL`).

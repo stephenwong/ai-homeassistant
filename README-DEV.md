@@ -40,14 +40,16 @@ This directory contains a complete Python development environment with modern to
 ```
 ├── tools/                   # Python validation scripts
 ├── tests/                   # Test files
-├── config/                  # Home Assistant configuration
-├── pyproject.toml          # Python project configuration
-├── .pre-commit-config.yaml # Pre-commit hook configuration
-├── .yamllint.yml          # YAML linting rules
-├── Makefile               # Main project commands
-├── Makefile.dev          # Development-specific commands
-└── README-DEV.md         # This file
+├── pyproject.toml           # Python project configuration
+├── .pre-commit-config.yaml  # Pre-commit hook configuration
+├── Makefile                 # Main project commands
+├── Makefile.dev             # Development-specific commands
+└── README-DEV.md            # This file
 ```
+
+> **Runtime directories** (gitignored, created by setup commands):
+> - `config/` — HA configuration, created by `make pull`
+> - `.venv/` — Python virtual environment, created by `make setup`
 
 ## Available Commands
 
@@ -111,7 +113,7 @@ make -f Makefile.dev dev-clean-dev
 This development setup works seamlessly with the existing Home Assistant validation tools:
 
 - **YAML Validation**: Pre-commit hooks validate HA-specific YAML syntax
-- **Entity Validation**: Reference validation runs automatically
+- **Full Validator Suite**: `make validate` runs 6 validators (YAML syntax, entity/device/area references, duplicate automation IDs, service references, Jinja2 templates, official HA `check_config`)
 - **Official HA Validation**: Integrated with Home Assistant's own validators
 
 ## Pre-commit Hooks

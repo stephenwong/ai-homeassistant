@@ -15,8 +15,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from tools.cache import compute_hash, load_cache, save_cache
+from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.references import ReferenceValidator
+from tools.validators.services import ServiceValidator
+from tools.validators.templates import TemplateValidator
 from tools.validators.yaml import YAMLValidator
 
 
@@ -36,6 +39,9 @@ class ValidatorResult:
 _VALIDATORS: list[tuple[type[Any], str]] = [
     (YAMLValidator, "YAML Syntax Validation"),
     (ReferenceValidator, "Entity/Device Reference Validation"),
+    (DuplicateIDValidator, "Duplicate Automation ID Validation"),
+    (ServiceValidator, "Service Reference Validation"),
+    (TemplateValidator, "Jinja2 Template Validation"),
     (HAOfficialValidator, "Official Home Assistant Configuration Validation"),
 ]
 

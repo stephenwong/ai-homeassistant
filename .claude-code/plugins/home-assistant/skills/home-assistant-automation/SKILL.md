@@ -264,7 +264,9 @@ make push
 **Validation checks:**
 - YAML syntax
 - Entity reference existence
-- Device ID validity
+- Duplicate automation IDs
+- Service reference validity (warns on unknown, errors on malformed)
+- Jinja2 template rendering (errors on syntax, warns on runtime context)
 - Official HA configuration validation
 
 **Post-deploy verification:**

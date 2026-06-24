@@ -115,21 +115,16 @@ make push  # Validates then uploads to HA
 ## 📁 Project Structure
 
 ```
-├── config/                      # Home Assistant configuration
-│   ├── configuration.yaml
-│   ├── automations.yaml         # Primary file for automation work
-│   ├── scripts.yaml
-│   ├── scripts/                 # Shell helper scripts
-│   ├── blueprints/              # HA blueprints (automation/, script/, template/)
-│   └── .storage/                # Entity registry (read-only reference)
-├── frigate/                     # Frigate NVR configuration
 ├── tools/                       # Validation and management scripts
 │   ├── ha_cli.py                # Single CLI entry point
 │   ├── commands/                # CLI subcommands (validate, reload, entities, curl, edit)
 │   ├── ha/                      # Shared modules
 │   │   ├── client.py            # HAClient — REST API client
 │   │   └── yaml_editor.py       # YAMLEditor — round-trip YAML editing
-│   ├── validators/              # Validator implementations (yaml, references, ha_official)
+│   ├── validators/              # Validators (yaml, references, duplicate_ids, services, templates, ha_official)
+│   ├── *_validator.py           # Backward-compat shims (one per validator)
+│   ├── reload_config.py         # HA config reload via API
+│   ├── entity_explorer.py       # Entity discovery/search
 │   ├── cache.py                 # SHA256 file-hash caching
 │   ├── common.py                # Shared utilities
 │   ├── generate_changelog.py    # Backup changelog generation
@@ -137,14 +132,23 @@ make push  # Validates then uploads to HA
 │   ├── prune_backups.py         # Smart backup retention pruning
 │   └── ha-curl.sh               # Curl wrapper with auto-auth
 ├── tests/                       # Unit tests (pytest)
-├── backups/                     # Timestamped config backups with changelogs
-├── CLAUDE.md                    # AI assistant instructions (also AGENTS.md, GEMINI.md symlinks)
-├── opencode.json                # Example MCP server configuration for opencode
+├── .github/                     # CI/CD workflows (lint, test, CodeQL)
+├── .claude-code/                # Claude Code plugin (skills, hooks)
+├── .pre-commit-config.yaml      # Pre-commit hooks (ruff, yamllint, mypy, codespell)
+├── CLAUDE.md                    # AI assistant instructions
+├── README-DEV.md                # Development environment setup
+├── opencode.json                # MCP server configuration for opencode
 ├── .env.example                 # Environment configuration template
 ├── Makefile                     # Management commands (pull, push, validate, etc.)
 ├── Makefile.dev                 # Development-specific commands
+├── uv.lock                      # Locked dependencies
 └── pyproject.toml               # Python project configuration
 ```
+
+> **Runtime directories** (gitignored, created by setup commands):
+> - `config/` — HA configuration, created by `make pull` (includes `automations.yaml`, `scripts.yaml`, `scenes.yaml`, `configuration.yaml`, `.storage/`, `zigbee2mqtt/`)
+> - `backups/` — Timestamped config backups, created by `make backup`
+> - `frigate/` — Frigate NVR config, pulled from HA add-on
 
 ## 🛠️ Commands
 
@@ -226,7 +230,7 @@ editor.add_automation({"alias": "...", "trigger": [...], "action": [...]})
 
 ## 🛡️ Validation System
 
-Three layers run on every `make validate` (and before every `make push`):
+Six layers run on every `make validate` (and before every `make push`):
 
 ### 📝 1. YAML Syntax
 Validates YAML syntax with HA-specific tags (`!include`, `!secret`, `!input`), file encoding, and basic HA file structures.
@@ -234,7 +238,16 @@ Validates YAML syntax with HA-specific tags (`!include`, `!secret`, `!input`), f
 ### 🔗 2. Entity References
 Verifies all entity references exist in your HA instance. Checks device and area references, warns about disabled entities, extracts entities from Jinja2 templates, and recognizes config-defined entities.
 
-### 🏛️ 3. Official HA Validation
+### 🆔 3. Duplicate Automation IDs
+Detects duplicate `id` values across automations (which silently break triggering and UI editing) and warns about missing `id` fields.
+
+### 🎯 4. Service References
+Checks every `service:`/`action:` target in automations and scripts. Malformed services (e.g. `light..turn_on`) fail; unknown services (e.g. `light.turn_onn`, or a dynamically-registered service whose integration is temporarily unloaded) warn. Queries the live HA API; degrades to a format-only check when offline.
+
+### 🧪 5. Jinja2 Template Linting
+Renders every template string (`{{ }}` / `{% %}`) against HA's `/api/template` endpoint. Syntax errors and unknown filters fail; runtime-context variables yield warnings. Degrades to brace-balance check when offline.
+
+### 🏛️ 6. Official HA Validation
 Uses Home Assistant's own `check_config`. **"Successful config (partial)"** is the normal local result — some integration packages can't install locally due to version pin differences, but this is expected and doesn't indicate a real config problem.
 
 ### ⚡ Validator Caching
@@ -253,9 +266,12 @@ For Python scripts and tests, import from the package directly:
 ```python
 from tools.ha.client import HAClient              # REST API client
 from tools.ha.yaml_editor import YAMLEditor        # Round-trip YAML editing
-from tools.validators.yaml import YAMLValidator
+from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.references import ReferenceValidator
+from tools.validators.services import ServiceValidator
+from tools.validators.templates import TemplateValidator
 from tools.validators.ha_official import HAOfficialValidator
+from tools.validators.yaml import YAMLValidator
 ```
 
 `HAClient` is constructed via `HAClient.from_env()` (reads `.env` for `HA_TOKEN`/`HA_URL`).
