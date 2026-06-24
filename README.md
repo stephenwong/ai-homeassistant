@@ -15,6 +15,8 @@ A toolkit for managing Home Assistant configurations — automated validation, s
 
 ## 🔄 How It Works
 
+### ✏️ Creating & Editing Automations
+
 ```mermaid
 flowchart LR
     subgraph HA["🏠 Home Assistant"]
@@ -51,6 +53,46 @@ flowchart LR
 > **3. Edit** — Modify config files locally. `ha_cli edit` preserves YAML formatting. MCP tools provide live entity lookups.  
 > **4. Validate** — `make validate` runs 6 validators: YAML syntax, entity/device/area references, duplicate automation IDs, service references, Jinja2 template linting, and official HA `check_config`.  
 > **5. Push** — `make push` validates then rsyncs to HA, blocking broken configs from reaching the server. HA reloads the new configuration automatically.
+
+### 🔍 Debugging
+
+```mermaid
+flowchart TB
+    subgraph HA["🏠 Home Assistant"]
+        ha_config["config/"]
+        ha_api["REST API"]
+        ha_logs["system logs"]
+        mcp["MCP Server"]
+    end
+
+    subgraph Dev["💻 Dev Machine"]
+        local_config["config/"]
+        backups["backups/"]
+        validators["6-layer validation"]
+    end
+
+    %% Investigation loop
+    ha_config -->|"make pull (rsync)"| local_config
+    local_config -->|"make backup-search"| backups
+    backups -.->|"extract & diff versions"| local_config
+    ha_logs -->|"ha core logs --follow"| Dev
+    ha_api -->|"state, history, template render"| Dev
+    mcp -->|"entity lookup, automation trace"| Dev
+    Dev -->|"trace root cause"| local_config
+
+    %% Fix & deploy (converge with normal flow)
+    local_config --> validators
+    validators -->|"pass?"| local_config
+    local_config -->|"make push (validate + rsync)"| ha_config
+    ha_api -->|"make reload"| ha_config
+```
+
+> **1. Pull** — `make pull` syncs the latest config to ensure you're investigating the current state.  
+> **2. Search backups** — `make backup-search PATTERN='text'` finds when an entity or automation last changed.  
+> **3. Compare versions** — Extract old config from a backup tarball (`tar -xzOf backups/... config/automations.yaml`) and diff against the current version.  
+> **4. Inspect logs** — `ssh homeassistant "ha core logs --follow"` for real-time runtime errors, or query specific entity state and history via the REST API.  
+> **5. Trace root cause** — Use MCP tools for live entity state, automation traces, and template rendering.  
+> **6. Fix, validate, push** — Once the root cause is found, apply the fix and resume the normal create/edit flow above.
 
 ## 🚀 Quick Start
 
