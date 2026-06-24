@@ -17,7 +17,7 @@ This repository manages Home Assistant configuration files with automated valida
 - `config/scripts/` - Shell helper scripts (e.g., `debug_log.sh`)
 - `config/configuration.yaml` - Main HA config (integrations, includes, helpers)
 - `config/blueprints/` - HA blueprints (automation/, script/, template/)
-- `config/.storage/core.entity_registry` - **Entity registry** (large JSON — use MCP tools for live queries, `ha_cli entities` for local searches, targeted `grep` for known IDs)
+- `config/.storage/core.entity_registry` - **Entity registry** (1.7MB JSON — never read directly; `ha_search` MCP tool for live queries, `ha_cli entities --json` for offline, `grep` only for known exact IDs)
 - `frigate/config.yml` - Frigate NVR configuration (addon slug: `ccab4aaf_frigate-fa-beta`)
 
 ### Tools Package (`tools/`)
@@ -141,6 +141,8 @@ The `ha-mcp` add-on provides 88+ MCP tools for natural-language HA control (enti
 **Setup:** Install the "Home Assistant MCP Server" add-on (repo: `https://github.com/homeassistant-ai/ha-mcp`), start it, copy the MCP URL from add-on logs (format: `http://<ip>:9583/private_<token>`), add to `opencode.json` under `mcp.ha-mcp` with `type: "remote"` and `"url": "{env:HA_MCP_URL}"`, set `HA_MCP_URL` in `.env`, and restart opencode.
 
 **Troubleshooting:** Verify add-on is running (`ha addon info` via SSH); check HA host IP and port 9583 accessibility; ensure `opencode.json` has `$schema` field and restart after changes.
+
+**Per-session token tuning:** Every exposed MCP tool's full schema loads on every turn. The 11 directly-exposed tools (notably `ha_config_set_automation`, `ha_get_overview`, `ha_search`) carry verbose descriptions — this is the single largest baseline token cost. For sessions focused on one task, disable unused tools via the ha-mcp settings UI (URL returned by `ha_get_overview` as `settings_url` / `settings_url_hint`). Example: during pure automation editing, disable `ha_manage_backup`, `ha_report_issue`, and `ha_get_skill_guide`. The remaining 77 tools stay discoverable on demand via `ha_search_tools` + `ha_call_*` proxies regardless.
 
 ## Development Workflow
 

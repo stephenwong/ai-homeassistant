@@ -14,11 +14,19 @@ Systematic approach to debugging Home Assistant issues. Find root cause before p
 ## CRITICAL: Context Management
 
 **NEVER read these files directly:**
-- `config/.storage/core.entity_registry` (90k+ lines)
-- `config/.storage/core.device_registry` (7k+ lines)
-- `config/automations.yaml` (1600+ lines)
+- `config/.storage/core.entity_registry` (1.7MB JSON)
+- `config/.storage/core.device_registry` (96KB JSON)
+- `config/automations.yaml` (48KB / 1,756 lines — targeted grep only)
 
-**Instead:** Use `Grep` or `uv run python tools/entity_explorer.py --search "keyword"`
+**Entity lookup — pick ONE primary path, don't double-query:**
+- **Live (HA running):** `ha_search` MCP tool — one call searches the entity registry AND automation/script/scene/helper configs.
+- **Offline (no HA):** `uv run python tools/ha_cli.py entities --search "keyword" --json` (compact short-key output).
+- **Known exact entity_id only:** `grep "exact.id" config/.storage/core.entity_registry` as a last-resort fallback.
+
+**Shrink MCP responses to save tokens:**
+- `ha_get_overview` with `fields=["system_info"]` to project one section (diagnostics are always retained).
+- `ha_search` with `fields=["entities"]` and `limit=5` instead of the full payload.
+- Prefer `detail_level="minimal"` (the default) — escalate to `standard`/`full` only when you need attributes.
 
 ## When to Use
 
@@ -44,18 +52,18 @@ Systematic approach to debugging Home Assistant issues. Find root cause before p
 
 | Phase | Tools/Commands | Purpose |
 |-------|----------------|---------|
-| Identify | `entity_explorer.py --search`, `ha-curl.sh /api/states/` | Find entity, check current state |
+| Identify | `ha_cli entities`, `ha_search` MCP, `ha-curl.sh /api/states/` | Find entity, check current state |
 | Locate | `Grep` config files, `make backup-search` | Find definition and history |
 | Analyze | `Read` (targeted lines), automation traces | Understand template/automation logic |
-| Fix | `Edit`, `make validate`, `make push` | Apply and deploy fix |
+| Fix | `ha_cli edit`, `Edit`, `make validate`, `make push` | Apply and deploy fix |
 | Reflect | `reflect` skill | Capture learnings (gotchas, corrections, patterns) |
 
 ## Phase 1: Identify the Entity
 
 ```bash
 # Find the entity and its metadata
-uv run python tools/entity_explorer.py --search "shower"
-uv run python tools/entity_explorer.py --search "occupancy"
+uv run python tools/ha_cli.py entities --search "shower"
+uv run python tools/ha_cli.py entities --search "occupancy"
 ```
 
 **Quick state checks via API:**
@@ -260,7 +268,7 @@ tools/ha-curl.sh -X POST /api/services/template/reload
 
 | Mistake | Fix |
 |---------|-----|
-| Reading entire entity_registry | Use entity_explorer or Grep |
+| Reading entire entity_registry | Use `ha_search` MCP, `ha_cli entities`, or `Grep` |
 | Proposing fix before finding root cause | Complete Phase 3 first |
 | Guessing the problem | Trace the actual logic |
 | Fixing symptoms not cause | Ask "why does this happen?" |

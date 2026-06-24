@@ -12,11 +12,14 @@ Structured workflow for creating and modifying Home Assistant automations and sc
 ## CRITICAL: Context Management
 
 **NEVER read these files directly:**
-- `config/.storage/core.entity_registry` (90k+ lines)
-- `config/.storage/core.device_registry` (7k+ lines)
-- `config/automations.yaml` (1600+ lines)
+- `config/.storage/core.entity_registry` (1.7MB JSON)
+- `config/.storage/core.device_registry` (96KB JSON)
+- `config/automations.yaml` (48KB / 1,756 lines — targeted grep only)
 
-**Instead:** Use `Grep` or `uv run python tools/entity_explorer.py --search "keyword"`
+**Entity lookup — pick ONE primary path, don't double-query:**
+- **Live (HA running):** `ha_search` MCP tool — one call searches the entity registry AND automation/script/scene/helper configs.
+- **Offline (no HA):** `uv run python tools/ha_cli.py entities --search "keyword" --json` (compact short-key output).
+- **Known exact entity_id only:** `grep "exact.id" config/.storage/core.entity_registry` as a last-resort fallback.
 
 ## When to Use
 
@@ -49,10 +52,10 @@ Structured workflow for creating and modifying Home Assistant automations and sc
 
 | Phase | Tools/Commands | Purpose |
 |-------|----------------|---------|
-| Discovery | `Grep`, `uv run python tools/entity_explorer.py` | Find entities, existing automations/scripts |
-| Clarify | `AskUserQuestion` | Resolve ambiguity, confirm intent |
+| Discovery | `ha_search` MCP, `uv run python tools/ha_cli.py entities` | Find entities, existing automations/scripts |
+| Clarify | `question` | Resolve ambiguity, confirm intent |
 | Design | `Read configuration.yaml` | Check helpers (small file, safe to read) |
-| Implement | `Edit` | Modify YAML files |
+| Implement | `ha_cli edit`, `Edit` | Modify YAML files |
 | Deploy | `make validate`, `make push` | Test and deploy |
 | Reflect | `reflect` skill | Capture learnings (gotchas, corrections, patterns) |
 
@@ -73,8 +76,8 @@ Grep -n "id: doorbell_notification" config/automations.yaml  # Get line number
 Read config/automations.yaml offset=<line> limit=50          # Read just that automation
 
 # 3. Use entity explorer for entity lookups (preferred method)
-uv run python tools/entity_explorer.py --search "bathroom"
-uv run python tools/entity_explorer.py --domain light
+uv run python tools/ha_cli.py entities --search "bathroom"
+uv run python tools/ha_cli.py entities --domain light
 
 # 4. For device IDs (device triggers), search by device name
 Grep "Bathroom Button" config/.storage/core.device_registry
@@ -226,12 +229,27 @@ debug_log:
 ## Phase 4: Implement
 
 **Rules for editing:**
-1. Make focused, targeted edits (not wholesale rewrites)
-2. Preserve existing automation IDs
-3. Use exact string matching for Edit tool
-4. One logical change per edit when possible
+1. **Prefer `ha_cli edit`** for automations/scripts — it uses `ruamel.yaml` for round-trip editing that preserves comments, formatting, and key ordering. Manual `Edit` is fine for `configuration.yaml` or small targeted changes.
+2. Make focused, targeted edits (not wholesale rewrites)
+3. Preserve existing automation IDs
+4. Use exact string matching for the `Edit` tool
+5. One logical change per edit when possible
 
-**Validation runs automatically** via post-edit hooks. Watch for errors.
+```bash
+# List all automation aliases
+uv run python tools/ha_cli.py edit automations
+
+# Show a specific automation
+uv run python tools/ha_cli.py edit automations "Turn on Alarm"
+
+# Add a new automation from JSON
+uv run python tools/ha_cli.py edit automations --add '{"alias": "New Automation", "trigger": [], "action": []}'
+
+# Update fields on an existing automation
+uv run python tools/ha_cli.py edit automations "Turn on Alarm" --set mode=single icon=mdi:shield
+```
+
+**Validation is NOT automatic** (post-edit hooks were removed). Always run `make validate` explicitly after editing — see Phase 5.
 
 ## Phase 5: Deploy & Verify
 
@@ -258,9 +276,9 @@ make push
 
 | Mistake | Fix |
 |---------|-----|
-| Reading entire entity_registry (90k lines) | Use `entity_explorer.py` or `Grep` |
-| Reading entire automations.yaml | Use `Grep` to find specific sections |
-| Using entity without verifying existence | Use entity_explorer to validate |
+| Reading entire entity_registry (90k lines) | Use `ha_search` MCP, `ha_cli entities`, or `Grep` |
+| Reading entire automations.yaml | Use `Grep` or `ha_cli edit automations` to find specific sections |
+| Using entity without verifying existence | Use `ha_search` MCP or `ha_cli entities` to validate |
 | Assuming which sensor to use | Ask user when multiple options |
 | Large wholesale file rewrites | Use targeted Edit calls |
 | Skipping validation | Always run `make validate` |
