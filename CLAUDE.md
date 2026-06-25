@@ -328,6 +328,10 @@ Shell scripts in `config/scripts/` must exist in the local repo, not just on the
 - **"Configuration error":** Verify card is actually *installed* (not just known to HACS) — check `installed: True` in `.storage/hacs.repositories`. Test with minimal config first, check browser console (F12).
 - **advanced-camera-card + go2rtc:** Keep config minimal. No trailing slash on go2rtc URL. Don't add `modes:` array — use defaults.
 
+### Zigbee Sensor Stale States & Sampling
+- **Stale Offline Sensors (Xiaomi/Aqara)**: Battery-powered Zigbee sensors (e.g., Aqara temperature/humidity) can drop offline silently while still reporting 100% battery. On HA restart, they transition `unavailable` -> `unknown` -> stale cached state, appearing online but never updating. Check `last_updated`/`last_changed` to verify active reporting.
+- **Tuya Temp & Humidity Sampling**: Some Tuya mmWave presence sensors support disabling sensor sampling (`select.*_temp_and_humidity_sampling` set to `off`). This freezes their temperature and humidity readings. Change to `medium`/`high` using the `select.select_option` service to resume updates.
+
 ## Troubleshooting
 
 1. **Validation fails**: Check YAML syntax first, then entity references
