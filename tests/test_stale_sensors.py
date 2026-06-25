@@ -1,6 +1,7 @@
 """Unit tests for stale_sensors.py — Stale Sensor Diagnostic Scanner."""
 
 import json
+import os
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
@@ -20,9 +21,13 @@ def patch_load_env():
 @pytest.fixture(autouse=True)
 def setup_env():
     """Set up default environment variables for testing."""
-    with patch.dict(
-        "os.environ", {"HA_URL": "http://localhost:8123", "HA_TOKEN": "mock_token"}
-    ):
+    env = {
+        "HA_URL": "http://localhost:8123",
+        "HA_TOKEN": "mock_token",
+    }
+    if "CI" in os.environ:
+        env["CI"] = "false"
+    with patch.dict("os.environ", env):
         yield
 
 
@@ -443,14 +448,14 @@ def test_naive_datetime_handling():
 
 
 def test_boolean_handling_in_parse_timestamp():
-    """Validator ignores boolean values in parse_timestamp to avoid numeric epoch conversions."""
+    """Validator ignores boolean values in parse_timestamp."""
     v = StaleSensorValidator()
     assert v.parse_timestamp(True) is None
     assert v.parse_timestamp(False) is None
 
 
 def test_malformed_registry_json(config_dir):
-    """Validator falls back gracefully to state-only analysis if registry JSON is malformed list."""
+    """Validator falls back gracefully if registry JSON is malformed list."""
     registry_file = config_dir / ".storage" / "core.entity_registry"
     # Write a JSON list instead of a dict mapping
     with open(registry_file, "w", encoding="utf-8") as f:
@@ -473,8 +478,10 @@ def test_malformed_registry_json(config_dir):
             return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
         )
         assert v.validate_all() is True
-        # Verify fallback warning was logged (first warning is the registry load failure)
-        assert any("fallback" in w.lower() or "failed to read" in w.lower() for w in v.warnings)
+        # Verify fallback warning was logged (first warning is the
+        # registry load failure)
+        assert any(
+            "fallback" in w.lower() or "failed to read" in w.lower() for w in v.warnings
+        )
         # Verify stale sensor detection still worked
         assert any("sensor.test_temp" in w for w in v.warnings)
-
