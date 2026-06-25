@@ -20,7 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from tools.commands import curl, edit, entities, reload, validate
+from tools.commands import curl, edit, entities, reload, stale_sensors, validate
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     entities.add_parser(subparsers)
     curl.add_parser(subparsers)
     edit.add_parser(subparsers)
+    stale_sensors.add_parser(subparsers)
 
     return parser
 

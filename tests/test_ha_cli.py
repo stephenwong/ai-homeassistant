@@ -26,6 +26,12 @@ class TestBuildParser:
         assert args.command == "entities"
         assert callable(args.func)
 
+    def test_has_stale_sensors_subcommand(self):
+        parser = build_parser()
+        args = parser.parse_args(["stale-sensors"])
+        assert args.command == "stale-sensors"
+        assert callable(args.func)
+
     def test_has_curl_subcommand(self):
         parser = build_parser()
         args = parser.parse_args(["curl", "/api/"])
@@ -60,6 +66,12 @@ class TestMain:
         """main() should call the subcommand's run() function."""
         with patch("tools.commands.validate.run", return_value=0) as mock_run:
             result = main(["validate", "--quiet"])
+        assert result == 0
+        mock_run.assert_called_once()
+
+    def test_stale_sensors_dispatches_to_command(self):
+        with patch("tools.commands.stale_sensors.run", return_value=0) as mock_run:
+            result = main(["stale-sensors"])
         assert result == 0
         mock_run.assert_called_once()
 

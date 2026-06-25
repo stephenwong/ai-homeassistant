@@ -19,6 +19,7 @@ from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.references import ReferenceValidator
 from tools.validators.services import ServiceValidator
+from tools.validators.stale_sensors import StaleSensorValidator
 from tools.validators.templates import TemplateValidator
 from tools.validators.yaml import YAMLValidator
 
@@ -42,6 +43,7 @@ _VALIDATORS: list[tuple[type[Any], str]] = [
     (DuplicateIDValidator, "Duplicate Automation ID Validation"),
     (ServiceValidator, "Service Reference Validation"),
     (TemplateValidator, "Jinja2 Template Validation"),
+    (StaleSensorValidator, "Stale Sensor Validation"),
     (HAOfficialValidator, "Official Home Assistant Configuration Validation"),
 ]
 

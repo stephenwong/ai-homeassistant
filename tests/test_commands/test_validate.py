@@ -214,15 +214,16 @@ class TestRunOne:
 
 class TestRunValidators:
     def test_returns_all_results(self, config_dir):
-        """Default suite runs 6 validators (yaml, refs, dup, svc, tpl, ha)."""
+        """Default suite runs 7 validators (yaml, refs, dup, svc, tpl, stale, ha)."""
         results = run_validators(config_dir, quiet=True, force=True)
-        assert len(results) == 6
+        assert len(results) == 7
         descriptions = {r.description for r in results}
         assert "YAML Syntax Validation" in descriptions
         assert "Entity/Device Reference Validation" in descriptions
         assert "Duplicate Automation ID Validation" in descriptions
         assert "Service Reference Validation" in descriptions
         assert "Jinja2 Template Validation" in descriptions
+        assert "Stale Sensor Validation" in descriptions
         assert "Official Home Assistant Configuration Validation" in descriptions
 
     def test_all_results_have_required_fields(self, config_dir):
