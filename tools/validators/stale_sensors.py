@@ -28,6 +28,7 @@ class StaleSensorValidator(ValidatorBase):
         self,
         config_dir: str = "config",
         quiet: bool = False,
+        summary: bool = False,
         threshold_hours: int = 24,
         only_domains: set[str] | None = None,
         exclude_platforms: set[str] | None = None,
@@ -38,12 +39,13 @@ class StaleSensorValidator(ValidatorBase):
         Args:
             config_dir: Configuration directory path.
             quiet: If True, suppress stdout printing on success.
+            summary: If True, use compact output format.
             threshold_hours: Inactivity limit in hours before triggering stale state.
             only_domains: Domains to analyze (e.g., {'sensor'}).
             exclude_platforms: Integration platforms to ignore (e.g., {'template'}).
             ignore_restored: If True, restored entities at startup won't be flagged.
         """
-        super().__init__(config_dir, quiet=quiet)
+        super().__init__(config_dir, quiet=quiet, summary=summary)
         self.threshold_hours = threshold_hours
         self.only_domains = only_domains if only_domains is not None else {"sensor"}
 

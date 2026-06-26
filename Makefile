@@ -132,7 +132,7 @@ status: check-setup
 	fi
 	@echo ""
 	@echo "$(YELLOW)Entity Summary:$(NC)"
-	@$(UV_RUN) python $(TOOLS_PATH)/reference_validator.py 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
+	@$(UV_RUN) python $(TOOLS_PATH)/reference_validator.py --no-summary 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
 
 # Explore available Home Assistant entities
 entities: check-setup

@@ -9,6 +9,7 @@ and calls only the relevant reload services.
 import functools
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -99,14 +100,16 @@ def reload_service(client: HAClient, service: str) -> tuple[str, bool]:
     return (service, ok)
 
 
-def reload_config() -> bool:
+def reload_config(summary: bool = False) -> bool:
     """Reload Home Assistant configuration via API."""
+    start = time.time()
     git_timeout, git_timeout_warning = get_env_int("HA_GIT_TIMEOUT", 10)
     reload_timeout, reload_timeout_warning = get_env_int("HA_RELOAD_TIMEOUT", 30)
 
-    for warning in [git_timeout_warning, reload_timeout_warning]:
-        if warning:
-            print(f"\u26a0\ufe0f  {warning}")
+    if not summary:
+        for warning in [git_timeout_warning, reload_timeout_warning]:
+            if warning:
+                print(f"\u26a0\ufe0f  {warning}")
 
     try:
         client = HAClient.from_env()
@@ -123,13 +126,16 @@ def reload_config() -> bool:
 
     services = detect_changed_services(git_timeout=git_timeout)
     if not services:
-        print(
-            "\u26a0\ufe0f  No config changes detected, reloading all domains to be safe"
-        )
+        if not summary:
+            print(
+                "\u26a0\ufe0f  No config changes detected, "
+                "reloading all domains to be safe"
+            )
         services = set(ALL_SERVICES)
 
-    labels = sorted(SERVICE_LABELS.get(s, s) for s in services)
-    print(f"\U0001f504 Reloading: {', '.join(labels)}")
+    if not summary:
+        labels = sorted(SERVICE_LABELS.get(s, s) for s in services)
+        print(f"\U0001f504 Reloading: {', '.join(labels)}")
 
     # reload_core_config must run before domain reloads — automations/scripts
     # reference helpers and integrations that core config sets up.
@@ -153,15 +159,31 @@ def reload_config() -> bool:
     for service, ok in results:
         label = SERVICE_LABELS.get(service, service)
         if ok:
-            print(f"  \u2705 {label} reloaded")
+            if not summary:
+                print(f"  \u2705 {label} reloaded")
         else:
-            print(f"  \u274c {label} failed to reload")
+            if not summary:
+                print(f"  \u274c {label} failed to reload")
             all_ok = False
 
-    if all_ok:
-        print("\u2705 All reloads completed successfully!")
+    elapsed = time.time() - start
+
+    if summary:
+        total = len(results)
+        passed = sum(1 for _, ok in results if ok)
+        if all_ok:
+            labels = ", ".join(sorted(SERVICE_LABELS.get(s, s) for s, _ in results))
+            print(f"RELOADED {passed}/{total} ({labels}) {elapsed:.1f}s")
+        else:
+            failed_labels = ", ".join(
+                sorted(SERVICE_LABELS.get(s, s) for s, ok in results if not ok)
+            )
+            print(f"FAILED {passed}/{total} ({failed_labels} FAILED) {elapsed:.1f}s")
     else:
-        print("\u274c Some reloads failed")
+        if all_ok:
+            print("\u2705 All reloads completed successfully!")
+        else:
+            print("\u274c Some reloads failed")
 
     return all_ok
 

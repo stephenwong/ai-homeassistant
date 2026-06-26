@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 
 import yaml
 
-from tools.common import HAYamlLoader, ValidatorBase
+from tools.common import HAYamlLoader, ValidatorBase, _is_tty
 
 
 class DomainSummary(TypedDict):
@@ -53,9 +53,12 @@ class ReferenceValidator(ValidatorBase):
         ]
     ]
 
-    def __init__(self, config_dir: str = "config", quiet: bool = False):
+    def __init__(
+        self, config_dir: str = "config", quiet: bool = False, summary: bool = False
+    ):
         """Initialize the ReferenceValidator."""
         super().__init__(config_dir, quiet=quiet)
+        self.summary = summary
         self.storage_dir = self.config_dir / ".storage"
 
         # Cache for loaded registries
@@ -790,6 +793,21 @@ class ReferenceValidator(ValidatorBase):
         if self.quiet:
             return
 
+        if self.summary:
+            if self.errors:
+                print("FAIL Entity/device references")
+                for err in self.errors:
+                    print(f"  ERROR: {err}")
+                for warn in self.warnings:
+                    print(f"  WARN: {warn}")
+            elif self.warnings:
+                print("PASS Entity/device references (with warnings)")
+                for warn in self.warnings:
+                    print(f"  WARN: {warn}")
+            else:
+                print("PASS Entity/device references")
+            return
+
         super().print_results()
 
         # Print entity summary
@@ -816,9 +834,26 @@ def main():
         default="config",
         help="Path to the config directory (default: config)",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Compact output; auto-detected when stdout is not a TTY",
+    )
+    parser.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Force verbose output even when stdout is piped",
+    )
     args = parser.parse_args()
 
-    validator = ReferenceValidator(args.config_dir)
+    if args.summary:
+        summary = True
+    elif args.no_summary:
+        summary = False
+    else:
+        summary = not _is_tty()
+
+    validator = ReferenceValidator(args.config_dir, summary=summary)
     is_valid = validator.validate_all()
     validator.print_results()
 

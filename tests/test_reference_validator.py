@@ -887,6 +887,40 @@ class TestPrintResults:
         assert "sensor" in captured.out
         assert "light" in captured.out
 
+    def test_summary_mode_compact_format(self, setup_config, capsys):
+        v = ReferenceValidator(str(setup_config), summary=True)
+        v.print_results()
+        captured = capsys.readouterr()
+        assert "AVAILABLE ENTITIES" not in captured.out
+        assert (
+            "PASS" in captured.out
+            or "Entity/device references is valid" in captured.out
+        )
+
+    def test_summary_mode_no_emoji(self, setup_config, capsys):
+        v = ReferenceValidator(str(setup_config), summary=True)
+        v.print_results()
+        captured = capsys.readouterr()
+        assert "\u2705" not in captured.out
+        assert "\u274c" not in captured.out
+
+    def test_summary_mode_failure_shows_errors(self, setup_config, capsys):
+        v = ReferenceValidator(str(setup_config), summary=True)
+        v.errors.append("Something went wrong")
+        v.print_results()
+        captured = capsys.readouterr()
+        assert "FAIL" in captured.out
+        assert "Something went wrong" in captured.out
+
+    def test_summary_mode_warning_shows_warn(self, setup_config, capsys):
+        v = ReferenceValidator(str(setup_config), summary=True)
+        v.warnings.append("A warning occurred")
+        v.print_results()
+        captured = capsys.readouterr()
+        assert "PASS" in captured.out
+        assert "with warnings" in captured.out
+        assert "A warning occurred" in captured.out
+
 
 class TestReferenceValidatorMain:
     """Cover lines 509-524: main() function."""

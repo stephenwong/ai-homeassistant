@@ -311,3 +311,63 @@ class TestReloadConfig:
         ):
             reload_config()
         assert self._mock_client.timeout == 60
+
+    def test_summary_mode_compact_success(self, capsys):
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"automation/reload", "script/reload"},
+        ):
+            result = reload_config(summary=True)
+        assert result is True
+        out = capsys.readouterr().out.strip()
+        assert out.startswith("RELOADED 2/2")
+
+    def test_summary_mode_compact_failure(self, capsys):
+        self._mock_client.call_service.side_effect = [True, False]
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"automation/reload", "script/reload"},
+        ):
+            result = reload_config(summary=True)
+        assert result is False
+        out = capsys.readouterr().out.strip()
+        assert out.startswith("FAILED 1/2")
+
+    def test_summary_mode_no_emoji_per_service(self, capsys):
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"automation/reload"},
+        ):
+            reload_config(summary=True)
+        out = capsys.readouterr().out
+        assert "\u2705" not in out
+        assert "\u274c" not in out
+        assert "\U0001f504" not in out
+
+    def test_summary_mode_fatal_error_still_prints(self, capsys):
+        with (
+            patch(
+                "tools.reload_config.HAClient.from_env",
+                side_effect=HARequestError("HA_TOKEN not found"),
+            ),
+            patch(
+                "tools.reload_config.detect_changed_services",
+                return_value={"automation/reload"},
+            ),
+        ):
+            result = reload_config(summary=True)
+        assert result is False
+        out = capsys.readouterr().out
+        assert "HA_TOKEN" in out or "Error" in out
+
+    def test_summary_mode_timeout_warnings_suppressed(self, capsys, monkeypatch):
+        """Timeout/env warnings should not print in summary mode."""
+        monkeypatch.setenv("HA_GIT_TIMEOUT", "not_a_number")
+        monkeypatch.setenv("HA_RELOAD_TIMEOUT", "also_bad")
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"automation/reload"},
+        ):
+            reload_config(summary=True)
+        out = capsys.readouterr().out
+        assert "must be an integer" not in out

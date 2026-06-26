@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -90,6 +91,18 @@ def validate_ha_url(ha_url: str) -> str | None:
     return None
 
 
+def _is_tty() -> bool:
+    """Check if stdout is connected to a terminal.
+
+    Returns False when stdout is piped, redirected to a file, or absent
+    (e.g. when called from an agent or CI runner). Never raises.
+    """
+    try:
+        return sys.stdout is not None and sys.stdout.isatty()
+    except AttributeError, OSError, TypeError:
+        return False
+
+
 class HARequestError(Exception):
     """Raised when a Home Assistant REST API request fails."""
 
@@ -99,10 +112,13 @@ class ValidatorBase:
 
     validator_name = "Configuration"
 
-    def __init__(self, config_dir: str = "config", quiet: bool = False):
+    def __init__(
+        self, config_dir: str = "config", quiet: bool = False, summary: bool = False
+    ):
         """Initialize the validator with config directory."""
         self.config_dir = Path(config_dir).resolve()
         self.quiet = quiet
+        self.summary = summary
         self.errors: list[str] = []
         self.warnings: list[str] = []
         self.info: list[str] = []

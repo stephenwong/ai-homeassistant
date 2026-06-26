@@ -22,9 +22,11 @@ class HAOfficialValidator(ValidatorBase):
 
     validator_name = "Home Assistant configuration"
 
-    def __init__(self, config_dir: str = "config", quiet: bool = False):
+    def __init__(
+        self, config_dir: str = "config", quiet: bool = False, summary: bool = False
+    ):
         """Initialize validator and timeout configuration."""
-        super().__init__(config_dir, quiet=quiet)
+        super().__init__(config_dir, quiet=quiet, summary=summary)
         self.validation_timeout = self._get_timeout("HA_VALIDATION_TIMEOUT", 120)
 
     def file_deps(self) -> list[str]:

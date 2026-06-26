@@ -303,8 +303,15 @@ class TestRunValidators:
 
 
 class TestRun:
-    def _args(self, config_dir=None, quiet=False, force=False):
-        return Namespace(config_dir=config_dir or "config", quiet=quiet, force=force)
+    def _args(
+        self, config_dir=None, quiet=False, force=False, summary=None, no_summary=None
+    ):
+        d = {"config_dir": config_dir or "config", "quiet": quiet, "force": force}
+        if summary is not None:
+            d["summary"] = summary
+        if no_summary is not None:
+            d["no_summary"] = no_summary
+        return Namespace(**d)
 
     def test_all_pass_returns_zero(self, config_dir):
         with patch(
@@ -328,7 +335,7 @@ class TestRun:
             result = run(self._args(config_dir, quiet=True))
         assert result == 1
         out = capsys.readouterr().out
-        assert "FAILED" in out
+        assert "FAIL" in out
         assert "broke" in out
 
     def test_quiet_suppresses_pass_output(self, config_dir, capsys):
@@ -341,7 +348,8 @@ class TestRun:
         assert "Running all validators" not in out
         assert "TEST SUMMARY" not in out
 
-    def test_non_quiet_prints_banner_and_summary(self, config_dir, capsys):
+    @patch("tools.commands.validate._is_tty", return_value=True)
+    def test_non_quiet_prints_banner_and_summary(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
@@ -352,7 +360,8 @@ class TestRun:
         assert "TEST SUMMARY" in out
         assert "PASSED" in out
 
-    def test_prints_duration_per_validator(self, config_dir, capsys):
+    @patch("tools.commands.validate._is_tty", return_value=True)
+    def test_prints_duration_per_validator(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[ValidatorResult("V1", True, "ok", "", 1.5)],
@@ -361,7 +370,8 @@ class TestRun:
         out = capsys.readouterr().out
         assert "1.50s" in out
 
-    def test_cached_result_shows_cached_label(self, config_dir, capsys):
+    @patch("tools.commands.validate._is_tty", return_value=True)
+    def test_cached_result_shows_cached_label(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[
@@ -372,7 +382,8 @@ class TestRun:
         out = capsys.readouterr().out
         assert "(cached)" in out
 
-    def test_force_shows_cache_ignored_message(self, config_dir, capsys):
+    @patch("tools.commands.validate._is_tty", return_value=True)
+    def test_force_shows_cache_ignored_message(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
@@ -387,8 +398,122 @@ class TestRun:
             return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
         ) as mock_rv:
             run(self._args(config_dir, quiet=True, force=True))
-        # config_dir passed positionally, quiet + force as keywords
-        mock_rv.assert_called_once_with(config_dir, quiet=True, force=True)
+        # config_dir passed positionally, quiet + force + summary as keywords
+        mock_rv.assert_called_once_with(
+            config_dir, quiet=True, force=True, summary=True
+        )
+
+    # ── Summary mode tests ──────────────────────────────────────────
+
+    @patch("tools.commands.validate._is_tty", return_value=False)
+    def test_summary_compact_output_all_pass(self, _, config_dir, capsys):
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+        ):
+            run(self._args(config_dir, quiet=False))
+        out = capsys.readouterr().out
+        assert out.strip().startswith("PASS V1")
+        # No banner, no emoji, no TEST SUMMARY
+        assert "\U0001f50d" not in out
+        assert "TEST SUMMARY" not in out
+        # Expect final PASSED line
+        assert "PASSED 1/1" in out
+
+    @patch("tools.commands.validate._is_tty", return_value=False)
+    def test_summary_with_failure_shows_compact_errors(self, _, config_dir, capsys):
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[
+                ValidatorResult("V1", True, "ok", "", 0.1),
+                ValidatorResult("V2", False, "", "something broke", 0.2),
+            ],
+        ):
+            run(self._args(config_dir, quiet=False))
+        out = capsys.readouterr().out
+        # Should show per-validator status
+        assert "PASS V1" in out
+        assert "FAIL V2" in out
+        # Error should appear directly (no section headers)
+        assert "something broke" in out
+        assert "\U0001f4cb" not in out  # no clipboard icon section header
+        assert "Status:" not in out
+        # Final FAILED line
+        assert "FAILED 1/2" in out
+
+    @patch("tools.commands.validate._is_tty", return_value=True)
+    def test_summary_explicit_flag_in_tty(self, _, config_dir, capsys):
+        with (
+            patch(
+                "tools.commands.validate.run_validators",
+                return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+            ),
+        ):
+            run(self._args(config_dir, quiet=False, summary=True))
+        out = capsys.readouterr().out
+        assert "PASS V1" in out
+        assert "TEST SUMMARY" not in out
+
+    @patch("tools.commands.validate._is_tty", return_value=False)
+    def test_summary_with_quiet_suppresses_pass_lines(self, _, config_dir, capsys):
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[
+                ValidatorResult("V1", True, "ok", "", 0.1),
+                ValidatorResult("V2", False, "", "error detail", 0.2),
+            ],
+        ):
+            run(self._args(config_dir, quiet=True))
+        out = capsys.readouterr().out
+        # quiet suppresses PASS lines but still shows FAIL lines
+        assert "PASS V1" not in out
+        assert "FAIL V2" in out
+        assert "error detail" in out
+        # Final aggregate line still shows
+        assert "FAILED 1/2" in out
+
+    @patch("tools.commands.validate._is_tty", return_value=False)
+    def test_summary_shows_cached_as_letter_c(self, _, config_dir, capsys):
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[
+                ValidatorResult("V1", True, "ok", "", 0.0, cached=True),
+            ],
+        ):
+            run(self._args(config_dir, quiet=False))
+        lines = capsys.readouterr().out.strip().splitlines()
+        assert len(lines) == 2
+        # Per-validator line: "PASS V1 C" (no duration)
+        assert lines[0].strip().endswith("C")
+        assert "0.00s" not in lines[0]
+        # Final aggregate line: "PASSED 1/1 (0.00s)" (has duration)
+        assert lines[1].startswith("PASSED 1/1")
+        assert "(cached)" not in "\n".join(lines)
+
+    @patch("tools.commands.validate._is_tty", return_value=False)
+    def test_no_summary_flag_forces_verbose_in_pipe(self, _, config_dir, capsys):
+        """--no-summary forces verbose output even when stdout is not a TTY."""
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+        ):
+            run(self._args(config_dir, quiet=False, no_summary=True))
+        out = capsys.readouterr().out
+        assert "\U0001f50d" in out  # banner present (verbose mode)
+        assert "TEST SUMMARY" in out
+        assert "PASSED" in out
+
+    @patch("tools.commands.validate._is_tty", return_value=False)
+    def test_conflicting_flags_warning(self, _, config_dir, capsys):
+        """Both --summary and --no-summary prints a warning."""
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+        ):
+            run(self._args(config_dir, quiet=False, summary=True, no_summary=True))
+        _, err = capsys.readouterr()
+        assert "WARN" in err
+        assert "--summary" in err
 
 
 class TestAddParser:
@@ -428,3 +553,31 @@ class TestAddParser:
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate", "--force"])
         assert args.force is True
+
+    def test_summary_flag_defaults_false(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers()
+        validate.add_parser(subparsers)
+        args = parser.parse_args(["validate"])
+        assert args.summary is False
+        assert args.no_summary is False
+
+    def test_summary_flag_set_true(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers()
+        validate.add_parser(subparsers)
+        args = parser.parse_args(["validate", "--summary"])
+        assert args.summary is True
+
+    def test_no_summary_flag_set_true(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers()
+        validate.add_parser(subparsers)
+        args = parser.parse_args(["validate", "--no-summary"])
+        assert args.no_summary is True

@@ -12,6 +12,7 @@ from tools.common import (
     DEFAULT_HA_URL,
     HAYamlLoader,
     ValidatorBase,
+    _is_tty,
     get_env_int,
     load_env_file,
     validate_ha_url,
@@ -144,6 +145,42 @@ class TestValidateHAURL:
 
     def test_default_ha_url_is_valid(self):
         assert validate_ha_url(DEFAULT_HA_URL) is None
+
+
+class TestIsTTY:
+    """Tests for _is_tty()."""
+
+    def test_returns_true_when_stdout_is_tty(self, monkeypatch):
+        class TTY:
+            def isatty(self):
+                return True
+
+        monkeypatch.setattr("sys.stdout", TTY())
+        assert _is_tty() is True
+
+    def test_returns_false_when_stdout_piped(self, monkeypatch):
+        class NonTTY:
+            def isatty(self):
+                return False
+
+        monkeypatch.setattr("sys.stdout", NonTTY())
+        assert _is_tty() is False
+
+    def test_returns_false_when_stdout_is_none(self, monkeypatch):
+        monkeypatch.setattr("sys.stdout", None)
+        assert _is_tty() is False
+
+    def test_returns_false_when_stdout_has_no_isatty(self, monkeypatch):
+        monkeypatch.setattr("sys.stdout", object())
+        assert _is_tty() is False
+
+    def test_returns_false_when_isatty_raises_typeerror(self, monkeypatch):
+        class BadStdout:
+            def isatty(self):
+                raise TypeError("not callable")
+
+        monkeypatch.setattr("sys.stdout", BadStdout())
+        assert _is_tty() is False
 
 
 class TestValidatorBase:

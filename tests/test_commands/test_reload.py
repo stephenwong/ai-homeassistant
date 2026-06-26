@@ -17,6 +17,34 @@ class TestAddParser:
         assert args.command == "reload"
         assert callable(args.func)
 
+    def test_summary_flag_registered(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers()
+        reload_cmd.add_parser(subparsers)
+        args = parser.parse_args(["reload", "--summary"])
+        assert args.summary is True
+
+    def test_no_summary_flag_registered(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers()
+        reload_cmd.add_parser(subparsers)
+        args = parser.parse_args(["reload", "--no-summary"])
+        assert args.no_summary is True
+
+    def test_summary_defaults_false(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers()
+        reload_cmd.add_parser(subparsers)
+        args = parser.parse_args(["reload"])
+        assert args.summary is False
+        assert args.no_summary is False
+
 
 class TestRun:
     def test_success_returns_zero(self):
@@ -34,3 +62,39 @@ class TestRun:
         ) as mock_reload:
             reload_cmd.run(Namespace())
         mock_reload.assert_called_once()
+
+    def test_summary_flag_treated_as_true(self):
+        with patch(
+            "tools.commands.reload.reload_config", return_value=True
+        ) as mock_reload:
+            reload_cmd.run(Namespace(summary=True, no_summary=False))
+        assert mock_reload.call_args.kwargs.get("summary") is True
+
+    def test_no_summary_flag_treated_as_false(self):
+        with patch(
+            "tools.commands.reload.reload_config", return_value=True
+        ) as mock_reload:
+            reload_cmd.run(Namespace(summary=False, no_summary=True))
+        assert mock_reload.call_args.kwargs.get("summary") is False
+
+    def test_default_uses_is_tty(self):
+        with patch(
+            "tools.commands.reload.reload_config", return_value=True
+        ) as mock_reload:
+            with patch("tools.commands.reload._is_tty", return_value=False):
+                reload_cmd.run(Namespace(summary=False, no_summary=False))
+            assert mock_reload.call_args.kwargs.get("summary") is True
+
+        with patch(
+            "tools.commands.reload.reload_config", return_value=True
+        ) as mock_reload:
+            with patch("tools.commands.reload._is_tty", return_value=True):
+                reload_cmd.run(Namespace(summary=False, no_summary=False))
+            assert mock_reload.call_args.kwargs.get("summary") is False
+
+    def test_conflicting_flags_warning(self, capsys):
+        with patch("tools.commands.reload.reload_config", return_value=True):
+            reload_cmd.run(Namespace(summary=True, no_summary=True))
+        _, err = capsys.readouterr()
+        assert "WARN" in err
+        assert "--summary" in err

@@ -10,11 +10,13 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import contextlib
+import sys
 import time
 from dataclasses import dataclass
 from typing import Any
 
 from tools.cache import compute_hash, load_cache, save_cache
+from tools.common import _is_tty
 from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.references import ReferenceValidator
@@ -54,6 +56,7 @@ def _run_one(
     config_dir: str,
     quiet: bool,
     force: bool,
+    summary: bool = False,
 ) -> ValidatorResult:
     """Instantiate and run a single validator; may return cached result.
 
@@ -70,7 +73,7 @@ def _run_one(
     while validation runs).
     """
     start = time.time()
-    instance = cls(config_dir, quiet=quiet)
+    instance = cls(config_dir, quiet=quiet, summary=summary)
     name = cls.__name__
 
     # Compute hash once — reuse for both cache check and cache save.
@@ -106,6 +109,8 @@ def _run_one(
             detail_lines.append(f"ERROR: {err}")
         for warn in getattr(instance, "warnings", []):
             detail_lines.append(f"WARN: {warn}")
+        for info in getattr(instance, "info", []):
+            detail_lines.append(f"INFO: {info}")
         stderr = "\n".join(detail_lines)
     except SystemExit as e:
         passed = e.code in (0, None)
@@ -136,7 +141,7 @@ def _run_one(
 
 
 def run_validators(
-    config_dir: str, quiet: bool = False, force: bool = False
+    config_dir: str, quiet: bool = False, force: bool = False, summary: bool = False
 ) -> list[ValidatorResult]:
     """Run all default-suite validators in parallel threads.
 
@@ -146,7 +151,7 @@ def run_validators(
     """
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(_run_one, cls, desc, config_dir, quiet, force)
+            executor.submit(_run_one, cls, desc, config_dir, quiet, force, summary)
             for cls, desc in _VALIDATORS
         ]
         return [f.result() for f in futures]
@@ -175,6 +180,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Re-run all validators ignoring cached results (cache is refreshed).",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Compact output; auto-detected when stdout is not a TTY",
+    )
+    parser.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Force verbose output even when stdout is piped",
+    )
     parser.set_defaults(func=run)
 
 
@@ -184,7 +199,21 @@ def run(args: argparse.Namespace) -> int:
     quiet = bool(getattr(args, "quiet", False))
     force = bool(getattr(args, "force", False))
 
-    if not quiet:
+    explicit_summary = bool(getattr(args, "summary", False))
+    explicit_no_summary = bool(getattr(args, "no_summary", False))
+    if explicit_summary and explicit_no_summary:
+        print(
+            "WARN: conflicting --summary / --no-summary; using --summary",
+            file=sys.stderr,
+        )
+    if explicit_summary:
+        summary = True
+    elif explicit_no_summary:
+        summary = False
+    else:
+        summary = not _is_tty()
+
+    if not quiet and not summary:
         print("\U0001f50d Running Home Assistant Configuration Validation Tests")
         print("=" * 60)
         print()
@@ -195,47 +224,67 @@ def run(args: argparse.Namespace) -> int:
         print()
 
     overall_start = time.time()
-    results = run_validators(config_dir, quiet=quiet, force=force)
+    results = run_validators(config_dir, quiet=quiet, force=force, summary=summary)
     overall_duration = time.time() - overall_start
 
     all_passed = True
     for r in results:
         if r.passed:
-            suffix = " (cached)" if r.cached else f" ({r.duration:.2f}s)"
-            if not quiet:
-                print(f"  \u2705 {r.description}: PASSED{suffix}")
+            if summary:
+                if not quiet:
+                    if r.cached:
+                        print(f"PASS {r.description} C")
+                    else:
+                        print(f"PASS {r.description} ({r.duration:.2f}s)")
+            else:
+                suffix = " (cached)" if r.cached else f" ({r.duration:.2f}s)"
+                if not quiet:
+                    print(f"  \u2705 {r.description}: PASSED{suffix}")
         else:
-            print(f"  \u274c {r.description}: FAILED ({r.duration:.2f}s)")
+            if summary:
+                print(f"FAIL {r.description} ({r.duration:.2f}s)")
+            else:
+                print(f"  \u274c {r.description}: FAILED ({r.duration:.2f}s)")
             all_passed = False
 
-    if not quiet:
+    if not quiet and not summary:
         print()
         print(f"Total execution time: {overall_duration:.2f}s (parallel)")
         print("=" * 60)
 
-    # Print detailed output for failed validators (even in --quiet mode).
+    # Print detailed output for failed validators.
     if not all_passed:
         for r in results:
             if r.passed:
                 continue
-            print(f"\n\U0001f4cb {r.description}")
-            print("-" * 50)
-            print("Status: \u274c FAILED")
-            print(f"Duration: {r.duration:.2f}s")
-            if r.stdout.strip():
-                print("\nOutput:")
-                for line in r.stdout.strip().splitlines():
-                    print(f"  {line}")
-            if r.stderr.strip():
-                print("\nErrors:")
+            if summary:
                 for line in r.stderr.strip().splitlines():
-                    print(f"  {line}")
-            print()
+                    if line:
+                        print(f"  {line}")
+            else:
+                print(f"\n\U0001f4cb {r.description}")
+                print("-" * 50)
+                print("Status: \u274c FAILED")
+                print(f"Duration: {r.duration:.2f}s")
+                if r.stdout.strip():
+                    print("\nOutput:")
+                    for sline in r.stdout.strip().splitlines():
+                        print(f"  {sline}")
+                if r.stderr.strip():
+                    print("\nErrors:")
+                    for sline in r.stderr.strip().splitlines():
+                        print(f"  {sline}")
+                print()
 
-    if not quiet:
-        total = len(results)
-        passed = sum(1 for r in results if r.passed)
-        failed = total - passed
+    total = len(results)
+    passed = sum(1 for r in results if r.passed)
+    failed = total - passed
+    if summary:
+        if all_passed:
+            print(f"PASSED {passed}/{total} ({overall_duration:.2f}s)")
+        else:
+            print(f"FAILED {passed}/{total} ({overall_duration:.2f}s)")
+    elif not quiet:
         print("\n\U0001f4ca TEST SUMMARY")
         print("=" * 30)
         print(f"Total tests: {total}")
