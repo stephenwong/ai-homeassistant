@@ -8,6 +8,7 @@ lived in `tools/reload_config.py` and `tools/ha_api_diagnostic.py`.
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
 import requests
@@ -76,7 +77,7 @@ class HAClient:
         if warning:
             # Surface as a printed warning rather than raising — a bad timeout
             # value shouldn't block API access entirely.
-            print(f"\u26a0\ufe0f  {warning}")
+            print(f"\u26a0\ufe0f  {warning}", file=sys.stderr)
         return cls(url, token, timeout=timeout)
 
     def get(self, path: str, **kwargs: Any) -> requests.Response:
@@ -98,6 +99,36 @@ class HAClient:
             )
         except requests.RequestException as e:
             raise HARequestError(f"POST {path} failed: {e}") from e
+
+    def put(self, path: str, **kwargs: Any) -> requests.Response:
+        """PUT to ``path``. Raises HARequestError on failure."""
+        url = f"{self.url}{path}"
+        try:
+            return self._session.put(
+                url, headers=self.headers, timeout=self.timeout, **kwargs
+            )
+        except requests.RequestException as e:
+            raise HARequestError(f"PUT {path} failed: {e}") from e
+
+    def delete(self, path: str, **kwargs: Any) -> requests.Response:
+        """DELETE ``path``. Raises HARequestError on failure."""
+        url = f"{self.url}{path}"
+        try:
+            return self._session.delete(
+                url, headers=self.headers, timeout=self.timeout, **kwargs
+            )
+        except requests.RequestException as e:
+            raise HARequestError(f"DELETE {path} failed: {e}") from e
+
+    def patch(self, path: str, **kwargs: Any) -> requests.Response:
+        """PATCH ``path``. Raises HARequestError on failure."""
+        url = f"{self.url}{path}"
+        try:
+            return self._session.patch(
+                url, headers=self.headers, timeout=self.timeout, **kwargs
+            )
+        except requests.RequestException as e:
+            raise HARequestError(f"PATCH {path} failed: {e}") from e
 
     def get_json(self, path: str, **kwargs: Any) -> Any:
         """GET ``path`` and parse JSON. Returns None on non-JSON responses."""

@@ -75,7 +75,7 @@ class TestFromEnv:
         monkeypatch.setenv("HA_REQUEST_TIMEOUT", "not-a-number")
         c = HAClient.from_env()
         captured = capsys.readouterr()
-        assert "must be an integer" in captured.out
+        assert "must be an integer" in captured.err
         assert c.timeout == 10
 
     def test_load_env_file_called_once(self, monkeypatch):
@@ -125,6 +125,62 @@ class TestPost:
         c = HAClient("http://ha.local:8123", "tok", session=session)
         with pytest.raises(HARequestError, match="POST .* failed: slow"):
             c.post("/api/services/light/turn_on")
+
+
+class TestPut:
+    def test_put_returns_response(self):
+        session = MagicMock()
+        session.put.return_value = MagicMock(status_code=200)
+        c = HAClient("http://ha.local:8123", "tok", session=session)
+        r = c.put("/api/config", json={"key": "val"})
+        assert r.status_code == 200
+        args, kwargs = session.put.call_args
+        assert args[0] == "http://ha.local:8123/api/config"
+        assert kwargs["json"] == {"key": "val"}
+
+    def test_put_raises_on_request_exception(self):
+        session = MagicMock()
+        session.put.side_effect = requests.ConnectionError("boom")
+        c = HAClient("http://ha.local:8123", "tok", session=session)
+        with pytest.raises(HARequestError, match="PUT .* failed: boom"):
+            c.put("/api/config")
+
+
+class TestDelete:
+    def test_delete_returns_response(self):
+        session = MagicMock()
+        session.delete.return_value = MagicMock(status_code=200)
+        c = HAClient("http://ha.local:8123", "tok", session=session)
+        r = c.delete("/api/config/section")
+        assert r.status_code == 200
+        args, kwargs = session.delete.call_args
+        assert args[0] == "http://ha.local:8123/api/config/section"
+
+    def test_delete_raises_on_request_exception(self):
+        session = MagicMock()
+        session.delete.side_effect = requests.Timeout("slow")
+        c = HAClient("http://ha.local:8123", "tok", session=session)
+        with pytest.raises(HARequestError, match="DELETE .* failed: slow"):
+            c.delete("/api/config/section")
+
+
+class TestPatch:
+    def test_patch_returns_response(self):
+        session = MagicMock()
+        session.patch.return_value = MagicMock(status_code=200)
+        c = HAClient("http://ha.local:8123", "tok", session=session)
+        r = c.patch("/api/config", json={"key": "val"})
+        assert r.status_code == 200
+        args, kwargs = session.patch.call_args
+        assert args[0] == "http://ha.local:8123/api/config"
+        assert kwargs["json"] == {"key": "val"}
+
+    def test_patch_raises_on_request_exception(self):
+        session = MagicMock()
+        session.patch.side_effect = requests.ConnectionError("boom")
+        c = HAClient("http://ha.local:8123", "tok", session=session)
+        with pytest.raises(HARequestError, match="PATCH .* failed: boom"):
+            c.patch("/api/config")
 
 
 class TestGetJson:

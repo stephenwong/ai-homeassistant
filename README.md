@@ -223,8 +223,7 @@ make push  # Validates then uploads to HA
 │   ├── common.py                # Shared utilities
 │   ├── generate_changelog.py    # Backup changelog generation
 │   ├── search_backups.py        # Full-text search across backups
-│   ├── prune_backups.py         # Smart backup retention pruning
-│   └── ha-curl.sh               # Curl wrapper with auto-auth
+│   └── prune_backups.py         # Smart backup retention pruning
 ├── tests/                       # Unit tests (pytest)
 ├── .github/                     # CI/CD workflows (lint, test, CodeQL)
 ├── .claude-code/                # Claude Code plugin (skills, hooks)
@@ -406,7 +405,7 @@ Pre-built skill workflows in `.agents/skills/` guide AI assistants through commo
 | Need | Tool |
 |------|------|
 | **Live HA interaction** (read entities, call services) | MCP tools (ha-mcp) |
-| **Scripted API calls** | `ha_cli curl` or `tools/ha-curl.sh` |
+| **Scripted API calls** | `ha_cli curl` |
 | **Importable client** | `HAClient` (`from tools.ha.client import HAClient`) |
 
 ## 🏷️ Entity Naming Convention

@@ -60,7 +60,6 @@ Copy `.env.example` to `.env` and configure:
 | `make lint-fix` | Auto-fix Python lint and formatting issues |
 | `make test-ssh` | Test SSH connection to HA |
 | `make clean` | Remove temp files and caches |
-| `tools/ha-curl.sh` | Curl wrapper with auto-auth (see below) |
 | `tools/ha_cli.py` | Single CLI entry: `uv run python tools/ha_cli.py {validate\|reload\|entities\|curl\|edit}` |
 | `tools/_dev/api_diagnostic.py` | Dev-only comprehensive HA API endpoint testing (archived from main flow) |
 
@@ -69,24 +68,36 @@ Copy `.env.example` to `.env` and configure:
 | Need | Tool | Example |
 |------|------|---------|
 | **Live HA interaction** (read entities, call services) | **MCP tools** (ha-mcp) | Ask in natural language (see MCP Server section below) |
-| **Scripted API calls** | `ha_cli curl` or `tools/ha-curl.sh` | `uv run python tools/ha_cli.py curl /api/states/sensor.test` |
+| **Scripted API calls** | `ha_cli curl` | `uv run python tools/ha_cli.py curl /api/states/sensor.test` |
 | **Importable client** | `HAClient` | `from tools.ha.client import HAClient` |
 
-#### ha_cli curl (wraps ha-curl.sh)
+#### ha_cli curl (pure Python, uses HAClient)
 ```bash
+# GET — compact JSON by default (use --pretty for human-readable)
+uv run python tools/ha_cli.py curl /api/states
+
+# Pretty-print
+uv run python tools/ha_cli.py curl /api/states --pretty
+
+# Agent-friendly: count items, show keys, or first N
+uv run python tools/ha_cli.py curl /api/states --count
+uv run python tools/ha_cli.py curl /api/states --keys
+uv run python tools/ha_cli.py curl /api/states --first 3 --pretty
+
 # GET with jq filter
 uv run python tools/ha_cli.py curl /api/states --filter '. | length'
 
-# POST
-uv run python tools/ha_cli.py curl /api/services/light/turn_on --post --data '{"entity_id": "light.kitchen"}'
-```
+# POST / PUT / DELETE / PATCH
+uv run python tools/ha_cli.py curl --post /api/services/light/turn_on --data '{"entity_id": "light.kitchen"}'
+uv run python tools/ha_cli.py curl --method PUT /api/config --data '{"latitude": -33.86}'
+uv run python tools/ha_cli.py curl --method DELETE /api/config/automation/test
 
-#### ha-curl.sh (direct, auto-loads .env credentials)
-```bash
-tools/ha-curl.sh /api/states/sensor.test
-tools/ha-curl.sh -X POST /api/services/light/turn_on -d '{"entity_id": "light.kitchen"}'
+# Raw output (bypass JSON processing)
+uv run python tools/ha_cli.py curl /api/ --raw
+
+# Backward compat: -X still works for POST
+uv run python tools/ha_cli.py curl -X /api/services/automation/reload
 ```
-Auto-approved via `Bash(tools/ha-curl.sh *)` in `~/.claude/settings.json`.
 
 ### Validator Caching
 

@@ -52,7 +52,7 @@ Systematic approach to debugging Home Assistant issues. Find root cause before p
 
 | Phase | Tools/Commands | Purpose |
 |-------|----------------|---------|
-| Identify | `ha_cli entities`, `ha_search` MCP, `ha-curl.sh /api/states/` | Find entity, check current state |
+| Identify | `ha_cli entities`, `ha_search` MCP, `ha_cli curl /api/states/` | Find entity, check current state |
 | Locate | `Grep` config files, `make backup-search` | Find definition and history |
 | Analyze | `Read` (targeted lines), automation traces | Understand template/automation logic |
 | Fix | `ha_cli edit`, `Edit`, `make validate`, `make push` | Apply and deploy fix |
@@ -69,14 +69,14 @@ uv run python tools/ha_cli.py entities --search "occupancy"
 **Quick state checks via API:**
 ```bash
 # Check current entity state and attributes
-tools/ha-curl.sh /api/states/sensor.entity_name
+ha_cli curl /api/states/sensor.entity_name --pretty
 
 # Check automation status — look for "last_triggered" attribute
-tools/ha-curl.sh /api/states/automation.automation_name
+ha_cli curl /api/states/automation.automation_name --pretty
 
 # Check when an entity last changed state
 # The "last_changed" and "last_updated" fields show timestamps
-tools/ha-curl.sh /api/states/binary_sensor.entity_name
+ha_cli curl /api/states/binary_sensor.entity_name --pretty
 ```
 
 **`last_triggered` and `last_changed` are your fastest debugging tools:**
@@ -120,7 +120,7 @@ ssh homeassistant "ha apps logs ccab4aaf_frigate-fa-beta" | tail -50  # Frigate
 # Frigate web UI: check camera feeds, detection zones
 
 # Verify MQTT connectivity
-tools/ha-curl.sh /api/states/binary_sensor.zigbee2mqtt_bridge_connection_state
+ha_cli curl /api/states/binary_sensor.zigbee2mqtt_bridge_connection_state
 ```
 
 ### Finding When a Change Was Introduced
@@ -234,19 +234,20 @@ This isolates whether the problem is:
 
 ## Direct HA API Access for Debugging
 
-Use `tools/ha-curl.sh` for API calls (see CLAUDE.md for general usage). Debugging-specific calls:
+Use `ha_cli curl` for API calls (see CLAUDE.md for general usage). Debugging-specific calls:
 
 ```bash
 # Check entity state and attributes (last_changed, last_triggered)
-tools/ha-curl.sh /api/states/sensor.entity_name
+ha_cli curl /api/states/sensor.entity_name --pretty
 
-# Query logbook for recent events (ISO 8601 UTC — use today's date)
-# Example: tools/ha-curl.sh "/api/logbook/YYYY-MM-DDT00:00:00Z?end_time=YYYY-MM-DDT12:00:00Z"
-tools/ha-curl.sh "/api/logbook/$(date -u +%Y-%m-%d)T00:00:00Z"
+# Query logbook for recent events (ISO 8601 UTC)
+# Example: ha_cli curl "/api/logbook/YYYY-MM-DDT00:00:00Z"
+# Use today's UTC date — e.g. 2026-06-27 for June 27, 2026
+ha_cli curl "/api/logbook/2026-06-27T00:00:00Z"
 
 # Query entity history over a period
-# Example: tools/ha-curl.sh "/api/history/period/YYYY-MM-DDT00:00:00Z?filter_entity_id=sensor.name"
-tools/ha-curl.sh "/api/history/period/$(date -u +%Y-%m-%d)T00:00:00Z?filter_entity_id=sensor.name"
+# Example: ha_cli curl "/api/history/period/YYYY-MM-DDT00:00:00Z?filter_entity_id=sensor.name"
+ha_cli curl "/api/history/period/2026-06-27T00:00:00Z?filter_entity_id=sensor.name"
 ```
 
 ### Bypass Validation for New Entities
@@ -260,8 +261,8 @@ tools/ha-curl.sh "/api/history/period/$(date -u +%Y-%m-%d)T00:00:00Z?filter_enti
 # Risk: Pushing invalid config can break HA startup
 rsync -avz config/ homeassistant:/config/
 # Then reload the specific domains:
-tools/ha-curl.sh -X POST /api/services/automation/reload
-tools/ha-curl.sh -X POST /api/services/template/reload
+ha_cli curl --post /api/services/automation/reload
+ha_cli curl --post /api/services/template/reload
 ```
 
 ## Common Mistakes
