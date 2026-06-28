@@ -12,6 +12,9 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from tools.cache import _blob_hash, load_blob, save_blob
+from tools.common import resolve_summary
+
 
 def load_entity_registry(config_path: Path) -> dict | None:
     """Load and parse the entity registry file."""
@@ -284,6 +287,21 @@ def main(argv: list[str] | None = None):
         action="store_true",
         help="Emit compact JSON output (machine-readable, no banners/emojis)",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Compact output; auto-detected when stdout is not a TTY",
+    )
+    parser.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Force verbose output even when stdout is piped",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass cache and recompute output",
+    )
 
     args = parser.parse_args(argv)
 
@@ -304,27 +322,76 @@ def main(argv: list[str] | None = None):
         print("No entities found in registry")
         return 1
 
-    # Categorize entities
+    # Resolve summary mode: --json forces JSON regardless of --no-summary;
+    # --full forces verbose regardless of summary mode.
+    summary = resolve_summary(args)
+    want_json = args.json or (summary and not args.full)
+    mode = "json" if want_json else "pretty"
+
+    # Compute cache key from registry file content + selectors + mode
+    cache_key_parts: list[str | bytes] = []
+    for storage_file in (
+        ".storage/core.entity_registry",
+        ".storage/core.area_registry",
+    ):
+        p = config_path / storage_file
+        if p.is_file():
+            cache_key_parts.append(p.read_bytes())
+        cache_key_parts.append(b"\x00")  # delimiter between file contents
+    cache_key_parts.extend(
+        [
+            "\x00",  # delimiter between file hash and selectors
+            args.domain or "",
+            "\x00",
+            args.area or "",
+            "\x00",
+            args.search or "",
+            "\x00",
+            str(args.full),
+            "\x00",
+            mode,
+        ]
+    )
+    cache_key = _blob_hash(cache_key_parts)
+
+    # Check cache (unless --force)
+    if not args.force:
+        cached = load_blob(config_path, cache_key)
+        if cached is not None and isinstance(cached, dict) and "output" in cached:
+            sys.stdout.write(cached["output"])
+            return 0
+
+    # Cache miss — categorize and compute output
     categorized = categorize_entities(entities, area_names)
 
-    # JSON mode takes precedence — emit compact machine-readable output.
-    if args.json:
-        _emit_json(categorized, args)
-        return 0
+    # Capture output for caching.
+    # SAFE: entity_explorer is CLI-only (not called from threaded validators),
+    # so contextlib.redirect_stdout is acceptable here despite not being
+    # thread-safe.
+    import contextlib
+    import io
 
-    # Show output based on arguments
-    if args.search:
-        search_entities(categorized, args.search)
-    elif args.domain:
-        print_detailed_by_domain(categorized, args.domain)
-    elif args.area:
-        print_by_area(categorized, args.area)
-    elif args.full:
-        print_summary(categorized)
-        print_detailed_by_domain(categorized)
-        print_by_area(categorized)
-    else:
-        print_summary(categorized)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        if want_json:
+            _emit_json(categorized, args)
+        elif args.search:
+            search_entities(categorized, args.search)
+        elif args.domain:
+            print_detailed_by_domain(categorized, args.domain)
+        elif args.area:
+            print_by_area(categorized, args.area)
+        elif args.full:
+            print_summary(categorized)
+            print_detailed_by_domain(categorized)
+            print_by_area(categorized)
+        else:
+            print_summary(categorized)
+    output = buf.getvalue()
+
+    # Save to cache and emit
+    save_blob(config_path, cache_key, {"output": output})
+    sys.stdout.write(output)
 
     return 0
 

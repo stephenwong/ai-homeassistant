@@ -392,7 +392,7 @@ class TestPrintSummaryAndMore:
 
 
 class TestJsonMode:
-    """Cover the --json flag added in Phase 1 of the refactor."""
+    """Tests for --json flag output."""
 
     def _setup_config(self, tmp_path):
         storage = tmp_path / ".storage"
@@ -851,6 +851,60 @@ class TestMain:
         )
         result = main()
         assert result == 0
+
+    def test_cache_written_on_first_run(self, config_with_entity, capsys, monkeypatch):
+        """First run (no cache) should write a cache file."""
+        cache_dir = config_with_entity / ".cache" / "entities"
+        assert not cache_dir.exists()
+        monkeypatch.setattr(
+            "sys.argv",
+            ["entity_explorer", "--config", str(config_with_entity), "--json"],
+        )
+        result = main()
+        assert result == 0
+        cache_files = list(cache_dir.glob("*.json"))
+        assert len(cache_files) >= 1
+        assert cache_files[0].stat().st_size > 10
+
+    def test_cache_replayed_on_second_run(
+        self, config_with_entity, capsys, monkeypatch
+    ):
+        """Second run (cache present) should replay cached output."""
+        from unittest.mock import patch
+
+        from tools.cache import save_blob
+
+        # Pre-populate cache with a known key
+        cache_dir = config_with_entity / ".cache" / "entities"
+        cache_dir.mkdir(parents=True)
+        save_blob(config_with_entity, "known-key", {"output": "cached result\n"})
+
+        with patch("tools.entity_explorer._blob_hash", return_value="known-key"):
+            monkeypatch.setattr(
+                "sys.argv",
+                ["entity_explorer", "--config", str(config_with_entity)],
+            )
+            result = main()
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "cached result" in out
+
+    def test_force_bypasses_cache(self, config_with_entity, capsys, monkeypatch):
+        """--force should recompute even when a cache file exists."""
+        from tools.cache import save_blob
+
+        cache_dir = config_with_entity / ".cache" / "entities"
+        cache_dir.mkdir(parents=True)
+        save_blob(config_with_entity, "some_hash", {"output": "stale output\n"})
+
+        monkeypatch.setattr(
+            "sys.argv",
+            ["entity_explorer", "--config", str(config_with_entity), "--force"],
+        )
+        result = main()
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "stale output" not in out
 
 
 class TestCategorizeAutomationRelevant:

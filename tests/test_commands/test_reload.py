@@ -81,14 +81,14 @@ class TestRun:
         with patch(
             "tools.commands.reload.reload_config", return_value=True
         ) as mock_reload:
-            with patch("tools.commands.reload._is_tty", return_value=False):
+            with patch("tools.common._is_tty", return_value=False):
                 reload_cmd.run(Namespace(summary=False, no_summary=False))
             assert mock_reload.call_args.kwargs.get("summary") is True
 
         with patch(
             "tools.commands.reload.reload_config", return_value=True
         ) as mock_reload:
-            with patch("tools.commands.reload._is_tty", return_value=True):
+            with patch("tools.common._is_tty", return_value=True):
                 reload_cmd.run(Namespace(summary=False, no_summary=False))
             assert mock_reload.call_args.kwargs.get("summary") is False
 

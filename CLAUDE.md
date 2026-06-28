@@ -59,18 +59,25 @@ Flags: `--summary` (compact output, auto for agents/pipes), `--no-summary` (forc
 
 ### ha_cli curl
 ```bash
-uv run python tools/ha_cli.py curl /api/states              # compact JSON
+uv run python tools/ha_cli.py curl /api/states              # compact JSON (guardrail: count+hint in pipe)
 uv run python tools/ha_cli.py curl /api/states --pretty     # human-readable
 uv run python tools/ha_cli.py curl /api/states --count      # item count
 uv run python tools/ha_cli.py curl /api/states --keys       # key names only
 uv run python tools/ha_cli.py curl /api/states --first 3    # first N items
-uv run python tools/ha_cli.py curl /api/states --filter '.' # jq filter
+uv run python tools/ha_cli.py curl /api/states --pick state,entity_id  # keep only those keys
+uv run python tools/ha_cli.py curl /api/states --abbrev     # short keys (e→entity_id, s→state)
+uv run python tools/ha_cli.py curl /api/states --entity sensor.temp   # single entity fetch
+uv run python tools/ha_cli.py curl /api/states --domain light --pick state  # filter by domain
+uv run python tools/ha_cli.py curl /api/states --max-chars 500       # truncate output when >500 chars
+uv run python tools/ha_cli.py curl /api/states --no-guard            # disable guardrail (dump all)
 uv run python tools/ha_cli.py curl --post /api/services/light/turn_on -d '{"entity_id":"light.kitchen"}'
 ```
 
 ### Compact Output (--summary)
 
 Auto-detected when stdout is not a TTY (agents, pipes). `--summary` forces on, `--no-summary` forces off.
+Curl summary mode: suppresses informational stderr warnings (data-ignored, pretty-no-effect, overcount notes).
+Entities summary mode: auto-uses compact JSON output (like `--json`).
 
 ```
 PASS YAML Syntax Validation C                                  RELOADED 4/4 (core, automations, scripts, scenes) 2.3s

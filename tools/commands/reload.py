@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import sys
 
-from tools.common import _is_tty
+from tools.common import resolve_summary
 from tools.reload_config import reload_config
 
 
@@ -31,18 +30,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``reload`` subcommand. Returns exit code."""
-    explicit_summary = bool(getattr(args, "summary", False))
-    explicit_no_summary = bool(getattr(args, "no_summary", False))
-    if explicit_summary and explicit_no_summary:
-        print(
-            "WARN: conflicting --summary / --no-summary; using --summary",
-            file=sys.stderr,
-        )
-    if explicit_summary:
-        summary = True
-    elif explicit_no_summary:
-        summary = False
-    else:
-        summary = not _is_tty()
+    summary = resolve_summary(args)
     success = reload_config(summary=summary)
     return 0 if success else 1

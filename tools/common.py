@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -101,6 +102,56 @@ def _is_tty() -> bool:
         return sys.stdout is not None and sys.stdout.isatty()
     except AttributeError, OSError, TypeError:
         return False
+
+
+def _has_transform_flags(args: argparse.Namespace) -> bool:
+    """Check if the curl command has any output-transforming flags active.
+
+    Used by the bare-endpoint guardrail to detect whether the user has
+    explicitly requested transformed output.  Returning True means the
+    guardrail should not fire.
+
+    Flags checked: count, keys, first, filter, raw, pick, abbrev, entity,
+    domain, max_chars.
+    """
+    return bool(
+        args.count
+        or args.keys
+        or args.first is not None
+        or args.filter
+        or args.raw
+        or bool(args.pick)
+        or args.abbrev
+        or bool(args.entity)
+        or bool(args.domain)
+        or args.max_chars is not None
+    )
+
+
+def resolve_summary(args: argparse.Namespace) -> bool:
+    """Resolve summary/verbose mode from argparse --summary/--no-summary flags.
+
+    Logic:
+        --summary       → True
+        --no-summary    → False
+        both            → warn on stderr, treat as --summary
+        neither         → True when non-TTY, False when TTY
+
+    Returns:
+        True for compact/summary output, False for verbose.
+    """
+    explicit_summary = bool(getattr(args, "summary", False))
+    explicit_no_summary = bool(getattr(args, "no_summary", False))
+    if explicit_summary and explicit_no_summary:
+        print(
+            "WARN: conflicting --summary / --no-summary; using --summary",
+            file=sys.stderr,
+        )
+    if explicit_summary:
+        return True
+    if explicit_no_summary:
+        return False
+    return not _is_tty()
 
 
 class HARequestError(Exception):

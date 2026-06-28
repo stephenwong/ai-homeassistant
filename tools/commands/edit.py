@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAMLError
 
+from tools.common import resolve_summary
 from tools.ha.yaml_editor import YAMLEditor
 
 
@@ -65,6 +66,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Suppress success messages.",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Compact output; auto-detected when stdout is not a TTY",
+    )
+    parser.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Force verbose output even when stdout is piped",
+    )
     parser.set_defaults(func=run)
 
 
@@ -100,6 +111,7 @@ def _check_exclusive(args: argparse.Namespace) -> str | None:
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``edit`` subcommand. Returns exit code."""
+    quiet = args.quiet or resolve_summary(args)
     config_dir = Path(args.config_dir)
     try:
         target_file = _resolve_target(config_dir, args.file)
@@ -124,7 +136,7 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         if args.add is not None:
-            return _run_add(editor, args.add, args.quiet)
+            return _run_add(editor, args.add, quiet)
 
         # --show (or default), --set, --remove
         if args.show or not any([args.set, args.remove]):
@@ -136,7 +148,7 @@ def run(args: argparse.Namespace) -> int:
             return _run_set(editor, alias, args.set)
 
         if args.remove:
-            return _run_remove(editor, alias, args.quiet)
+            return _run_remove(editor, alias, quiet)
 
         return 1  # unreachable; satisfies type checker
 

@@ -348,7 +348,7 @@ class TestRun:
         assert "Running all validators" not in out
         assert "TEST SUMMARY" not in out
 
-    @patch("tools.commands.validate._is_tty", return_value=True)
+    @patch("tools.common._is_tty", return_value=True)
     def test_non_quiet_prints_banner_and_summary(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
@@ -360,7 +360,7 @@ class TestRun:
         assert "TEST SUMMARY" in out
         assert "PASSED" in out
 
-    @patch("tools.commands.validate._is_tty", return_value=True)
+    @patch("tools.common._is_tty", return_value=True)
     def test_prints_duration_per_validator(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
@@ -370,7 +370,7 @@ class TestRun:
         out = capsys.readouterr().out
         assert "1.50s" in out
 
-    @patch("tools.commands.validate._is_tty", return_value=True)
+    @patch("tools.common._is_tty", return_value=True)
     def test_cached_result_shows_cached_label(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
@@ -382,7 +382,7 @@ class TestRun:
         out = capsys.readouterr().out
         assert "(cached)" in out
 
-    @patch("tools.commands.validate._is_tty", return_value=True)
+    @patch("tools.common._is_tty", return_value=True)
     def test_force_shows_cache_ignored_message(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
@@ -405,7 +405,7 @@ class TestRun:
 
     # ── Summary mode tests ──────────────────────────────────────────
 
-    @patch("tools.commands.validate._is_tty", return_value=False)
+    @patch("tools.common._is_tty", return_value=False)
     def test_summary_compact_output_all_pass(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
@@ -420,7 +420,7 @@ class TestRun:
         # Expect final PASSED line
         assert "PASSED 1/1" in out
 
-    @patch("tools.commands.validate._is_tty", return_value=False)
+    @patch("tools.common._is_tty", return_value=False)
     def test_summary_with_failure_shows_compact_errors(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
@@ -441,7 +441,7 @@ class TestRun:
         # Final FAILED line
         assert "FAILED 1/2" in out
 
-    @patch("tools.commands.validate._is_tty", return_value=True)
+    @patch("tools.common._is_tty", return_value=True)
     def test_summary_explicit_flag_in_tty(self, _, config_dir, capsys):
         with (
             patch(
@@ -454,7 +454,7 @@ class TestRun:
         assert "PASS V1" in out
         assert "TEST SUMMARY" not in out
 
-    @patch("tools.commands.validate._is_tty", return_value=False)
+    @patch("tools.common._is_tty", return_value=False)
     def test_summary_with_quiet_suppresses_pass_lines(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
@@ -472,7 +472,7 @@ class TestRun:
         # Final aggregate line still shows
         assert "FAILED 1/2" in out
 
-    @patch("tools.commands.validate._is_tty", return_value=False)
+    @patch("tools.common._is_tty", return_value=False)
     def test_summary_shows_cached_as_letter_c(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
@@ -490,7 +490,7 @@ class TestRun:
         assert lines[1].startswith("PASSED 1/1")
         assert "(cached)" not in "\n".join(lines)
 
-    @patch("tools.commands.validate._is_tty", return_value=False)
+    @patch("tools.common._is_tty", return_value=False)
     def test_no_summary_flag_forces_verbose_in_pipe(self, _, config_dir, capsys):
         """--no-summary forces verbose output even when stdout is not a TTY."""
         with patch(
@@ -503,7 +503,7 @@ class TestRun:
         assert "TEST SUMMARY" in out
         assert "PASSED" in out
 
-    @patch("tools.commands.validate._is_tty", return_value=False)
+    @patch("tools.common._is_tty", return_value=False)
     def test_conflicting_flags_warning(self, _, config_dir, capsys):
         """Both --summary and --no-summary prints a warning."""
         with patch(

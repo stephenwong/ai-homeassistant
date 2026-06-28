@@ -10,13 +10,12 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import contextlib
-import sys
 import time
 from dataclasses import dataclass
 from typing import Any
 
 from tools.cache import compute_hash, load_cache, save_cache
-from tools.common import _is_tty
+from tools.common import resolve_summary
 from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.references import ReferenceValidator
@@ -199,19 +198,7 @@ def run(args: argparse.Namespace) -> int:
     quiet = bool(getattr(args, "quiet", False))
     force = bool(getattr(args, "force", False))
 
-    explicit_summary = bool(getattr(args, "summary", False))
-    explicit_no_summary = bool(getattr(args, "no_summary", False))
-    if explicit_summary and explicit_no_summary:
-        print(
-            "WARN: conflicting --summary / --no-summary; using --summary",
-            file=sys.stderr,
-        )
-    if explicit_summary:
-        summary = True
-    elif explicit_no_summary:
-        summary = False
-    else:
-        summary = not _is_tty()
+    summary = resolve_summary(args)
 
     if not quiet and not summary:
         print("\U0001f50d Running Home Assistant Configuration Validation Tests")

@@ -39,6 +39,34 @@ class TestAddParser:
         assert args.config_dir == "config"
         assert args.file == "automations"
 
+    def test_summary_flag_registered(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        add_parser(subparsers)
+        args = parser.parse_args(["edit", "automations", "--summary"])
+        assert args.summary is True
+
+    def test_no_summary_flag_registered(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        add_parser(subparsers)
+        args = parser.parse_args(["edit", "automations", "--no-summary"])
+        assert args.no_summary is True
+
+    def test_summary_defaults_false(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        add_parser(subparsers)
+        args = parser.parse_args(["edit", "automations"])
+        assert args.summary is False
+        assert args.no_summary is False
+
 
 def _write_file(cfg_dir, basename, content):
     path = cfg_dir / f"{basename}.yaml"

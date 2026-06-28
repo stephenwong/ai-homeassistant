@@ -1,5 +1,6 @@
 """Tests for tools/common.py - shared utilities."""
 
+import argparse
 import os
 import shutil
 import tempfile
@@ -15,6 +16,7 @@ from tools.common import (
     _is_tty,
     get_env_int,
     load_env_file,
+    resolve_summary,
     validate_ha_url,
 )
 
@@ -145,6 +147,59 @@ class TestValidateHAURL:
 
     def test_default_ha_url_is_valid(self):
         assert validate_ha_url(DEFAULT_HA_URL) is None
+
+
+class TestResolveSummary:
+    """Tests for resolve_summary()."""
+
+    def make_args(self, summary=False, no_summary=False):
+        """Helper to create a namespace matching the CLI argparse setup."""
+        ns = argparse.Namespace()
+        ns.summary = summary
+        ns.no_summary = no_summary
+        return ns
+
+    def test_summary_flag_returns_true(self):
+        assert resolve_summary(self.make_args(summary=True)) is True
+
+    def test_no_summary_flag_returns_false(self):
+        assert resolve_summary(self.make_args(no_summary=True)) is False
+
+    def test_conflicting_flags_warns_and_returns_true(self, capsys):
+        result = resolve_summary(self.make_args(summary=True, no_summary=True))
+        assert result is True
+        captured = capsys.readouterr()
+        assert "WARN" in captured.err
+        assert "--summary" in captured.err.lower()
+
+    def test_neither_flag_with_tty_returns_false(self, monkeypatch):
+        class TTY:
+            def isatty(self):
+                return True
+
+        monkeypatch.setattr("sys.stdout", TTY())
+        result = resolve_summary(self.make_args())
+        assert result is False
+
+    def test_neither_flag_with_non_tty_returns_true(self, monkeypatch):
+        class NonTTY:
+            def isatty(self):
+                return False
+
+        monkeypatch.setattr("sys.stdout", NonTTY())
+        result = resolve_summary(self.make_args())
+        assert result is True
+
+    def test_missing_attributes_does_not_crash(self, monkeypatch):
+        class NonTTY:
+            def isatty(self):
+                return False
+
+        monkeypatch.setattr("sys.stdout", NonTTY())
+        bare = argparse.Namespace()
+        result = resolve_summary(bare)
+        # Falls through to non-TTY → True
+        assert result is True
 
 
 class TestIsTTY:

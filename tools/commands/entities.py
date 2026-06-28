@@ -37,6 +37,21 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Emit compact JSON output (machine-readable, no banners/emojis)",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Compact output; auto-detected when stdout is not a TTY",
+    )
+    parser.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Force verbose output even when stdout is piped",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass cache and recompute output",
+    )
     parser.set_defaults(func=run)
 
 
@@ -55,5 +70,11 @@ def run(args: argparse.Namespace) -> int:
         argv.append("--full")
     if args.json:
         argv.append("--json")
+    if getattr(args, "summary", False):
+        argv.append("--summary")
+    if getattr(args, "no_summary", False):
+        argv.append("--no-summary")
+    if getattr(args, "force", False):
+        argv.append("--force")
     result = entity_explorer.main(argv)
     return int(result) if isinstance(result, int) else 0

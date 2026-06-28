@@ -4,9 +4,14 @@ Replaces the earlier bash/curl/jq pipeline with HAClient (pure Python).
 Compact JSON by default; use ``--pretty`` for human-readable output.
 
 Token-efficiency flags for agents:
-  ``--count``  — print item count instead of full payload
-  ``--keys``   — print key names only (no values)
-  ``--first N`` — print first N items
+  ``--count``    — print item count instead of full payload
+  ``--keys``     — print key names only (no values)
+  ``--first N``  — print first N items
+  ``--pick F``   — keep only specified JSON keys (per-item projection)
+  ``--abbrev``   — rename known keys to short forms (e, s, at, lc, lu, ctx)
+  ``--entity ID`` — fetch a single entity by id (server-side)
+  ``--domain D``  — filter list response by domain (client-side)
+  ``--max-chars N`` — truncate JSON output when it exceeds N bytes
 """
 
 from __future__ import annotations
@@ -14,11 +19,12 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import re
 import shutil
 import subprocess
 import sys
 
-from tools.common import HARequestError
+from tools.common import HARequestError, _has_transform_flags, resolve_summary
 from tools.ha.client import HAClient
 
 
@@ -40,7 +46,13 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             raise argparse.ArgumentTypeError("endpoint must start with /")
         return value
 
-    parser.add_argument("endpoint", type=_validate_endpoint, help="API endpoint")
+    parser.add_argument(
+        "endpoint",
+        type=_validate_endpoint,
+        nargs="?",
+        default=None,
+        help="API endpoint (optional when --entity is used)",
+    )
 
     # ---- method ----
     method_group = parser.add_mutually_exclusive_group()
@@ -61,6 +73,17 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
     parser.add_argument("--data", "-d", help="JSON request body")
+
+    # ---- domain filter / entity filter ----
+    parser.add_argument(
+        "--domain",
+        help="Filter response items by domain (entity_id prefix, e.g. light)",
+    )
+    # ---- entity filter (single-entity fetch) ----
+    parser.add_argument(
+        "--entity",
+        help="Fetch a single entity by entity_id (e.g. sensor.temperature)",
+    )
 
     # ---- output processing (mutually exclusive) ----
     def _positive_int(value: str) -> int:
@@ -103,6 +126,53 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Pretty-print JSON with indent=2 (default: compact)",
     )
 
+    # ---- bare-endpoint guardrail ----
+    parser.add_argument(
+        "--no-guard",
+        action="store_true",
+        help="Disable bare-endpoint guardrail (dump all entities even in summary)",
+    )
+
+    # ---- byte-length truncation ----
+    def _positive_int_or_zero(value: str) -> int:
+        n = int(value)
+        if n < 0:
+            raise argparse.ArgumentTypeError("--max-chars must be >= 0")
+        return n
+
+    parser.add_argument(
+        "--max-chars",
+        metavar="N",
+        type=_positive_int_or_zero,
+        help="Truncate JSON output when serialized form exceeds N characters",
+    )
+
+    # ---- key abbreviation ----
+    parser.add_argument(
+        "--abbrev",
+        action="store_true",
+        help="Shorten known JSON keys (e→entity_id, s→state, at→attributes, etc.)",
+    )
+
+    # ---- field projection (outside output_group — stacks with --first) ----
+    parser.add_argument(
+        "--pick",
+        metavar="FIELDS",
+        help="Keep only specified JSON keys (comma-separated). Stacks with --first.",
+    )
+
+    # ---- summary / quiet mode ----
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Compact output; suppresses informational stderr warnings",
+    )
+    parser.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Force verbose stderr output even when stdout is piped",
+    )
+
     parser.set_defaults(func=run)
 
 
@@ -113,12 +183,69 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> int:
     """Execute a curl request.  Returns exit code (0 success, 1 error)."""
+    summary = resolve_summary(args)
     method = args.method
     compact = not args.pretty
 
     # 1. Conflict: --raw + --pretty (check before costly from_env())
     if args.raw and args.pretty:
         print("\u274c Cannot combine --raw with --pretty", file=sys.stderr)
+        return 1
+
+    # 1b. Conflict: --pick with exclusive transforms (also before from_env)
+    if args.pick and (args.count or args.keys or args.filter or args.raw):
+        print(
+            "\u274c Cannot combine --pick with --count/--keys/--filter/--raw",
+            file=sys.stderr,
+        )
+        return 1
+
+    # 1c. Handle --entity (single-entity fetch)
+    if args.entity:
+        if not re.match(r"^[a-z0-9_]+\.[a-z0-9_]+$", args.entity):
+            print(f"\u274c Invalid entity_id: {args.entity!r}", file=sys.stderr)
+            return 1
+        if args.endpoint and args.endpoint != "/api/states":
+            print(
+                "\u274c --entity requires endpoint /api/states (or omit endpoint)",
+                file=sys.stderr,
+            )
+            return 1
+        if args.count or args.keys or args.filter or args.raw:
+            print(
+                "\u274c Cannot combine --entity with --count/--keys/--filter/--raw",
+                file=sys.stderr,
+            )
+            return 1
+        if method != "GET" and not summary:
+            print(
+                "\u26a0\ufe0f  --entity forces GET method (ignoring --method)",
+                file=sys.stderr,
+            )
+        args.endpoint = f"/api/states/{args.entity}"
+        method = "GET"
+
+    # 1d. Handle --domain (client-side list filter)
+    if args.domain:
+        if args.entity:
+            print(
+                "\u274c Cannot combine --domain with --entity",
+                file=sys.stderr,
+            )
+            return 1
+        if args.count or args.keys or args.filter or args.raw:
+            print(
+                "\u274c Cannot combine --domain with --count/--keys/--filter/--raw",
+                file=sys.stderr,
+            )
+            return 1
+
+    # 1e. Ensure endpoint is set
+    if not args.endpoint:
+        print(
+            "\u274c endpoint path is required (use --entity to fetch by id)",
+            file=sys.stderr,
+        )
         return 1
 
     # 2. Build client
@@ -139,7 +266,7 @@ def run(args: argparse.Namespace) -> int:
             except (json.JSONDecodeError, TypeError) as e:
                 print(f"\u274c Invalid JSON in --data: {e}", file=sys.stderr)
                 return 1
-    elif args.data is not None:
+    elif args.data is not None and not summary:
         print(f"\u26a0\ufe0f  --data ignored for {method} requests", file=sys.stderr)
 
     # 4. Execute request
@@ -181,10 +308,37 @@ def run(args: argparse.Namespace) -> int:
         with contextlib.suppress(ValueError, TypeError, json.JSONDecodeError):
             data = resp.json()
 
-    # 7. Validate output flag against JSON-ness
-    requires_json = args.filter or args.keys or (args.first is not None)
+    # 7. Bare endpoint guardrail: instead of dumping all /api/states in summary
+    # mode, print the count and a hint pointing to --first / --pick / --entity.
+    if (
+        method == "GET"
+        and args.endpoint == "/api/states"
+        and not _has_transform_flags(args)
+        and not args.pretty
+        and summary
+        and not args.no_guard
+    ):
+        count_result = _handle_count(data, raw_text, is_json)
+        # _handle_count printed the count to stdout; now add a hint to stderr
+        print(
+            "Hint: use --first/--pick/--entity/--domain to narrow, "
+            "or --no-guard to dump all",
+            file=sys.stderr,
+        )
+        return count_result
+
+    # 8. Validate output flag against JSON-ness
+    requires_json = (
+        args.filter or args.keys or (args.first is not None) or bool(args.pick)
+    )
     if requires_json and data is None and not is_json:
-        flag = "filter" if args.filter else ("keys" if args.keys else "first")
+        flag = (
+            "filter"
+            if args.filter
+            else (
+                "keys" if args.keys else ("first" if args.first is not None else "pick")
+            )
+        )
         print(
             f"\u274c Cannot use --{flag} on non-JSON response "
             f"(Content-Type: {content_type or 'unknown'})",
@@ -193,7 +347,7 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     # 8. Pretty-warning for --filter and --keys
-    if args.pretty:
+    if args.pretty and not summary:
         if args.filter:
             print(
                 "\u26a0\ufe0f  --pretty has no effect with --filter",
@@ -205,20 +359,69 @@ def run(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
 
-    # 9. Dispatch by output flag
+    # 10. Dispatch by output flag (early-exit handlers)
     if args.filter:
         return _handle_filter(args.filter, data, content_type, compact)
     if args.count:
         return _handle_count(data, raw_text, is_json)
     if args.keys:
         return _handle_keys(data)
-    if args.first is not None:
-        return _handle_first(data, args.first, compact)
     if args.raw:
         print(raw_text, end="")
         return 0
 
-    # Default: dump JSON
+    # 11. Apply --domain (client-side list filter)
+    if args.domain and isinstance(data, list):
+        prefix = f"{args.domain}."
+        filtered = [
+            i
+            for i in data
+            if isinstance(i, dict)
+            and isinstance(i.get("entity_id"), str)
+            and i["entity_id"].startswith(prefix)
+        ]
+        if not summary and len(filtered) < len(data):
+            print(
+                f"# domain {args.domain!r}: {len(filtered)}/{len(data)} items matched",
+                file=sys.stderr,
+            )
+        data = filtered
+
+    # 12. Apply --first (slice)
+    if args.first is not None:
+        if isinstance(data, list):
+            if args.first > len(data) and not summary:
+                print(
+                    f"# requested {args.first}, only {len(data)} items available",
+                    file=sys.stderr,
+                )
+            data = data[: args.first]
+        elif isinstance(data, dict):
+            items = list(data.items())
+            if args.first > len(items) and not summary:
+                print(
+                    f"# requested {args.first}, only {len(items)} keys available",
+                    file=sys.stderr,
+                )
+            data = dict(items[: args.first])
+        else:
+            data = [data]
+
+    # 13. Apply --pick (field projection)
+    if args.pick and args.pick.strip():
+        fields = [f.strip() for f in args.pick.split(",") if f.strip()]
+        data = _pick_fields(data, fields)
+
+    # 14. Apply --abbrev (short-key rename)
+    if args.abbrev:
+        data = _abbreviate(data)
+
+    # 15. Apply --max-chars (byte-length truncation)
+    is_exempt = args.count or args.keys or args.filter or args.raw
+    if args.max_chars is not None and not is_exempt:
+        data = _truncate_by_chars(data, args.max_chars, compact)
+
+    # 16. Dump JSON
     if data is not None:
         if compact:
             print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
@@ -331,22 +534,89 @@ def _handle_keys(data) -> int:
     return 0
 
 
-def _handle_first(data, n: int, compact: bool) -> int:
-    """Print the first N items."""
-    if isinstance(data, list):
-        subset = data[:n]
-        if n > len(data):
-            print(f"# requested {n}, only {len(data)} items available", file=sys.stderr)
-    elif isinstance(data, dict):
-        items = list(data.items())[:n]
-        subset = dict(items)
-        if n > len(data):
-            print(f"# requested {n}, only {len(data)} keys available", file=sys.stderr)
-    else:
-        subset = [data]
+def _pick_fields(data, fields: list[str]):
+    """Keep only the specified keys from each dict in data.
 
-    if compact:
-        print(json.dumps(subset, separators=(",", ":"), ensure_ascii=False))
-    else:
-        print(json.dumps(subset, indent=2, ensure_ascii=False))
-    return 0
+    Args:
+        data: Parsed JSON — list, dict, or scalar.
+        fields: Key names to retain.
+
+    Returns:
+        Projected data (same shape as input).
+    """
+    if isinstance(data, list):
+        return [_pick_item(item, fields) for item in data]
+    if isinstance(data, dict):
+        return _pick_item(data, fields)
+    return data
+
+
+def _pick_item(item, fields: list[str]):
+    if not isinstance(item, dict):
+        return item
+    return {k: item[k] for k in fields if k in item}
+
+
+# ---------------------------------------------------------------------------
+# Byte-length truncation
+# ---------------------------------------------------------------------------
+
+
+def _truncate_by_chars(data, max_chars: int, compact: bool):
+    """Trim data so its JSON form fits within *max_chars* characters.
+
+    For lists, items are dropped from the end and a truncation marker is
+    appended.  For dicts/scalars no structural truncation is performed
+    (pass-through).  0 or negative *max_chars* disables truncation.
+    """
+    if max_chars <= 0:
+        return data
+
+    serialized = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+    if len(serialized) <= max_chars:
+        return data
+
+    if not isinstance(data, list):
+        return data
+
+    original_len = len(data)
+    for n in range(original_len, 0, -1):
+        candidate = data[:n]
+        marker = {"_truncated": True, "shown": n, "total": original_len}
+        trial = candidate + [marker]
+        serialized = json.dumps(trial, separators=(",", ":"), ensure_ascii=False)
+        if len(serialized) <= max_chars:
+            return trial
+
+    # Even a single item + marker doesn't fit; return just the marker
+    marker = {"_truncated": True, "shown": 0, "total": original_len}
+    return [marker]
+
+
+# ---------------------------------------------------------------------------
+# Key abbreviation
+# ---------------------------------------------------------------------------
+
+ABBREV_MAP: dict[str, str] = {
+    "entity_id": "e",
+    "state": "s",
+    "attributes": "at",
+    "last_changed": "lc",
+    "last_updated": "lu",
+    "context": "ctx",
+}
+
+
+def _abbreviate(data):
+    """Shorten known JSON keys using ABBREV_MAP."""
+    if isinstance(data, list):
+        return [_abbreviate_item(item) for item in data]
+    if isinstance(data, dict):
+        return _abbreviate_item(data)
+    return data
+
+
+def _abbreviate_item(item):
+    if not isinstance(item, dict):
+        return item
+    return {ABBREV_MAP.get(k, k): v for k, v in item.items()}

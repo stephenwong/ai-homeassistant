@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 
 import yaml
 
-from tools.common import HAYamlLoader, ValidatorBase, _is_tty
+from tools.common import HAYamlLoader, ValidatorBase, resolve_summary
 
 
 class DomainSummary(TypedDict):
@@ -846,12 +846,7 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.summary:
-        summary = True
-    elif args.no_summary:
-        summary = False
-    else:
-        summary = not _is_tty()
+    summary = resolve_summary(args)
 
     validator = ReferenceValidator(args.config_dir, summary=summary)
     is_valid = validator.validate_all()

@@ -260,14 +260,20 @@ uv run python tools/ha_cli.py edit automations "Name" --set mode=single icon=mdi
 uv run python tools/ha_cli.py edit automations "Name" --remove
 
 # Entity Discovery
-uv run python tools/ha_cli.py entities                        # Entity summary
+uv run python tools/ha_cli.py entities                        # Entity summary (auto-JSON when piped)
 uv run python tools/ha_cli.py entities --json                 # Compact JSON output
-uv run python tools/ha_cli.py entities --domain light --json
+uv run python tools/ha_cli.py entities --domain light
 uv run python tools/ha_cli.py entities --search motion
+uv run python tools/ha_cli.py entities --force                # Bypass entity cache
 
 # API Calls
-uv run python tools/ha_cli.py curl /api/states
-uv run python tools/ha_cli.py curl /api/states --filter '. | length'
+uv run python tools/ha_cli.py curl /api/states                # Guardrail: count+hint when piped
+uv run python tools/ha_cli.py curl /api/states --pick state,entity_id
+uv run python tools/ha_cli.py curl /api/states --entity sensor.temp
+uv run python tools/ha_cli.py curl /api/states --domain light --first 5
+uv run python tools/ha_cli.py curl /api/states --abbrev
+uv run python tools/ha_cli.py curl /api/states --max-chars 500
+uv run python tools/ha_cli.py curl /api/states --no-guard
 uv run python tools/ha_cli.py curl /api/services/light/turn_on --post --data '{"entity_id":"light.kitchen"}'
 
 # Reload
