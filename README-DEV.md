@@ -104,9 +104,10 @@ make -f Makefile.dev dev-clean-dev
 - Excludes venv and build directories
 
 ### pytest (Testing)
-- Coverage target: 95% minimum
+- Coverage target: 90% minimum
 - HTML coverage reports generated
 - Test discovery in `tests/` directory
+- Shared fixtures in `tests/conftest.py` (auto-use `_stub_load_env_file`, `config_dir`)
 
 ## Integration with Home Assistant Tools
 

@@ -26,6 +26,7 @@ This repository manages Home Assistant configuration files with automated valida
 - `tools/cache.py`, `tools/common.py` — Caching, shared utilities
 - `tools/*_validator.py` etc. — **Backward-compat shims** (delegate to new package; prefer `ha_cli`)
 - `tools/_dev/api_diagnostic.py` — Dev-only (archived, excluded from lint/wheel)
+- `tests/conftest.py` — Shared fixtures (`config_dir`, `_stub_load_env_file`)
 
 ## Environment Setup
 
@@ -46,7 +47,7 @@ make test-ssh       Test SSH connection
 make clean          Remove temp/cache
 ```
 
-CLI: `uv run python tools/ha_cli.py {validate|reload|entities|curl|edit}`
+CLI: `uv run python tools/ha_cli.py {validate|reload|entities|curl|edit|stale_sensors}`
 Flags: `--summary` (compact output, auto for agents/pipes), `--no-summary` (force verbose), `--force` (bypass cache)
 
 ### HA API Access — Three Tiers
@@ -138,7 +139,11 @@ from tools.validators.duplicate_ids import DuplicateIDValidator
 
 - **`contextlib.redirect_stdout` is NOT thread-safe** — mutates `sys.stdout` globally. For parallel validators, read `instance.errors`/`warnings`/`info` lists directly.
 - **Backward-compat shims + `__all__`:** `from X import *` re-exports break if `__all__` added. Pair with `test_shim_compatibility.py`.
-- **`load_env_file()` in tests:** Overrides monkeypatched env vars. Patch `tools.ha.client.load_env_file` to a no-op.
+- **`load_env_file()` in tests:** Overrides monkeypatched env vars. Patch `tools.ha.client.load_env_file` (and `tools.validators.stale_sensors.load_env_file` if testing stale sensors) to a no-op. The autouse `_stub_load_env_file` fixture in `tests/conftest.py` covers both.
+- **`main()` returns `int`:** Validator/command `main()` returns 0 (pass) or 1 (fail). `__main__` blocks use `raise SystemExit(main())`.
+- **Stream separation:** Results/summaries → stdout; diagnostics/errors/warnings/verbose → stderr. Tests assert `captured.out` vs `captured.err`.
+- **`from __future__ import annotations` removed:** Python 3.14 lazy annotations are enabled by default — no longer needed.
+- **Narrow `except`:** Prefer `except OSError` over bare `except Exception`. Check the specific error hierarchy before widening.
 - **Subclass `__init__` kwarg forwarding:** Every subclass overriding `__init__` must accept+forward new kwargs (`quiet`, `summary`) via `super().__init__()`. Check ALL subclasses.
 - **Python 3.14 `except A, B, C:`** is canonical (no parens). `ruff format` targeting `py314` removes them. Not a bug.
 - **Boolean/int collision:** `bool` subclasses `int`; `isinstance(val, (int,float))` matches `True`. Guard with `isinstance(val, bool)` first for epoch timestamps.

@@ -211,11 +211,11 @@ make push  # Validates then uploads to HA
 ```
 ├── tools/                       # Validation and management scripts
 │   ├── ha_cli.py                # Single CLI entry point
-│   ├── commands/                # CLI subcommands (validate, reload, entities, curl, edit)
+│   ├── commands/                # CLI subcommands (validate, reload, entities, curl, edit, stale_sensors)
 │   ├── ha/                      # Shared modules
 │   │   ├── client.py            # HAClient — REST API client
 │   │   └── yaml_editor.py       # YAMLEditor — round-trip YAML editing
-│   ├── validators/              # Validators (yaml, references, duplicate_ids, services, templates, ha_official)
+│   ├── validators/              # Validators (yaml, references, duplicate_ids, services, templates, ha_official, stale_sensors)
 │   ├── *_validator.py           # Backward-compat shims (one per validator)
 │   ├── reload_config.py         # HA config reload via API
 │   ├── entity_explorer.py       # Entity discovery/search
@@ -275,6 +275,11 @@ uv run python tools/ha_cli.py curl /api/states --abbrev
 uv run python tools/ha_cli.py curl /api/states --max-chars 500
 uv run python tools/ha_cli.py curl /api/states --no-guard
 uv run python tools/ha_cli.py curl /api/services/light/turn_on --post --data '{"entity_id":"light.kitchen"}'
+
+# Stale Sensor Detection
+uv run python tools/ha_cli.py stale_sensors                     # Find stale sensors (summary mode auto)
+uv run python tools/ha_cli.py stale_sensors --no-summary        # Verbose mode
+uv run python tools/ha_cli.py stale_sensors --force             # Bypass cache
 
 # Reload
 uv run python tools/ha_cli.py reload
@@ -371,6 +376,7 @@ from tools.validators.services import ServiceValidator
 from tools.validators.templates import TemplateValidator
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.yaml import YAMLValidator
+from tools.validators.stale_sensors import StaleSensorValidator
 ```
 
 `HAClient` is constructed via `HAClient.from_env()` (reads `.env` for `HA_TOKEN`/`HA_URL`).
