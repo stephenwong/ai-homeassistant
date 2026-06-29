@@ -21,14 +21,14 @@ def load_entity_registry(config_path: Path) -> dict | None:
     registry_path = config_path / ".storage" / "core.entity_registry"
 
     if not registry_path.exists():
-        print(f"Error: Entity registry not found at {registry_path}")
+        print(f"Error: Entity registry not found at {registry_path}", file=sys.stderr)
         return None
 
     try:
         with open(registry_path, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
-        print(f"Error reading entity registry: {e}")
+        print(f"Error reading entity registry: {e}", file=sys.stderr)
         return None
 
 
@@ -44,7 +44,7 @@ def load_area_registry(config_path: Path) -> dict[str, str]:
                 for area in area_data.get("data", {}).get("areas", []):
                     area_names[area["id"]] = area["name"]
         except (OSError, json.JSONDecodeError, KeyError, AttributeError) as e:
-            print(f"Warning: Could not load area names: {e}")
+            print(f"Warning: Could not load area names: {e}", file=sys.stderr)
 
     return area_names
 
@@ -181,7 +181,7 @@ def print_detailed_by_domain(categorized: dict, domain_filter: str | None = None
 
     for domain in domains_to_show:
         if domain not in categorized["by_domain"]:
-            print(f"Domain '{domain}' not found")
+            print(f"Domain '{domain}' not found", file=sys.stderr)
             continue
 
         entities = categorized["by_domain"][domain]
@@ -209,7 +209,7 @@ def print_by_area(categorized: dict, area_filter: str | None = None):
 
     for area in areas_to_show:
         if area not in categorized["by_area"]:
-            print(f"Area '{area}' not found")
+            print(f"Area '{area}' not found", file=sys.stderr)
             continue
 
         entities = categorized["by_area"][area]
@@ -251,7 +251,7 @@ def search_entities(categorized: dict, query: str):
                 matches.append(entity)
 
     if not matches:
-        print("No matches found")
+        print("No matches found", file=sys.stderr)
         return
 
     for entity in sorted(matches, key=lambda x: x["entity_id"]):
@@ -307,7 +307,7 @@ def main(argv: list[str] | None = None):
 
     config_path = Path(args.config)
     if not config_path.exists():
-        print(f"Error: Config directory not found: {config_path}")
+        print(f"Error: Config directory not found: {config_path}", file=sys.stderr)
         return 1
 
     # Load data
@@ -319,7 +319,7 @@ def main(argv: list[str] | None = None):
     entities = registry_data.get("data", {}).get("entities", [])
 
     if not entities:
-        print("No entities found in registry")
+        print("No entities found in registry", file=sys.stderr)
         return 1
 
     # Resolve summary mode: --json forces JSON regardless of --no-summary;

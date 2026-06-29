@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
 """Shared HTTP client for Home Assistant REST API.
 
 Consolidates the duplicated auth/header/timeout/JSON-parse code that previously
 lived in `tools/reload_config.py` and `tools/ha_api_diagnostic.py`.
 """
-
-from __future__ import annotations
 
 import os
 import sys

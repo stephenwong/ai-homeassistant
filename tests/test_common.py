@@ -363,15 +363,15 @@ class TestValidatorBase:
         v.errors.append("Test error")
         v.print_results()
         captured = capsys.readouterr()
-        assert "Test error" in captured.out
-        assert "validation failed" in captured.out
+        assert "Test error" in captured.err
+        assert "validation failed" in captured.err
 
     def test_print_results_with_warnings_only(self, capsys):
         v = ValidatorBase(str(self.config_dir))
         v.warnings.append("Test warning")
         v.print_results()
         captured = capsys.readouterr()
-        assert "Test warning" in captured.out
+        assert "Test warning" in captured.err
         assert "with warnings" in captured.out
 
     def test_print_results_with_info(self, capsys):
@@ -379,7 +379,7 @@ class TestValidatorBase:
         v.info.append("Test info")
         v.print_results()
         captured = capsys.readouterr()
-        assert "Test info" in captured.out
+        assert "Test info" in captured.err
 
 
 class TestLoadYamlChecked:

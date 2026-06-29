@@ -2,16 +2,10 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 import yaml
 
 from tools.common import HARequestError
 from tools.validators.templates import TemplateValidator
-
-
-@pytest.fixture
-def config_dir(tmp_path):
-    return tmp_path
 
 
 def _write_automation(config_dir, data):
@@ -467,14 +461,10 @@ class TestMain:
         client = _mock_render(True)
         monkeypatch.setattr("sys.argv", ["templates", str(config_dir)])
         with patch("tools.validators.templates.HAClient.from_env", return_value=client):
-            with pytest.raises(SystemExit) as exc:
-                main()
-            assert exc.value.code == 0
+            assert main() == 0
 
     def test_main_invalid(self, monkeypatch):
         from tools.validators.templates import main
 
         monkeypatch.setattr("sys.argv", ["templates", "/nonexistent"])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 1
+        assert main() == 1

@@ -1,10 +1,8 @@
-#!/usr/bin/env python3
 """``stale-sensors`` subcommand: run stale sensor detection directly."""
-
-from __future__ import annotations
 
 import argparse
 
+from tools.common import resolve_summary
 from tools.validators.stale_sensors import StaleSensorValidator
 
 
@@ -51,11 +49,22 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Exit with non-zero status code if stale sensors are found",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Compact output; auto-detected when stdout is not a TTY",
+    )
+    parser.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Force verbose output even when stdout is piped",
+    )
     parser.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``stale-sensors`` subcommand. Returns exit code."""
+    summary = resolve_summary(args)
     only_domains = (
         {d.strip().lower() for d in args.only_domains.split(",")}
         if args.only_domains
@@ -79,6 +88,7 @@ def run(args: argparse.Namespace) -> int:
         exclude_platforms=exclude_platforms,
         ignore_restored=args.ignore_restored,
         fail_on_stale=args.fail_on_stale,
+        summary=summary,
     )
 
     validator.validate_all()

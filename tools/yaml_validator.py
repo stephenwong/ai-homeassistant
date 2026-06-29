@@ -11,4 +11,4 @@ from tools.validators.yaml import YAMLValidator, main
 __all__ = ["YAMLValidator", "main"]
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

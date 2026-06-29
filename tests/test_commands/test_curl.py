@@ -54,12 +54,6 @@ def parse(argv):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _stub_load_env_file(monkeypatch):
-    """Prevent HAClient.from_env() reading the real .env."""
-    monkeypatch.setattr("tools.ha.client.load_env_file", lambda: None)
-
-
 @pytest.fixture
 def mock_client():
     """Patch HAClient.from_env to return a controlled mock client."""

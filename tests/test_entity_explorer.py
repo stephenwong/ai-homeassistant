@@ -240,7 +240,7 @@ class TestSearchEntities:
 
         search_entities(categorized, "nonexistent_entity_xyz")
         captured = capsys.readouterr()
-        assert "No matches found" in captured.out
+        assert "No matches found" in captured.err
 
     def test_search_by_device_class(self, config_path, capsys):
         registry = load_entity_registry(config_path)
@@ -726,7 +726,7 @@ class TestPrintDetailedByDomain:
     def test_nonexistent_domain(self, categorized, capsys):
         print_detailed_by_domain(categorized, "nonexistent")
         captured = capsys.readouterr()
-        assert "not found" in captured.out
+        assert "not found" in captured.err
 
 
 class TestPrintByArea:
@@ -744,7 +744,7 @@ class TestPrintByArea:
     def test_nonexistent_area(self, categorized, capsys):
         print_by_area(categorized, "Nonexistent")
         captured = capsys.readouterr()
-        assert "not found" in captured.out
+        assert "not found" in captured.err
 
 
 class TestMain:

@@ -10,4 +10,4 @@ from tools.validators.services import ServiceValidator, main
 __all__ = ["ServiceValidator", "main"]
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

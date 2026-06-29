@@ -3,17 +3,8 @@
 from argparse import Namespace
 from unittest.mock import patch
 
-import pytest
-
 from tools.commands import validate
 from tools.commands.validate import ValidatorResult, _run_one, run, run_validators
-
-
-@pytest.fixture
-def config_dir(tmp_path):
-    """A minimal valid config dir."""
-    (tmp_path / "configuration.yaml").write_text("homeassistant:\n  name: Test\n")
-    return str(tmp_path)
 
 
 class TestValidatorResult:
@@ -334,9 +325,9 @@ class TestRun:
         ):
             result = run(self._args(config_dir, quiet=True))
         assert result == 1
-        out = capsys.readouterr().out
+        out, err = capsys.readouterr()
         assert "FAIL" in out
-        assert "broke" in out
+        assert "broke" in err
 
     def test_quiet_suppresses_pass_output(self, config_dir, capsys):
         with patch(
@@ -355,10 +346,10 @@ class TestRun:
             return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
         ):
             run(self._args(config_dir, quiet=False))
-        out = capsys.readouterr().out
-        assert "Running all validators" in out
-        assert "TEST SUMMARY" in out
-        assert "PASSED" in out
+        out, err = capsys.readouterr()
+        assert "Running all validators" in err
+        assert "TEST SUMMARY" in err
+        assert "Passed" in err
 
     @patch("tools.common._is_tty", return_value=True)
     def test_prints_duration_per_validator(self, _, config_dir, capsys):
@@ -367,8 +358,8 @@ class TestRun:
             return_value=[ValidatorResult("V1", True, "ok", "", 1.5)],
         ):
             run(self._args(config_dir, quiet=False))
-        out = capsys.readouterr().out
-        assert "1.50s" in out
+        out, err = capsys.readouterr()
+        assert "1.50s" in err
 
     @patch("tools.common._is_tty", return_value=True)
     def test_cached_result_shows_cached_label(self, _, config_dir, capsys):
@@ -379,8 +370,8 @@ class TestRun:
             ],
         ):
             run(self._args(config_dir, quiet=False))
-        out = capsys.readouterr().out
-        assert "(cached)" in out
+        out, err = capsys.readouterr()
+        assert "(cached)" in err
 
     @patch("tools.common._is_tty", return_value=True)
     def test_force_shows_cache_ignored_message(self, _, config_dir, capsys):
@@ -389,8 +380,8 @@ class TestRun:
             return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
         ):
             run(self._args(config_dir, quiet=False, force=True))
-        out = capsys.readouterr().out
-        assert "cache ignored" in out
+        out, err = capsys.readouterr()
+        assert "cache ignored" in err
 
     def test_passes_force_to_run_validators(self, config_dir):
         with patch(
@@ -430,14 +421,14 @@ class TestRun:
             ],
         ):
             run(self._args(config_dir, quiet=False))
-        out = capsys.readouterr().out
+        out, err = capsys.readouterr()
         # Should show per-validator status
         assert "PASS V1" in out
         assert "FAIL V2" in out
-        # Error should appear directly (no section headers)
-        assert "something broke" in out
-        assert "\U0001f4cb" not in out  # no clipboard icon section header
-        assert "Status:" not in out
+        # Error should appear on stderr (no section headers in summary)
+        assert "something broke" in err
+        assert "📋" not in err  # no clipboard icon section header
+        assert "Status:" not in err
         # Final FAILED line
         assert "FAILED 1/2" in out
 
@@ -464,11 +455,11 @@ class TestRun:
             ],
         ):
             run(self._args(config_dir, quiet=True))
-        out = capsys.readouterr().out
+        out, err = capsys.readouterr()
         # quiet suppresses PASS lines but still shows FAIL lines
         assert "PASS V1" not in out
         assert "FAIL V2" in out
-        assert "error detail" in out
+        assert "error detail" in err
         # Final aggregate line still shows
         assert "FAILED 1/2" in out
 
@@ -498,10 +489,10 @@ class TestRun:
             return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
         ):
             run(self._args(config_dir, quiet=False, no_summary=True))
-        out = capsys.readouterr().out
-        assert "\U0001f50d" in out  # banner present (verbose mode)
-        assert "TEST SUMMARY" in out
-        assert "PASSED" in out
+        out, err = capsys.readouterr()
+        assert "🔍" in err  # banner present (verbose mode)
+        assert "TEST SUMMARY" in err
+        assert "Passed" in err
 
     @patch("tools.common._is_tty", return_value=False)
     def test_conflicting_flags_warning(self, _, config_dir, capsys):

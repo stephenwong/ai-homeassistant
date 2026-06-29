@@ -1,7 +1,4 @@
-#!/usr/bin/env python3
-"""Shared utilities for Home Assistant configuration tools."""
-
-from __future__ import annotations
+"""Shared utilities for HA configuration tools."""
 
 import argparse
 import os
@@ -287,26 +284,26 @@ class ValidatorBase:
             return
 
         if self.info:
-            print("INFO:")
+            print("INFO:", file=sys.stderr)
             for info in self.info:
-                print(f"  \u2139\ufe0f  {info}")
-            print()
+                print(f"  ℹ️  {info}", file=sys.stderr)
+            print(file=sys.stderr)
 
         if self.errors:
-            print("ERRORS:")
+            print("ERRORS:", file=sys.stderr)
             for error in self.errors:
-                print(f"  \u274c {error}")
-            print()
+                print(f"  ❌ {error}", file=sys.stderr)
+            print(file=sys.stderr)
 
         if self.warnings:
-            print("WARNINGS:")
+            print("WARNINGS:", file=sys.stderr)
             for warning in self.warnings:
-                print(f"  \u26a0\ufe0f  {warning}")
-            print()
+                print(f"  ⚠️  {warning}", file=sys.stderr)
+            print(file=sys.stderr)
 
         if not self.errors and not self.warnings:
-            print(f"\u2705 {self.validator_name} is valid!")
+            print(f"✅ {self.validator_name} is valid!")
         elif not self.errors:
-            print(f"\u2705 {self.validator_name} is valid (with warnings)")
+            print(f"✅ {self.validator_name} is valid (with warnings)")
         else:
-            print(f"\u274c {self.validator_name} validation failed")
+            print(f"❌ {self.validator_name} validation failed", file=sys.stderr)

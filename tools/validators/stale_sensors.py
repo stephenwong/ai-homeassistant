@@ -6,8 +6,6 @@ virtual platforms using the local core.entity_registry, and identifies sensors
 whose last update or radio check-in exceeds the configured threshold.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -50,9 +48,7 @@ class StaleSensorValidator(ValidatorBase):
         super().__init__(config_dir, quiet=quiet, summary=summary)
         self.threshold_hours = threshold_hours
         self.only_domains = only_domains if only_domains is not None else {"sensor"}
-        self.fail_on_stale = fail_on_stale or os.getenv(
-            "HA_STALE_FAIL", ""
-        ).strip().lower() in ("1", "true", "yes")
+        self.fail_on_stale = fail_on_stale
 
         default_exclude_platforms = {
             "template",
@@ -176,6 +172,12 @@ class StaleSensorValidator(ValidatorBase):
             return True
 
         load_env_file()
+        if not self.fail_on_stale:
+            self.fail_on_stale = os.getenv("HA_STALE_FAIL", "").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            )
         url = os.getenv("HA_URL")
         token = os.getenv("HA_TOKEN")
 
@@ -286,7 +288,7 @@ class StaleSensorValidator(ValidatorBase):
         return True
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Verify active HA sensors are reporting updates."
     )
@@ -300,8 +302,8 @@ def main() -> None:
     v = StaleSensorValidator(args.config_dir)
     is_valid = v.validate_all()
     v.print_results()
-    raise SystemExit(0 if is_valid else 1)
+    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -29,14 +29,14 @@ class TestAddParser:
         assert args.show is True
 
     def test_config_dir_flag_defaults(self):
-        """--config-dir should default to 'config'."""
+        """--config should default to 'config'."""
         import argparse
 
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
         add_parser(subparsers)
         args = parser.parse_args(["edit", "automations", "--show"])
-        assert args.config_dir == "config"
+        assert args.config == "config"
         assert args.file == "automations"
 
     def test_summary_flag_registered(self):
@@ -78,7 +78,7 @@ def _write_file(cfg_dir, basename, content):
 class TestRunShow:
     def _args(self, cfg_dir, file="automations", alias=None):
         return Namespace(
-            config_dir=str(cfg_dir),
+            config=str(cfg_dir),
             file=file,
             alias=alias,
             show=True,
@@ -146,7 +146,7 @@ class TestRunShow:
 class TestRunSet:
     def _args(self, cfg_dir, alias=None, kvs=None):
         return Namespace(
-            config_dir=str(cfg_dir),
+            config=str(cfg_dir),
             file="automations",
             alias=alias,
             show=False,
@@ -187,7 +187,7 @@ class TestRunSet:
 class TestRunAdd:
     def _args(self, cfg_dir, json_str=None):
         return Namespace(
-            config_dir=str(cfg_dir),
+            config=str(cfg_dir),
             file="automations",
             alias=None,
             show=False,
@@ -226,7 +226,7 @@ class TestRunAdd:
 class TestRunRemove:
     def _args(self, cfg_dir, alias=None):
         return Namespace(
-            config_dir=str(cfg_dir),
+            config=str(cfg_dir),
             file="automations",
             alias=alias,
             show=False,
@@ -278,7 +278,7 @@ class TestRunRemove:
 class TestEdgeCases:
     def _ns(self, **overrides):
         defaults = {
-            "config_dir": "config",
+            "config": "config",
             "file": "automations",
             "alias": None,
             "show": False,
@@ -301,13 +301,13 @@ class TestEdgeCases:
         assert "conflicting" in capsys.readouterr().err.lower()
 
     def test_nonexistent_file_errors(self, tmp_path, capsys):
-        args = self._ns(config_dir=str(tmp_path), show=True)
+        args = self._ns(config=str(tmp_path), show=True)
         result = run(args)
         assert result == 1
         assert "not found" in capsys.readouterr().err.lower()
 
     def test_set_on_nonexistent_file_errors(self, tmp_path, capsys):
-        args = self._ns(config_dir=str(tmp_path), set=["x=y"], alias="X")
+        args = self._ns(config=str(tmp_path), set=["x=y"], alias="X")
         result = run(args)
         assert result == 1
         assert "not found" in capsys.readouterr().err.lower()
@@ -315,7 +315,7 @@ class TestEdgeCases:
     def test_add_creates_file(self, tmp_path):
         """--add creates the file if it didn't exist."""
         args = self._ns(
-            config_dir=str(tmp_path),
+            config=str(tmp_path),
             add='{"alias":"New","id":"n","triggers":[],"conditions":[],"actions":[],"mode":"single"}',
         )
         result = run(args)
@@ -329,7 +329,7 @@ class TestEdgeCases:
         """--add on a scripts (dict) file adds as a new key."""
         _write_file(tmp_path, "scripts", "{}")
         args = self._ns(
-            config_dir=str(tmp_path),
+            config=str(tmp_path),
             file="scripts",
             add='{"alias":"Notify","id":"notify","sequence":[]}',
         )
@@ -344,7 +344,7 @@ class TestEdgeCases:
     def test_add_to_new_scripts_file_creates_dict(self, tmp_path):
         """--add to a non-existent scripts file creates a dict, not a list."""
         args = self._ns(
-            config_dir=str(tmp_path),
+            config=str(tmp_path),
             file="scripts",
             add='{"alias":"Notify","id":"notify","sequence":[]}',
         )
@@ -358,7 +358,7 @@ class TestEdgeCases:
 
     def test_no_action_defaults_to_show(self, tmp_path, capsys):
         """No flag defaults to --show (lists aliases or errors if no file)."""
-        args = self._ns(config_dir=str(tmp_path), show=False)
+        args = self._ns(config=str(tmp_path), show=False)
         result = run(args)
         assert (
             result == 1
@@ -383,7 +383,7 @@ morning:
 """,
         )
         args = self._ns(
-            config_dir=str(tmp_path),
+            config=str(tmp_path),
             file="scripts",
             alias="morning",
             set=["description=Updated"],
@@ -410,7 +410,7 @@ delete:
 """,
         )
         args = self._ns(
-            config_dir=str(tmp_path),
+            config=str(tmp_path),
             file="scripts",
             alias="delete",
             remove=True,

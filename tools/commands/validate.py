@@ -1,16 +1,14 @@
-#!/usr/bin/env python3
 """``validate`` subcommand: in-process validator runner.
 
 Runs YAML/reference/HA-official validators in parallel threads (no subprocess
 spawn) and aggregates results. Replaces the old ValidationTestRunner.
 """
 
-from __future__ import annotations
-
 import argparse
 import concurrent.futures
 import contextlib
 import json
+import sys
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -202,14 +200,19 @@ def run(args: argparse.Namespace) -> int:
     summary = resolve_summary(args)
 
     if not quiet and not summary:
-        print("\U0001f50d Running Home Assistant Configuration Validation Tests")
-        print("=" * 60)
-        print()
+        print(
+            "🔍 Running Home Assistant Configuration Validation Tests", file=sys.stderr
+        )
+        print("=" * 60, file=sys.stderr)
+        print(file=sys.stderr)
         if force:
-            print("Re-running all validators (cache ignored, will be refreshed)...")
+            print(
+                "Re-running all validators (cache ignored, will be refreshed)...",
+                file=sys.stderr,
+            )
         else:
-            print("Running all validators in parallel...")
-        print()
+            print("Running all validators in parallel...", file=sys.stderr)
+        print(file=sys.stderr)
 
     overall_start = time.time()
     results = run_validators(config_dir, quiet=quiet, force=force, summary=summary)
@@ -227,18 +230,22 @@ def run(args: argparse.Namespace) -> int:
             else:
                 suffix = " (cached)" if r.cached else f" ({r.duration:.2f}s)"
                 if not quiet:
-                    print(f"  \u2705 {r.description}: PASSED{suffix}")
+                    print(f"  ✅ {r.description}: PASSED{suffix}", file=sys.stderr)
         else:
             if summary:
                 print(f"FAIL {r.description} ({r.duration:.2f}s)")
             else:
-                print(f"  \u274c {r.description}: FAILED ({r.duration:.2f}s)")
+                print(
+                    f"  ❌ {r.description}: FAILED ({r.duration:.2f}s)", file=sys.stderr
+                )
             all_passed = False
 
     if not quiet and not summary:
-        print()
-        print(f"Total execution time: {overall_duration:.2f}s (parallel)")
-        print("=" * 60)
+        print(file=sys.stderr)
+        print(
+            f"Total execution time: {overall_duration:.2f}s (parallel)", file=sys.stderr
+        )
+        print("=" * 60, file=sys.stderr)
 
     # Print detailed output for failed validators.
     if not all_passed:
@@ -248,21 +255,21 @@ def run(args: argparse.Namespace) -> int:
             if summary:
                 for line in r.stderr.strip().splitlines():
                     if line:
-                        print(f"  {line}")
+                        print(f"  {line}", file=sys.stderr)
             else:
-                print(f"\n\U0001f4cb {r.description}")
-                print("-" * 50)
-                print("Status: \u274c FAILED")
-                print(f"Duration: {r.duration:.2f}s")
+                print(f"\n📋 {r.description}", file=sys.stderr)
+                print("-" * 50, file=sys.stderr)
+                print("Status: ❌ FAILED", file=sys.stderr)
+                print(f"Duration: {r.duration:.2f}s", file=sys.stderr)
                 if r.stdout.strip():
-                    print("\nOutput:")
+                    print("\nOutput:", file=sys.stderr)
                     for sline in r.stdout.strip().splitlines():
-                        print(f"  {sline}")
+                        print(f"  {sline}", file=sys.stderr)
                 if r.stderr.strip():
-                    print("\nErrors:")
+                    print("\nErrors:", file=sys.stderr)
                     for sline in r.stderr.strip().splitlines():
-                        print(f"  {sline}")
-                print()
+                        print(f"  {sline}", file=sys.stderr)
+                print(file=sys.stderr)
 
     total = len(results)
     passed = sum(1 for r in results if r.passed)
@@ -273,21 +280,21 @@ def run(args: argparse.Namespace) -> int:
         else:
             print(f"FAILED {passed}/{total} ({overall_duration:.2f}s)")
     elif not quiet:
-        print("\n\U0001f4ca TEST SUMMARY")
-        print("=" * 30)
-        print(f"Total tests: {total}")
-        print(f"Passed: {passed}")
-        print(f"Failed: {failed}")
+        print("\n📊 TEST SUMMARY", file=sys.stderr)
+        print("=" * 30, file=sys.stderr)
+        print(f"Total tests: {total}", file=sys.stderr)
+        print(f"Passed: {passed}", file=sys.stderr)
+        print(f"Failed: {failed}", file=sys.stderr)
         if failed == 0:
             print(
-                "\n\U0001f389 All tests passed! "
-                "Your Home Assistant configuration is valid."
+                "\n🎉 All tests passed! Your Home Assistant configuration is valid.",
+                file=sys.stderr,
             )
         else:
             print(
-                f"\n\u26a0\ufe0f  {failed} test(s) failed. "
-                "Please review the errors above."
+                f"\n⚠️  {failed} test(s) failed. Please review the errors above.",
+                file=sys.stderr,
             )
-        print()
+        print(file=sys.stderr)
 
     return 0 if all_passed else 1

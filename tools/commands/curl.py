@@ -14,8 +14,6 @@ Token-efficiency flags for agents:
   ``--max-chars N`` — truncate JSON output when it exceeds N bytes
 """
 
-from __future__ import annotations
-
 import argparse
 import contextlib
 import json

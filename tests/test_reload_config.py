@@ -220,8 +220,8 @@ class TestReloadConfig:
             ),
         ):
             assert reload_config() is False
-        out = capsys.readouterr().out
-        assert "HA_URL must start with" in out
+        out, err = capsys.readouterr()
+        assert "HA_URL must start with" in err
 
     def test_from_env_token_error_includes_hint(self, capsys):
         """Token-related errors print the 'create a token' hint."""
@@ -236,8 +236,8 @@ class TestReloadConfig:
             ),
         ):
             assert reload_config() is False
-        out = capsys.readouterr().out
-        assert "long_lived_access_token" in out
+        out, err = capsys.readouterr()
+        assert "long_lived_access_token" in err
 
     def test_detect_returns_none_reloads_all_services(self):
         with patch("tools.reload_config.detect_changed_services", return_value=None):
@@ -276,8 +276,8 @@ class TestReloadConfig:
             return_value={"automation/reload"},
         ):
             reload_config()
-        out = capsys.readouterr().out
-        assert "\U0001f504 Reloading: automations" in out
+        out, err = capsys.readouterr()
+        assert "🔄 Reloading: automations" in err
 
     def test_prints_success_per_service(self, capsys):
         with patch(
@@ -285,8 +285,8 @@ class TestReloadConfig:
             return_value={"automation/reload"},
         ):
             reload_config()
-        out = capsys.readouterr().out
-        assert "\u2705 automations reloaded" in out
+        out, err = capsys.readouterr()
+        assert "✅ automations reloaded" in err
 
     def test_prints_failure_per_service(self, capsys):
         self._mock_client.call_service.return_value = False
@@ -295,8 +295,8 @@ class TestReloadConfig:
             return_value={"script/reload"},
         ):
             reload_config()
-        out = capsys.readouterr().out
-        assert "\u274c scripts failed to reload" in out
+        out, err = capsys.readouterr()
+        assert "❌ scripts failed to reload" in err
 
     def test_core_config_reloads_before_domain_services(self):
         """reload_core_config must run before any domain services in the same call."""
@@ -374,8 +374,8 @@ class TestReloadConfig:
         ):
             result = reload_config(summary=True)
         assert result is False
-        out = capsys.readouterr().out
-        assert "HA_TOKEN" in out or "Error" in out
+        out, err = capsys.readouterr()
+        assert "HA_TOKEN" in err or "Error" in err
 
     def test_summary_mode_timeout_warnings_suppressed(self, capsys, monkeypatch):
         """Timeout/env warnings should not print in summary mode."""

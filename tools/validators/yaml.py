@@ -135,7 +135,7 @@ class YAMLValidator(ValidatorBase):
         return all_valid
 
 
-def main():
+def main() -> int:
     """Run YAML syntax validation from command line."""
     parser = argparse.ArgumentParser(
         description="Validate YAML syntax for Home Assistant configuration files."
@@ -152,8 +152,8 @@ def main():
     is_valid = validator.validate_all()
     validator.print_results()
 
-    raise SystemExit(0 if is_valid else 1)
+    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

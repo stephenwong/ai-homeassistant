@@ -550,6 +550,42 @@ def test_fail_on_stale_no_stale_returns_true(config_dir):
         assert len(v.warnings) == 0
 
 
+def test_fail_on_stale_env_var_picked_up_after_load_env(config_dir, monkeypatch):
+    """HA_STALE_FAIL env var is read after load_env_file() in validate_all()."""
+    monkeypatch.setenv("HA_URL", "http://localhost:8123")
+    monkeypatch.setenv("HA_TOKEN", "mock_token")
+    _write_entity_registry(
+        config_dir,
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "platform": "zha",
+                "disabled_by": None,
+                "hidden_by": None,
+            }
+        ],
+    )
+    mock_client = _mock_states(
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "state": "21.5",
+                "last_updated": "2026-06-24T20:00:00+00:00",
+                "attributes": {},
+            }
+        ]
+    )
+    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
+        v = StaleSensorValidator(str(config_dir))
+        monkeypatch.setenv("HA_STALE_FAIL", "true")
+        v._get_current_time = MagicMock(
+            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
+        )
+        assert v.fail_on_stale is False
+        assert v.validate_all() is False
+        assert any("failed" in e.lower() for e in v.errors)
+
+
 def test_naive_datetime_handling():
     """Validator parses naive ISO strings and treats them as UTC timezone-aware."""
     v = StaleSensorValidator()
@@ -598,3 +634,12 @@ def test_malformed_registry_json(config_dir):
         )
         # Verify stale sensor detection still worked
         assert any("sensor.test_temp" in w for w in v.warnings)
+
+
+def test_main_dispatch_with_ci_short_circuit(monkeypatch):
+    """main() returns 0 when CI=true short-circuits stale sensor validation."""
+    from tools.validators.stale_sensors import main
+
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setattr("sys.argv", ["stale_sensors", "config"])
+    assert main() == 0

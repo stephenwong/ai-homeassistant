@@ -10,6 +10,7 @@ Usage:
 import argparse
 import difflib
 import functools
+import sys
 import tarfile
 from pathlib import Path
 
@@ -39,7 +40,7 @@ INTERESTING_EXTENSIONS = {
 }
 
 
-def should_include(name):
+def should_include(name: str) -> bool:
     """Check if a file should be included in the diff."""
     for pattern in SKIP_PATTERNS:
         if pattern in name:
@@ -50,7 +51,7 @@ def should_include(name):
 
 
 @functools.cache
-def extract_files(backup_path):
+def extract_files(backup_path: Path) -> dict[str, str]:
     """Extract interesting text files from a backup archive. Returns {name: content}."""
     files = {}
     try:
@@ -69,11 +70,11 @@ def extract_files(backup_path):
                 except UnicodeDecodeError, KeyError:
                     continue
     except (tarfile.TarError, OSError) as e:
-        print(f"  Warning: Could not read {backup_path}: {e}")
+        print(f"  Warning: Could not read {backup_path}: {e}", file=sys.stderr)
     return files
 
 
-def generate_changelog(backup, previous_backup):
+def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
     """Generate changelog content comparing two backups."""
     lines = []
     lines.append(f"Backup: {backup['filename']}")
@@ -176,12 +177,12 @@ def generate_changelog(backup, previous_backup):
     return "\n".join(lines) + "\n"
 
 
-def changelog_path_for(backup):
+def changelog_path_for(backup: dict) -> Path:
     """Get the changelog path for a backup."""
     return BACKUP_DIR / backup["filename"].replace(".tar.gz", ".changelog")
 
 
-def generate_for_backup(backup, backups_list):
+def generate_for_backup(backup: dict, backups_list: list[dict]) -> Path:
     """Generate changelog for a single backup, finding its predecessor."""
     # Find previous backup
     previous = None
@@ -197,7 +198,7 @@ def generate_for_backup(backup, backups_list):
     return changelog_file
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Generate changelogs for Home Assistant backups"
     )
@@ -211,7 +212,7 @@ def main():
 
     backups = get_backups()  # sorted oldest first
     if not backups:
-        print("No backups found")
+        print("No backups found", file=sys.stderr)
         return 1
 
     if args.generate_all:
@@ -222,11 +223,14 @@ def main():
             if cl_path.exists():
                 skipped += 1
                 continue
-            print(f"Generating changelog for {backup['filename']}...")
+            print(f"Generating changelog for {backup['filename']}...", file=sys.stderr)
             generate_for_backup(backup, backups)
             generated += 1
 
-        print(f"\nGenerated {generated} changelog(s), skipped {skipped} existing")
+        print(
+            f"\nGenerated {generated} changelog(s), skipped {skipped} existing",
+            file=sys.stderr,
+        )
         return 0
 
     if not args.backup:
@@ -241,11 +245,11 @@ def main():
             break
 
     if not target:
-        print(f"Backup not found: {args.backup}")
+        print(f"Backup not found: {args.backup}", file=sys.stderr)
         return 1
 
     cl_path = generate_for_backup(target, backups)
-    print(f"Changelog written to {cl_path}")
+    print(f"Changelog written to {cl_path}", file=sys.stderr)
     return 0
 
 

@@ -10,4 +10,4 @@ from tools.validators.templates import TemplateValidator, main
 __all__ = ["TemplateValidator", "main"]
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

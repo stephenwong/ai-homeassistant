@@ -198,7 +198,7 @@ class HAOfficialValidator(ValidatorBase):
         return self.run_ha_check_config()
 
 
-def main():
+def main() -> int:
     """Run Home Assistant configuration validation from command line."""
     parser = argparse.ArgumentParser(
         description=(
@@ -217,8 +217,8 @@ def main():
     is_valid = validator.validate_all()
     validator.print_results()
 
-    raise SystemExit(0 if is_valid else 1)
+    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

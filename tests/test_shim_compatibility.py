@@ -96,11 +96,8 @@ def test_shim_main_dispatches(monkeypatch):
     import sys
 
     monkeypatch.setattr(sys, "argv", ["tools/yaml_validator.py"])
-    with pytest.raises(SystemExit) as excinfo:
-        yaml_main()
-    # SystemExit code is either 0 (valid) or 1 (invalid config) — both are fine,
-    # we just need to confirm dispatch works.
-    assert excinfo.value.code in (0, 1)
+    # main() returns int (no longer raises SystemExit)
+    assert yaml_main() in (0, 1)
 
 
 def test_duplicate_id_shim_main_dispatches(monkeypatch):
@@ -108,9 +105,7 @@ def test_duplicate_id_shim_main_dispatches(monkeypatch):
     import sys
 
     monkeypatch.setattr(sys, "argv", ["tools/duplicate_id_validator.py"])
-    with pytest.raises(SystemExit) as excinfo:
-        duplicate_id_main()
-    assert excinfo.value.code in (0, 1)
+    assert duplicate_id_main() in (0, 1)
 
 
 def test_service_shim_main_dispatches(monkeypatch):
@@ -118,9 +113,7 @@ def test_service_shim_main_dispatches(monkeypatch):
     import sys
 
     monkeypatch.setattr(sys, "argv", ["tools/service_validator.py"])
-    with pytest.raises(SystemExit) as excinfo:
-        service_main()
-    assert excinfo.value.code in (0, 1)
+    assert service_main() in (0, 1)
 
 
 def test_template_shim_main_dispatches(monkeypatch):
@@ -128,6 +121,4 @@ def test_template_shim_main_dispatches(monkeypatch):
     import sys
 
     monkeypatch.setattr(sys, "argv", ["tools/template_validator.py"])
-    with pytest.raises(SystemExit) as excinfo:
-        template_main()
-    assert excinfo.value.code in (0, 1)
+    assert template_main() in (0, 1)

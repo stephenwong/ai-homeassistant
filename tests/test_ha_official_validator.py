@@ -35,17 +35,13 @@ class TestHAOfficialValidatorMain:
         with patch(
             "tools.ha_official_validator.subprocess.run", return_value=mock_result
         ):
-            with pytest.raises(SystemExit) as exc:
-                main()
-            assert exc.value.code == 0
+            assert main() == 0
 
     def test_main_invalid(self, tmp_path, monkeypatch):
         from tools.ha_official_validator import main
 
         monkeypatch.setattr("sys.argv", ["ha_official_validator", "/nonexistent"])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 1
+        assert main() == 1
 
 
 @pytest.mark.parametrize(

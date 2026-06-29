@@ -322,7 +322,7 @@ class TestMain:
             result = main([])
             assert result == 0
             captured = capsys.readouterr()
-            assert "No backups found" in captured.out
+            assert "No backups found" in captured.err
 
     def test_with_recent_backups(self, tmp_path, capsys):
         backup_dir = tmp_path / "backups"
@@ -354,7 +354,7 @@ class TestMain:
             result = main([])
             assert result == 0
             captured = capsys.readouterr()
-            assert "yesterday" in captured.out
+            assert "yesterday" in captured.err
 
     def test_deletes_old_daily_duplicates(self, tmp_path, capsys):
         backup_dir = tmp_path / "backups"
@@ -450,7 +450,7 @@ class TestMain:
             assert (backup_dir / fname1).exists()
             assert (backup_dir / fname2).exists()
             captured = capsys.readouterr()
-            assert "DRY RUN" in captured.out
+            assert "DRY RUN" in captured.err
 
     def test_orphaned_changelogs_cleaned_during_main(self, tmp_path, capsys):
         """main() should clean orphaned changelogs after pruning."""
@@ -499,6 +499,6 @@ class TestMain:
                 result = main([])
                 assert result == 1
                 captured = capsys.readouterr()
-                assert "Error deleting" in captured.out
+                assert "Error deleting" in captured.err
             finally:
                 os.chmod(backup_dir, orig_mode)

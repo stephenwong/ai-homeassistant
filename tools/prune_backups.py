@@ -10,6 +10,7 @@ Retention rules:
 
 import argparse
 import re
+import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -18,7 +19,7 @@ BACKUP_DIR = Path(__file__).parent.parent / "backups"
 BACKUP_PATTERN = re.compile(r"ha_config_(\d{8})_(\d{6})\.tar\.gz")
 
 
-def parse_backup_filename(filename):
+def parse_backup_filename(filename: str) -> datetime | None:
     """Parse backup filename and return datetime object."""
     match = BACKUP_PATTERN.match(filename)
     if not match:
@@ -33,7 +34,7 @@ def parse_backup_filename(filename):
         return None
 
 
-def get_backups():
+def get_backups() -> list[dict]:
     """Get all backup files with their timestamps."""
     if not BACKUP_DIR.exists():
         return []
@@ -49,7 +50,7 @@ def get_backups():
     return sorted(backups, key=lambda x: x["timestamp"])
 
 
-def group_by_retention_period(backups, now):
+def group_by_retention_period(backups: list[dict], now: datetime) -> dict:
     """Group backups into retention periods."""
     groups = {
         "keep_all": [],  # Last 7 days
@@ -75,7 +76,7 @@ def group_by_retention_period(backups, now):
     return groups
 
 
-def apply_retention(groups):
+def apply_retention(groups: dict) -> tuple[list[dict], list[dict]]:
     """Apply retention rules and return lists of files to keep/delete."""
     to_keep = []
     to_delete = []
@@ -106,7 +107,7 @@ def apply_retention(groups):
     return to_keep, to_delete
 
 
-def format_size(size_bytes):
+def format_size(size_bytes: int | float) -> str:
     """Format bytes as human-readable size."""
     for unit in ["B", "KB", "MB", "GB"]:
         if size_bytes < 1024.0:
@@ -115,7 +116,7 @@ def format_size(size_bytes):
     return f"{size_bytes:.1f}TB"
 
 
-def clean_orphaned_changelogs(dry_run=False):
+def clean_orphaned_changelogs(dry_run: bool = False) -> int:
     """Remove changelog files that have no matching backup tar.gz."""
     if not BACKUP_DIR.exists():
         return 0
@@ -125,17 +126,17 @@ def clean_orphaned_changelogs(dry_run=False):
         if not tar_path.exists():
             orphans.append(changelog)
     if orphans:
-        print(f"\nOrphaned changelogs: {len(orphans)}")
+        print(f"\nOrphaned changelogs: {len(orphans)}", file=sys.stderr)
         for orphan in orphans:
             if dry_run:
-                print(f"  Would delete: {orphan.name}")
+                print(f"  Would delete: {orphan.name}", file=sys.stderr)
             else:
                 orphan.unlink()
-                print(f"  Deleted: {orphan.name}")
+                print(f"  Deleted: {orphan.name}", file=sys.stderr)
     return len(orphans)
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Prune Home Assistant backups")
     parser.add_argument(
         "--dry-run",
@@ -145,30 +146,30 @@ def main(argv=None):
     args = parser.parse_args(argv)
     dry_run = args.dry_run
 
-    print("Home Assistant Backup Retention Pruner")
+    print("Home Assistant Backup Retention Pruner", file=sys.stderr)
     if dry_run:
-        print("(DRY RUN - no files will be deleted)")
-    print("=" * 50)
+        print("(DRY RUN - no files will be deleted)", file=sys.stderr)
+    print("=" * 50, file=sys.stderr)
 
     backups = get_backups()
 
     if not backups:
-        print(f"No backups found in {BACKUP_DIR}")
+        print(f"No backups found in {BACKUP_DIR}", file=sys.stderr)
         clean_orphaned_changelogs(dry_run=dry_run)
         return 0
 
-    print(f"\nFound {len(backups)} backup(s)")
+    print(f"\nFound {len(backups)} backup(s)", file=sys.stderr)
 
     now = datetime.now().astimezone()
     groups = group_by_retention_period(backups, now)
     to_keep, to_delete = apply_retention(groups)
 
-    print("\nRetention Summary:")
-    print(f"  - Keeping {len(to_keep)} backup(s)")
-    print(f"  - Deleting {len(to_delete)} backup(s)")
+    print("\nRetention Summary:", file=sys.stderr)
+    print(f"  - Keeping {len(to_keep)} backup(s)", file=sys.stderr)
+    print(f"  - Deleting {len(to_delete)} backup(s)", file=sys.stderr)
 
     if to_delete:
-        print("\nBackups to delete:")
+        print("\nBackups to delete:", file=sys.stderr)
         total_size = 0
         for backup in sorted(to_delete, key=lambda x: x["timestamp"]):
             size = backup["path"].stat().st_size
@@ -191,11 +192,14 @@ def main(argv=None):
                         changelog_path.unlink()
                     print(f"Deleted: {backup['filename']}")
                 except OSError as e:
-                    print(f"Error deleting {backup['filename']}: {e}")
+                    print(f"Error deleting {backup['filename']}: {e}", file=sys.stderr)
                     errors += 1
 
             if errors:
-                print(f"\n✗ Deleted {len(to_delete) - errors}, failed {errors}")
+                print(
+                    f"\n✗ Deleted {len(to_delete) - errors}, failed {errors}",
+                    file=sys.stderr,
+                )
                 clean_orphaned_changelogs(dry_run=dry_run)
                 return 1
 
@@ -204,7 +208,7 @@ def main(argv=None):
         print("\n✓ No backups need to be deleted")
 
     if to_keep:
-        print("\nRetained backups:")
+        print("\nRetained backups:", file=sys.stderr)
         for backup in sorted(to_keep, key=lambda x: x["timestamp"], reverse=True):
             age_days = (now - backup["timestamp"]).days
             size = backup["path"].stat().st_size
@@ -214,7 +218,10 @@ def main(argv=None):
                 age_str = "yesterday"
             else:
                 age_str = f"{age_days} days ago"
-            print(f"  - {backup['filename']} ({format_size(size)}, {age_str})")
+            print(
+                f"  - {backup['filename']} ({format_size(size)}, {age_str})",
+                file=sys.stderr,
+            )
 
     clean_orphaned_changelogs(dry_run=dry_run)
     return 0

@@ -5,8 +5,6 @@ Works with both list-based (automations.yaml, scenes.yaml) and dict-based
 (scripts.yaml) Home Assistant YAML files.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 from collections.abc import Callable

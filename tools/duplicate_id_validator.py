@@ -10,4 +10,4 @@ from tools.validators.duplicate_ids import DuplicateIDValidator, main
 __all__ = ["DuplicateIDValidator", "main"]
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -8,12 +8,28 @@ import argparse
 import concurrent.futures
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any, TypedDict
 
 import yaml
 
 from tools.common import HAYamlLoader, ValidatorBase, resolve_summary
+
+_OBJECT_ID_RE = re.compile(r"^[a-z0-9_]+$")
+
+_TEMPLATE_PATTERNS = [
+    re.compile(p)
+    for p in [
+        r"states\('([^']+)'\)",
+        r'states\("([^"]+)"\)',
+        r"states\.([a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*)",
+        r"is_state\('([^']+)'",
+        r'is_state\("([^"]+)"',
+        r"state_attr\('([^']+)'",
+        r'state_attr\("([^"]+)"',
+    ]
+]
 
 
 class DomainSummary(TypedDict):
@@ -33,32 +49,16 @@ class ReferenceValidator(ValidatorBase):
     # Special keywords that are not entity IDs
     SPECIAL_KEYWORDS = {"all", "none"}
 
-    _OBJECT_ID_RE = re.compile(r"^[a-z0-9_]+$")
-
     # Built-in entities that always exist in HA but may not be in the registry
     # zone.home is a special, pre-defined, non-deletable zone
     # See: https://www.home-assistant.io/integrations/zone/
     BUILTIN_ENTITIES = {"sun.sun", "zone.home"}
 
-    _TEMPLATE_PATTERNS = [
-        re.compile(p)
-        for p in [
-            r"states\('([^']+)'\)",
-            r'states\("([^"]+)"\)',
-            r"states\.([a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*)",
-            r"is_state\('([^']+)'",
-            r'is_state\("([^"]+)"',
-            r"state_attr\('([^']+)'",
-            r'state_attr\("([^"]+)"',
-        ]
-    ]
-
     def __init__(
         self, config_dir: str = "config", quiet: bool = False, summary: bool = False
     ):
         """Initialize the ReferenceValidator."""
-        super().__init__(config_dir, quiet=quiet)
-        self.summary = summary
+        super().__init__(config_dir, quiet=quiet, summary=summary)
         self.storage_dir = self.config_dir / ".storage"
 
         # Cache for loaded registries
@@ -90,7 +90,7 @@ class ReferenceValidator(ValidatorBase):
     @classmethod
     def _is_valid_object_id(cls, value: str) -> bool:
         """Check if a string is a valid HA object ID."""
-        return bool(cls._OBJECT_ID_RE.fullmatch(value))
+        return bool(_OBJECT_ID_RE.fullmatch(value))
 
     @classmethod
     def _is_valid_entity_id(cls, value: str) -> bool:
@@ -584,7 +584,7 @@ class ReferenceValidator(ValidatorBase):
         """Extract entity references from Jinja2 templates."""
         entities = set()
 
-        for pattern in self._TEMPLATE_PATTERNS:
+        for pattern in _TEMPLATE_PATTERNS:
             for match in pattern.findall(template):
                 if "." in match and len(match.split(".")) == 2:
                     entities.add(match)
@@ -818,13 +818,13 @@ class ReferenceValidator(ValidatorBase):
             if self.errors:
                 print("FAIL Entity/device references")
                 for err in self.errors:
-                    print(f"  ERROR: {err}")
+                    print(f"  ERROR: {err}", file=sys.stderr)
                 for warn in self.warnings:
-                    print(f"  WARN: {warn}")
+                    print(f"  WARN: {warn}", file=sys.stderr)
             elif self.warnings:
                 print("PASS Entity/device references (with warnings)")
                 for warn in self.warnings:
-                    print(f"  WARN: {warn}")
+                    print(f"  WARN: {warn}", file=sys.stderr)
             else:
                 print("PASS Entity/device references")
             return
@@ -834,17 +834,22 @@ class ReferenceValidator(ValidatorBase):
         # Print entity summary
         summary = self.get_entity_summary()
         if summary:
-            print("AVAILABLE ENTITIES BY DOMAIN:")
+            print("AVAILABLE ENTITIES BY DOMAIN:", file=sys.stderr)
             for domain, info in sorted(summary.items()):
                 enabled_count = info["enabled"]
                 disabled_count = info["disabled"]
-                print(f"  {domain}: {enabled_count} enabled, {disabled_count} disabled")
+                print(
+                    f"  {domain}: {enabled_count} enabled, {disabled_count} disabled",
+                    file=sys.stderr,
+                )
                 if info["examples"]:
-                    print(f"    Examples: {', '.join(info['examples'])}")
-            print()
+                    print(
+                        f"    Examples: {', '.join(info['examples'])}", file=sys.stderr
+                    )
+            print(file=sys.stderr)
 
 
-def main():
+def main() -> int:
     """Run entity and device reference validation from command line."""
     parser = argparse.ArgumentParser(
         description="Validate entity and device references in Home Assistant config."
@@ -873,8 +878,8 @@ def main():
     is_valid = validator.validate_all()
     validator.print_results()
 
-    raise SystemExit(0 if is_valid else 1)
+    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

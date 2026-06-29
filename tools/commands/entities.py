@@ -1,7 +1,4 @@
-#!/usr/bin/env python3
 """``entities`` subcommand: thin wrapper around entity_explorer.main()."""
-
-from __future__ import annotations
 
 import argparse
 

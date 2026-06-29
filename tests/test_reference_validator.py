@@ -883,9 +883,9 @@ class TestPrintResults:
         v = ReferenceValidator(str(setup_config))
         v.print_results()
         captured = capsys.readouterr()
-        assert "AVAILABLE ENTITIES" in captured.out
-        assert "sensor" in captured.out
-        assert "light" in captured.out
+        assert "AVAILABLE ENTITIES" in captured.err
+        assert "sensor" in captured.err
+        assert "light" in captured.err
 
     def test_summary_mode_compact_format(self, setup_config, capsys):
         v = ReferenceValidator(str(setup_config), summary=True)
@@ -910,7 +910,7 @@ class TestPrintResults:
         v.print_results()
         captured = capsys.readouterr()
         assert "FAIL" in captured.out
-        assert "Something went wrong" in captured.out
+        assert "Something went wrong" in captured.err
 
     def test_summary_mode_warning_shows_warn(self, setup_config, capsys):
         v = ReferenceValidator(str(setup_config), summary=True)
@@ -919,7 +919,7 @@ class TestPrintResults:
         captured = capsys.readouterr()
         assert "PASS" in captured.out
         assert "with warnings" in captured.out
-        assert "A warning occurred" in captured.out
+        assert "A warning occurred" in captured.err
 
 
 class TestReferenceValidatorMain:
@@ -932,14 +932,10 @@ class TestReferenceValidatorMain:
             "entity_id: sensor.temperature\n"
         )
         monkeypatch.setattr("sys.argv", ["reference_validator", str(setup_config)])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 0
+        assert main() == 0
 
     def test_main_invalid(self, monkeypatch):
         from tools.reference_validator import main
 
         monkeypatch.setattr("sys.argv", ["reference_validator", "/nonexistent"])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 1
+        assert main() == 1

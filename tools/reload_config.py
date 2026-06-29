@@ -126,15 +126,18 @@ def reload_config(summary: bool = False) -> bool:
     if not summary:
         for warning in [git_timeout_warning, reload_timeout_warning]:
             if warning:
-                print(f"\u26a0\ufe0f  {warning}")
+                print(f"⚠️  {warning}", file=sys.stderr)
 
     try:
         client = HAClient.from_env()
     except HARequestError as e:
-        print(f"\u274c Error: {e}")
+        print(f"❌ Error: {e}", file=sys.stderr)
         if "HA_TOKEN" in str(e):
-            print("   Create a .env file with: HA_TOKEN=your_long_lived_access_token")
-            print("   Get your token from Home Assistant Profile page")
+            print(
+                "   Create a .env file with: HA_TOKEN=your_long_lived_access_token",
+                file=sys.stderr,
+            )
+            print("   Get your token from Home Assistant Profile page", file=sys.stderr)
         return False
 
     # Override client timeout with the reload-specific value (typically longer
@@ -145,14 +148,14 @@ def reload_config(summary: bool = False) -> bool:
     if not services:
         if not summary:
             print(
-                "\u26a0\ufe0f  No config changes detected, "
-                "reloading all domains to be safe"
+                "⚠️  No config changes detected, reloading all domains to be safe",
+                file=sys.stderr,
             )
         services = set(ALL_SERVICES)
 
     if not summary:
         labels = sorted(SERVICE_LABELS.get(s, s) for s in services)
-        print(f"\U0001f504 Reloading: {', '.join(labels)}")
+        print(f"🔄 Reloading: {', '.join(labels)}", file=sys.stderr)
 
     # reload_core_config must run before domain reloads — automations/scripts
     # reference helpers and integrations that core config sets up.
@@ -177,11 +180,11 @@ def reload_config(summary: bool = False) -> bool:
         label = SERVICE_LABELS.get(service, service)
         if ok:
             if not summary:
-                print(f"  \u2705 {label} reloaded")
+                print(f"  ✅ {label} reloaded", file=sys.stderr)
         else:
             suffix = f" ({error[:80]})" if error else ""
             if not summary:
-                print(f"  \u274c {label} failed to reload{suffix}")
+                print(f"  ❌ {label} failed to reload{suffix}", file=sys.stderr)
             all_ok = False
 
     elapsed = time.time() - start
@@ -199,9 +202,9 @@ def reload_config(summary: bool = False) -> bool:
             print(f"FAILED {passed}/{total} ({failed_labels} FAILED) {elapsed:.1f}s")
     else:
         if all_ok:
-            print("\u2705 All reloads completed successfully!")
+            print("✅ All reloads completed successfully!", file=sys.stderr)
         else:
-            print("\u274c Some reloads failed")
+            print("❌ Some reloads failed", file=sys.stderr)
 
     return all_ok
 

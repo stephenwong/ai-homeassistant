@@ -321,7 +321,7 @@ class TestMain:
             result = main()
             assert result == 0
             captured = capsys.readouterr()
-            assert "Generated 2" in captured.out
+            assert "Generated 2" in captured.err
 
     def test_generate_all_skips_existing(self, tmp_path, monkeypatch, capsys):
         from tools.generate_changelog import main
@@ -345,7 +345,7 @@ class TestMain:
             result = main()
             assert result == 0
             captured = capsys.readouterr()
-            assert "skipped 1" in captured.out
+            assert "skipped 1" in captured.err
 
     def test_specific_backup(self, tmp_path, monkeypatch, capsys):
         from tools.generate_changelog import main
@@ -370,7 +370,7 @@ class TestMain:
             result = main()
             assert result == 0
             captured = capsys.readouterr()
-            assert "Changelog written" in captured.out
+            assert "Changelog written" in captured.err
 
     def test_backup_not_found(self, tmp_path, monkeypatch, capsys):
         from tools.generate_changelog import main
@@ -391,4 +391,4 @@ class TestMain:
             result = main()
             assert result == 1
             captured = capsys.readouterr()
-            assert "not found" in captured.out
+            assert "not found" in captured.err

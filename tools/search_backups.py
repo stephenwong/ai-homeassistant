@@ -12,6 +12,7 @@ Usage:
 import argparse
 import os
 import re
+import sys
 import tarfile
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -32,7 +33,9 @@ def is_potentially_unsafe_regex(pattern: str) -> bool:
     return any(re.search(expr, pattern) for expr in nested_quantifier_patterns)
 
 
-def search_backup(backup, pattern, yaml_only=True, context_lines=0):
+def search_backup(
+    backup: dict, pattern: re.Pattern, yaml_only: bool = True, context_lines: int = 0
+) -> list[dict]:
     """Search a single backup archive for a pattern. Returns list of matches."""
     matches = []
     try:
@@ -97,12 +100,12 @@ def search_backup(backup, pattern, yaml_only=True, context_lines=0):
             for match in matches:
                 match.pop("_remaining_after", None)
     except (tarfile.TarError, OSError) as e:
-        print(f"  Warning: Could not read {backup['filename']}: {e}")
+        print(f"  Warning: Could not read {backup['filename']}: {e}", file=sys.stderr)
 
     return matches
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Search across Home Assistant backup archives"
     )
@@ -128,19 +131,20 @@ def main():
     if is_potentially_unsafe_regex(args.pattern):
         print(
             "Invalid regex pattern: pattern appears unsafe "
-            "(nested quantifiers can cause catastrophic backtracking)"
+            "(nested quantifiers can cause catastrophic backtracking)",
+            file=sys.stderr,
         )
         return 1
 
     try:
         pattern = re.compile(args.pattern)
     except re.error as e:
-        print(f"Invalid regex pattern: {e}")
+        print(f"Invalid regex pattern: {e}", file=sys.stderr)
         return 1
 
     backups = get_backups()
     if not backups:
-        print("No backups found")
+        print("No backups found", file=sys.stderr)
         return 1
 
     # Search newest first
@@ -148,14 +152,17 @@ def main():
 
     yaml_only = not args.all
     file_type = "all files" if args.all else "YAML files"
-    print(f"Searching {len(backups)} backups for: {args.pattern} ({file_type})\n")
+    print(
+        f"Searching {len(backups)} backups for: {args.pattern} ({file_type})\n",
+        file=sys.stderr,
+    )
 
     default_workers = min(32, (os.cpu_count() or 1) + 4)
     max_workers, worker_warning = get_env_int(
         "BACKUP_SEARCH_MAX_WORKERS", default_workers
     )
     if worker_warning:
-        print(f"Warning: {worker_warning}")
+        print(f"Warning: {worker_warning}", file=sys.stderr)
 
     results = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -195,7 +202,7 @@ def main():
         else:
             print(f"  ----   {backup['filename']} ({date_str})")
 
-    print(f"\nFound in {match_count} of {len(backups)} backups")
+    print(f"\nFound in {match_count} of {len(backups)} backups", file=sys.stderr)
     return 0
 
 

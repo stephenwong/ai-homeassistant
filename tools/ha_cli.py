@@ -15,8 +15,6 @@ Subcommands:
 Backward-compat: ``python tools/run_tests.py`` delegates to ``ha_cli validate``.
 """
 
-from __future__ import annotations
-
 import argparse
 import sys
 

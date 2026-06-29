@@ -15,4 +15,4 @@ from tools.validators.references import ReferenceValidator, main
 __all__ = ["ReferenceValidator", "main"]
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

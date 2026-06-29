@@ -11,4 +11,4 @@ from tools.validators.ha_official import HAOfficialValidator, main
 __all__ = ["HAOfficialValidator", "main"]
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

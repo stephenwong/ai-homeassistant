@@ -1,7 +1,4 @@
-#!/usr/bin/env python3
 """``reload`` subcommand: thin wrapper around reload_config.reload_config()."""
-
-from __future__ import annotations
 
 import argparse
 

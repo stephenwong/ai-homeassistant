@@ -9,12 +9,6 @@ from tools.validators.duplicate_ids import DuplicateIDValidator
 
 
 @pytest.fixture
-def config_dir(tmp_path):
-    """Create an empty config directory."""
-    return tmp_path
-
-
-@pytest.fixture
 def validator(config_dir):
     return DuplicateIDValidator(str(config_dir))
 
@@ -208,14 +202,10 @@ class TestMain:
         )
         (config_dir / "automations.yaml").write_text(yaml_content)
         monkeypatch.setattr("sys.argv", ["duplicate_ids", str(config_dir)])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 0
+        assert main() == 0
 
     def test_main_invalid(self, monkeypatch):
         from tools.validators.duplicate_ids import main
 
         monkeypatch.setattr("sys.argv", ["duplicate_ids", "/nonexistent"])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 1
+        assert main() == 1

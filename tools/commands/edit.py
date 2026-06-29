@@ -4,8 +4,6 @@ Supports automations.yaml (list) and scripts.yaml (dict) with --show, --set, --a
 and --remove operations.  All writes use atomic save via YAMLEditor.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import sys
@@ -35,7 +33,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Automation alias or script name to operate on.",
     )
     parser.add_argument(
-        "--config-dir",
+        "--config",
         "-c",
         default="config",
         help="Path to the config directory (default: config)",
@@ -112,7 +110,7 @@ def _check_exclusive(args: argparse.Namespace) -> str | None:
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``edit`` subcommand. Returns exit code."""
     quiet = args.quiet or resolve_summary(args)
-    config_dir = Path(args.config_dir)
+    config_dir = Path(args.config)
     try:
         target_file = _resolve_target(config_dir, args.file)
     except SystemExit as e:

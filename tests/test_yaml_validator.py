@@ -1,20 +1,9 @@
 """Tests for tools/yaml_validator.py - YAML syntax validation."""
 
-import shutil
-import tempfile
-from pathlib import Path
-
 import pytest
 import yaml
 
 from tools.yaml_validator import YAMLValidator
-
-
-@pytest.fixture
-def config_dir():
-    temp = tempfile.mkdtemp()
-    yield Path(temp)
-    shutil.rmtree(temp)
 
 
 @pytest.fixture
@@ -207,14 +196,10 @@ class TestYAMLValidatorMain:
 
         (config_dir / "configuration.yaml").write_text("homeassistant:\n  name: Test\n")
         monkeypatch.setattr("sys.argv", ["yaml_validator", str(config_dir)])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 0
+        assert main() == 0
 
     def test_main_invalid(self, monkeypatch):
         from tools.yaml_validator import main
 
         monkeypatch.setattr("sys.argv", ["yaml_validator", "/nonexistent"])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 1
+        assert main() == 1

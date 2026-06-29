@@ -262,7 +262,7 @@ class TestSearchBackupsMainFlow:
             result = main()
             assert result == 0
             captured = capsys.readouterr()
-            assert "Found in 0" in captured.out
+            assert "Found in 0" in captured.err
 
     def test_main_all_files(self, tmp_path, capsys, monkeypatch):
         from unittest.mock import patch
@@ -299,4 +299,4 @@ class TestSearchBackupsMainFlow:
         result = main()
         assert result == 1
         captured = capsys.readouterr()
-        assert "unsafe" in captured.out
+        assert "unsafe" in captured.err

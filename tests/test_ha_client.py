@@ -41,10 +41,6 @@ class TestFromEnv:
     doesn't leak into the test environment and override monkeypatched values.
     """
 
-    @pytest.fixture(autouse=True)
-    def _stub_load_env_file(self, monkeypatch):
-        monkeypatch.setattr("tools.ha.client.load_env_file", lambda: None)
-
     def test_reads_env_vars(self, monkeypatch):
         monkeypatch.setenv("HA_URL", "http://ha.example:8123")
         monkeypatch.setenv("HA_TOKEN", "env-token")

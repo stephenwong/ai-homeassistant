@@ -6,8 +6,6 @@ surfaces failures. Degrades to a brace-balance check when the HA API is
 unreachable.
 """
 
-from __future__ import annotations
-
 import argparse
 import re
 from typing import Any
@@ -45,6 +43,7 @@ class TemplateValidator(ValidatorBase):
     validator_name = "Jinja2 templates"
 
     def file_deps(self) -> list[str]:
+        """Template validation checks live HA render API so caching is never valid."""
         return []
 
     @staticmethod
@@ -81,6 +80,7 @@ class TemplateValidator(ValidatorBase):
         return ("error", msg)
 
     def validate_all(self) -> bool:
+        """Validate Jinja2 templates in all YAML files via HA render API."""
         if not self.config_dir.exists():
             self.errors.append(f"Config directory {self.config_dir} does not exist")
             return False
@@ -140,7 +140,8 @@ class TemplateValidator(ValidatorBase):
         return all_ok
 
 
-def main() -> None:
+def main() -> int:
+    """Lint Jinja2 templates from the command line."""
     parser = argparse.ArgumentParser(
         description="Lint Jinja2 templates in HA config via the render API."
     )
@@ -154,8 +155,8 @@ def main() -> None:
     v = TemplateValidator(args.config_dir)
     is_valid = v.validate_all()
     v.print_results()
-    raise SystemExit(0 if is_valid else 1)
+    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

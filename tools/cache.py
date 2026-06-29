@@ -1,7 +1,4 @@
-#!/usr/bin/env python3
 """Validator result cache — skips re-validation when no relevant files changed."""
-
-from __future__ import annotations
 
 import hashlib
 import json

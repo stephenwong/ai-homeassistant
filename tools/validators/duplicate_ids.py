@@ -5,8 +5,6 @@ Checks automations.yaml for duplicate ``id`` values (which silently break
 triggering and UI customization) and missing ``id`` fields.
 """
 
-from __future__ import annotations
-
 import argparse
 import collections
 
@@ -89,7 +87,7 @@ class DuplicateIDValidator(ValidatorBase):
         return self._check_automations(data, str(automations_file))
 
 
-def main() -> None:
+def main() -> int:
     """Run duplicate automation ID validation from command line."""
     parser = argparse.ArgumentParser(
         description="Detect duplicate and missing automation IDs."
@@ -105,8 +103,8 @@ def main() -> None:
     validator = DuplicateIDValidator(args.config_dir)
     is_valid = validator.validate_all()
     validator.print_results()
-    raise SystemExit(0 if is_valid else 1)
+    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

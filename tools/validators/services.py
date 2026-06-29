@@ -6,8 +6,6 @@ correspond to loaded services on the Home Assistant instance. Degrades to a
 format-only check when the HA API is unreachable.
 """
 
-from __future__ import annotations
-
 import argparse
 import re
 from typing import Any
@@ -25,6 +23,7 @@ class ServiceValidator(ValidatorBase):
     validator_name = "Service references"
 
     def file_deps(self) -> list[str]:
+        """Service validation checks live services so caching is never valid."""
         return []
 
     @staticmethod
@@ -76,6 +75,7 @@ class ServiceValidator(ValidatorBase):
         return valid
 
     def validate_all(self) -> bool:
+        """Validate service references in all YAML files against HA API."""
         if not self.config_dir.exists():
             self.errors.append(f"Config directory {self.config_dir} does not exist")
             return False
@@ -113,7 +113,8 @@ class ServiceValidator(ValidatorBase):
         return all_ok
 
 
-def main() -> None:
+def main() -> int:
+    """Validate service references from the command line."""
     parser = argparse.ArgumentParser(
         description="Validate service references in HA config."
     )
@@ -127,8 +128,8 @@ def main() -> None:
     v = ServiceValidator(args.config_dir)
     is_valid = v.validate_all()
     v.print_results()
-    raise SystemExit(0 if is_valid else 1)
+    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
