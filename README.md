@@ -1,4 +1,4 @@
-# Home Assistant Configuration Management Toolkit
+# AI Home Assistant Config Manager
 
 A toolkit for managing Home Assistant configurations — automated validation, safe deployment, round-trip YAML editing, and entity discovery. Designed to work alongside AI coding assistants, but fully usable standalone.
 
@@ -10,6 +10,7 @@ A toolkit for managing Home Assistant configurations — automated validation, s
 - 🚀 **Safe Deployments** — `make push` validates first, blocks invalid configs from reaching HA
 - 🔍 **Entity Discovery** — Search and explore entities by name, domain, area, or state
 - 🤖 **AI Assistant Ready** — MCP server integration, instruction files, and pre-built skills for AI coding assistants
+- 🪶 **Token-Efficient Output** — Compact summary mode (auto-detected for pipes/agents), field projection (`--pick`, `--abbrev`), result limiting (`--first`, `--max-chars`), and guardrails to prevent AI context overload
 - 📦 **Importable Python Modules** — `HAClient`, `YAMLEditor`, and validators for scripts and tests
 - 💾 **Backup System** — Timestamped config backups with changelogs and full-text search
 
