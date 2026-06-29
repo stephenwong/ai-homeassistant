@@ -15,7 +15,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from tools.common import HARequestError, ValidatorBase, load_env_file
+from tools.common import HARequestError, ValidatorBase, get_env_int, load_env_file
 from tools.ha.client import HAClient
 
 
@@ -33,6 +33,7 @@ class StaleSensorValidator(ValidatorBase):
         only_domains: set[str] | None = None,
         exclude_platforms: set[str] | None = None,
         ignore_restored: bool = False,
+        fail_on_stale: bool = False,
     ):
         """Initialize the StaleSensorValidator.
 
@@ -44,10 +45,14 @@ class StaleSensorValidator(ValidatorBase):
             only_domains: Domains to analyze (e.g., {'sensor'}).
             exclude_platforms: Integration platforms to ignore (e.g., {'template'}).
             ignore_restored: If True, restored entities at startup won't be flagged.
+            fail_on_stale: If True, validator returns False when staleness is detected.
         """
         super().__init__(config_dir, quiet=quiet, summary=summary)
         self.threshold_hours = threshold_hours
         self.only_domains = only_domains if only_domains is not None else {"sensor"}
+        self.fail_on_stale = fail_on_stale or os.getenv(
+            "HA_STALE_FAIL", ""
+        ).strip().lower() in ("1", "true", "yes")
 
         default_exclude_platforms = {
             "template",
@@ -96,7 +101,14 @@ class StaleSensorValidator(ValidatorBase):
                         entity["entity_id"]: entity
                         for entity in data.get("data", {}).get("entities", [])
                     }
-            except Exception as e:
+            except (
+                OSError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+                AttributeError,
+            ) as e:
                 if attempt == 0:
                     time.sleep(0.1)
                     continue
@@ -119,7 +131,7 @@ class StaleSensorValidator(ValidatorBase):
                 if value > 1e11:
                     value = value / 1000.0
                 return datetime.fromtimestamp(value, tz=UTC)
-            except Exception as e:
+            except (OverflowError, OSError, ValueError) as e:
                 self.warnings.append(
                     f"Failed to parse numeric timestamp '{value}': {e}"
                 )
@@ -152,8 +164,9 @@ class StaleSensorValidator(ValidatorBase):
     def validate_all(self) -> bool:
         """Query Home Assistant for stale sensors.
 
-        Returns True under all conditions to ensure deployment is not blocked,
-        populating warnings/errors list with diagnostic details.
+        Returns True when no staleness or when fail_on_stale is off (default).
+        Returns False when fail_on_stale is True and stale sensors exist.
+        Populates warnings/errors/info with diagnostic details.
         """
         # Fast skip in CI/CD environments
         if os.getenv("CI") == "true":
@@ -172,9 +185,12 @@ class StaleSensorValidator(ValidatorBase):
             )
             return True
 
-        # Fetch states from HA API with a short 2-second timeout
+        # Fetch states from HA API with configurable timeout (env HA_STALE_TIMEOUT)
+        timeout_val, warn = get_env_int("HA_STALE_TIMEOUT", 2)
+        if warn:
+            self.info.append(warn)
         try:
-            client = HAClient(url, token, timeout=2)
+            client = HAClient(url, token, timeout=timeout_val)
             states = client.get_json("/api/states")
         except HARequestError as e:
             self.info.append(f"Skipped stale sensor validation: API unreachable - {e}")
@@ -259,6 +275,13 @@ class StaleSensorValidator(ValidatorBase):
                     f"{entity_id}: Stale state detected. Last update was "
                     f"{elapsed_hours:.1f} hours ago (limit: {self.threshold_hours}h)."
                 )
+
+        if self.fail_on_stale and self.warnings:
+            self.errors.append(
+                f"Stale sensor check failed: "
+                f"{len(self.warnings)} warning(s) detected (see warnings)"
+            )
+            return False
 
         return True
 

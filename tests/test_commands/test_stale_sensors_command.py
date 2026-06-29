@@ -81,6 +81,7 @@ class TestRun:
             only_domains={"sensor"},
             exclude_platforms={"template", "group"},
             ignore_restored=True,
+            fail_on_stale=False,
         )
         mock_val.validate_all.assert_called_once()
         mock_val.print_results.assert_called_once()

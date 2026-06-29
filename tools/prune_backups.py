@@ -28,7 +28,7 @@ def parse_backup_filename(filename):
     time_str = match.group(2)  # HHMMSS
 
     try:
-        return datetime.strptime(f"{date_str}_{time_str}", "%Y%m%d_%H%M%S")
+        return datetime.strptime(f"{date_str}_{time_str}", "%Y%m%d_%H%M%S").astimezone()
     except ValueError:
         return None
 
@@ -159,7 +159,7 @@ def main(argv=None):
 
     print(f"\nFound {len(backups)} backup(s)")
 
-    now = datetime.now()
+    now = datetime.now().astimezone()
     groups = group_by_retention_period(backups, now)
     to_keep, to_delete = apply_retention(groups)
 

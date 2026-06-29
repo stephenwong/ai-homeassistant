@@ -121,7 +121,7 @@ class ReferenceValidator(ValidatorBase):
         try:
             with open(restore_file, encoding="utf-8") as f:
                 payload = json.load(f)
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             self.warnings.append(f"Failed to load restore state: {e}")
             self._restore_entities = set()
             return self._restore_entities
@@ -436,7 +436,14 @@ class ReferenceValidator(ValidatorBase):
                         entity["entity_id"]: entity
                         for entity in data.get("data", {}).get("entities", [])
                     }
-            except Exception as e:
+            except (
+                OSError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+                AttributeError,
+            ) as e:
                 self.errors.append(f"Failed to load entity registry: {e}")
                 self._entities = {}
                 return {}
@@ -459,7 +466,14 @@ class ReferenceValidator(ValidatorBase):
                         device["id"]: device
                         for device in data.get("data", {}).get("devices", [])
                     }
-            except Exception as e:
+            except (
+                OSError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+                AttributeError,
+            ) as e:
                 self.errors.append(f"Failed to load device registry: {e}")
                 self._devices = {}
                 return {}
@@ -482,7 +496,14 @@ class ReferenceValidator(ValidatorBase):
                         area["id"]: area
                         for area in data.get("data", {}).get("areas", [])
                     }
-            except Exception as e:
+            except (
+                OSError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+                AttributeError,
+            ) as e:
                 self.warnings.append(f"Failed to load area registry: {e}")
                 self._areas = {}
                 return {}

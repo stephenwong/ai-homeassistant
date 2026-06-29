@@ -78,6 +78,7 @@ def run(args: argparse.Namespace) -> int:
         only_domains=only_domains,
         exclude_platforms=exclude_platforms,
         ignore_restored=args.ignore_restored,
+        fail_on_stale=args.fail_on_stale,
     )
 
     validator.validate_all()

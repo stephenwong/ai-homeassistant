@@ -10,11 +10,16 @@ from tools.reload_config import detect_changed_services, reload_config, reload_s
 
 
 def _diff_only(stdout):
-    """Return side_effect list: diff returns stdout, status returns empty."""
+    """Return side_effect list: diff stdout is NUL-delimited, status is empty."""
     return [
         MagicMock(returncode=0, stdout=stdout),
         MagicMock(returncode=0, stdout=""),
     ]
+
+
+def _nul(s: str) -> str:
+    """Replace \\n with \\0 for NUL-delimited mock output."""
+    return s.replace("\n", "\0")
 
 
 def _make_client():
@@ -28,44 +33,44 @@ def _make_client():
 class TestDetectChangedServices:
     def test_automations_yaml_returns_automation_reload(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = _diff_only("config/automations.yaml\n")
+            mock_run.side_effect = _diff_only(_nul("config/automations.yaml\n"))
             result = detect_changed_services()
         assert result == {"automation/reload"}
 
     def test_scripts_yaml_returns_script_reload(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = _diff_only("config/scripts.yaml\n")
+            mock_run.side_effect = _diff_only(_nul("config/scripts.yaml\n"))
             result = detect_changed_services()
         assert result == {"script/reload"}
 
     def test_scenes_yaml_returns_scene_reload(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = _diff_only("config/scenes.yaml\n")
+            mock_run.side_effect = _diff_only(_nul("config/scenes.yaml\n"))
             result = detect_changed_services()
         assert result == {"scene/reload"}
 
     def test_configuration_yaml_returns_reload_core_config(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = _diff_only("config/configuration.yaml\n")
+            mock_run.side_effect = _diff_only(_nul("config/configuration.yaml\n"))
             result = detect_changed_services()
         assert result == {"homeassistant/reload_core_config"}
 
     def test_unknown_yaml_returns_reload_core_config(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = _diff_only("config/secrets.yaml\n")
+            mock_run.side_effect = _diff_only(_nul("config/secrets.yaml\n"))
             result = detect_changed_services()
         assert result == {"homeassistant/reload_core_config"}
 
     def test_subdir_file_not_included(self):
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = _diff_only("config/blueprints/foo.yaml\n")
+            mock_run.side_effect = _diff_only(_nul("config/blueprints/foo.yaml\n"))
             result = detect_changed_services()
         assert result == set()
 
     def test_multiple_files_returns_multiple_services(self):
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = _diff_only(
-                "config/automations.yaml\nconfig/scripts.yaml\n"
+                _nul("config/automations.yaml\nconfig/scripts.yaml\n")
             )
             result = detect_changed_services()
         assert result == {"automation/reload", "script/reload"}
@@ -92,7 +97,7 @@ class TestDetectChangedServices:
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout=""),
-                MagicMock(returncode=0, stdout="?? config/automations.yaml\n"),
+                MagicMock(returncode=0, stdout="?? config/automations.yaml\0"),
             ]
             result = detect_changed_services()
         assert result == {"automation/reload"}
@@ -106,8 +111,20 @@ class TestDetectChangedServices:
     def test_timeout_on_status_returns_diff_result(self):
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = [
-                MagicMock(returncode=0, stdout="config/automations.yaml\n"),
+                MagicMock(returncode=0, stdout="config/automations.yaml\0"),
                 subprocess.TimeoutExpired(cmd="git", timeout=10),
+            ]
+            result = detect_changed_services()
+        assert result == {"automation/reload"}
+
+    def test_status_handles_rename(self):
+        """Rename status emits two NUL-delimited entries; old path is skipped."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                MagicMock(returncode=0, stdout=""),
+                MagicMock(
+                    returncode=0, stdout="R  config/automations.yaml\0config/old.yaml\0"
+                ),
             ]
             result = detect_changed_services()
         assert result == {"automation/reload"}
@@ -119,18 +136,18 @@ class TestReloadService:
     def test_success_returns_service_and_true(self):
         client = _make_client()
         client.call_service.return_value = True
-        assert reload_service(client, "automation/reload") == (
-            "automation/reload",
-            True,
-        )
+        svc, ok, err = reload_service(client, "automation/reload")
+        assert svc == "automation/reload"
+        assert ok is True
+        assert err is None
 
     def test_failure_returns_service_and_false(self):
         client = _make_client()
         client.call_service.return_value = False
-        assert reload_service(client, "automation/reload") == (
-            "automation/reload",
-            False,
-        )
+        svc, ok, err = reload_service(client, "automation/reload")
+        assert svc == "automation/reload"
+        assert ok is False
+        assert err is None
 
     def test_call_service_invoked_with_domain_and_action(self):
         client = _make_client()
@@ -144,16 +161,16 @@ class TestReloadService:
             "homeassistant", "reload_core_config"
         )
 
-    def test_request_error_returns_service_and_false(self):
-        """Network errors (HARequestError) should be caught, not propagated."""
+    def test_request_error_returns_service_and_false_with_detail(self):
+        """Network errors (HARequestError) propagate error detail in 3rd element."""
         client = _make_client()
         client.call_service.side_effect = HARequestError(
             "POST /api/services/automation/reload failed: timeout"
         )
-        assert reload_service(client, "automation/reload") == (
-            "automation/reload",
-            False,
-        )
+        svc, ok, err = reload_service(client, "automation/reload")
+        assert svc == "automation/reload"
+        assert ok is False
+        assert err is not None and "timeout" in err
 
 
 class TestReloadConfig:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -93,15 +94,15 @@ def save_blob(config_dir: Path, name: str, data) -> None:
     """Save arbitrary JSON-serializable data to the entity cache.
 
     Writes to ``{config_dir}/{BLOB_CACHE_DIR}/{name}.json``.  Creates
-    the cache directory if needed.  Failures are silently ignored.
+    the cache directory if needed.  Writes a warning to stderr on failure.
     """
     path = config_dir / BLOB_CACHE_DIR / f"{name}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f)
-    except OSError:
-        pass
+    except OSError as e:
+        print(f"WARN: failed to write cache {path}: {e}", file=sys.stderr)
 
 
 def load_blob(config_dir: Path, name: str):
@@ -124,7 +125,7 @@ def save_cache(
     passed: bool,
     duration: float,
 ) -> None:
-    """Save a validator result to the cache."""
+    """Save a validator result to the cache.  Writes warning to stderr on failure."""
     data = {
         "validator": validator_name,
         "hash": file_hash,
@@ -136,5 +137,5 @@ def save_cache(
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f)
-    except OSError:
-        pass
+    except OSError as e:
+        print(f"WARN: failed to write cache {path}: {e}", file=sys.stderr)

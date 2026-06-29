@@ -6,6 +6,7 @@ accurate results.
 """
 
 import argparse
+import re
 import subprocess
 import sys
 
@@ -139,14 +140,14 @@ class HAOfficialValidator(ValidatorBase):
                     or "Configuration check successful!" in line
                 ):
                     self.info.append(f"HA Check: {line}")
-                elif "errors" in line.lower() and "found" in line.lower():
-                    if "0 errors" in line.lower():
+                elif m := re.search(r"(\d+)\s+errors?\s+found", line, re.I):
+                    if m.group(1) == "0":
                         self.info.append(f"HA Check: {line}")
                     else:
                         self.errors.append(f"HA Check: {line}")
-                elif "ERROR" in line or "Error" in line:
+                elif re.match(r"^\W*(ERROR|Error)\b", line):
                     self.errors.append(f"HA Check: {line}")
-                elif "WARNING" in line or "Warning" in line:
+                elif re.match(r"^\W*(WARNING|Warning)\b", line):
                     self.warnings.append(f"HA Check: {line}")
                 else:
                     # Include other informational lines

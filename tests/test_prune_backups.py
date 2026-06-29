@@ -13,6 +13,11 @@ from tools.prune_backups import (
 
 
 class TestParseBackupFilename:
+    def test_parsed_timestamp_is_timezone_aware(self):
+        result = parse_backup_filename("ha_config_20260205_204808.tar.gz")
+        assert result is not None
+        assert result.tzinfo is not None
+
     def test_valid_filename(self):
         result = parse_backup_filename("ha_config_20260205_204808.tar.gz")
         assert result is not None

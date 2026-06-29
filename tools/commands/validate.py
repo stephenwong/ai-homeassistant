@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import contextlib
+import json
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -97,7 +98,7 @@ def _run_one(
                     duration=cached.get("duration", 0.0),
                     cached=True,
                 )
-        except Exception:
+        except OSError, json.JSONDecodeError, ValueError:
             pass  # cache failures are non-fatal; fall through to real run
 
     # --- cache miss or forced — actually run the validator ---

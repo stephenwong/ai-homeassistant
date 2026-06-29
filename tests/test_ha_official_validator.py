@@ -140,6 +140,17 @@ class TestParseCheckConfigOutput:
         validator.parse_check_config_output("Some informational line\n", "")
         assert any("informational" in i for i in validator.info)
 
+    def test_error_substring_in_middle_not_flagged(self, validator):
+        """Mid-line 'error' substring no longer triggers error classification."""
+        validator.parse_check_config_output("Found no errors in the config\n", "")
+        assert len(validator.errors) == 0
+
+    def test_no_errors_found_not_flagged(self, validator):
+        """'0 errors found' goes to info, not errors."""
+        validator.parse_check_config_output("0 errors found at all\n", "")
+        assert len(validator.errors) == 0
+        assert any("0 errors" in i for i in validator.info)
+
 
 class TestRunHACheckConfig:
     def test_successful_check(self, validator):

@@ -1,6 +1,7 @@
 """Tests for tools/cache.py — validator result caching."""
 
 import json
+from unittest.mock import patch
 
 from tools.cache import (
     _blob_hash,
@@ -153,6 +154,24 @@ class TestSaveCache:
         data = json.loads(cache_file.read_text())
         assert data["validator"] == "New"
         assert data["hash"] == "new"
+
+
+class TestSaveBlobErrors:
+    def test_save_blob_warns_on_oserror(self, tmp_path, capsys):
+        """save_blob prints WARN to stderr when file write fails."""
+        with patch("builtins.open", side_effect=OSError("permission denied")):
+            save_blob(tmp_path, "testkey", {"output": "data"})
+        _, err = capsys.readouterr()
+        assert "WARN" in err
+        assert "testkey" in err
+
+    def test_save_cache_warns_on_oserror(self, tmp_path, capsys):
+        """save_cache prints WARN to stderr when file write fails."""
+        with patch("builtins.open", side_effect=OSError("disk full")):
+            save_cache(tmp_path, "Foo", "Test", "hash", True, 0.5)
+        _, err = capsys.readouterr()
+        assert "WARN" in err
+        assert "Foo" in err
 
 
 class TestBlobCache:

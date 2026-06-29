@@ -44,7 +44,7 @@ def detect_changed_services(
 
     try:
         r = subprocess.run(
-            ["git", "diff", "HEAD", "--name-only", "--", config_dir],
+            ["git", "diff", "HEAD", "--name-only", "-z", "--", config_dir],
             cwd=repo_root,
             capture_output=True,
             text=True,
@@ -52,29 +52,45 @@ def detect_changed_services(
         )
         if r.returncode != 0:
             return None
-        for line in r.stdout.splitlines():
-            if line.strip():
-                p = Path(line.strip())
+        for p_str in r.stdout.split("\0"):
+            p_str = p_str.strip()
+            if p_str:
+                p = Path(p_str)
                 if len(p.parts) == 2 and p.parts[0] == config_dir:
                     changed_files.add(p.name)
     except FileNotFoundError, OSError, subprocess.TimeoutExpired:
         return None
 
     # Also check git status for untracked files not shown by git diff HEAD
+    # Using -z (NUL-delimited) for robust path handling (spaces, special chars)
     try:
         r2 = subprocess.run(
-            ["git", "status", "--short", "--", config_dir],
+            ["git", "status", "-z", "--", config_dir],
             cwd=repo_root,
             capture_output=True,
             text=True,
             timeout=git_timeout,
         )
         if r2.returncode == 0:
-            for line in r2.stdout.splitlines():
-                if len(line) > 3:
-                    p = Path(line[3:].strip())
+            tokens = r2.stdout.split("\0")
+            i = 0
+            while i < len(tokens):
+                token = tokens[i].strip()
+                if not token:
+                    i += 1
+                    continue
+                # Status entries have format "XY path" (min 4 chars: XY + space + path)
+                if len(token) > 3 and token[2] == " ":
+                    status = token[:2]
+                    path = token[3:].strip()
+                    p = Path(path)
                     if len(p.parts) == 2 and p.parts[0] == config_dir:
                         changed_files.add(p.name)
+                    # Renames/copies: format "R  NEW\0OLD\0" — skip the next (old) token
+                    if status[0] in ("R", "C"):
+                        i += 2
+                        continue
+                i += 1
     except FileNotFoundError, OSError, subprocess.TimeoutExpired:
         pass
 
@@ -85,8 +101,8 @@ def detect_changed_services(
     return services
 
 
-def reload_service(client: HAClient, service: str) -> tuple[str, bool]:
-    """Call a single HA reload service. Returns (service, success).
+def reload_service(client: HAClient, service: str) -> tuple[str, bool, str | None]:
+    """Call a single HA reload service. Returns (service, success, error_detail).
 
     Uses the shared HAClient so auth/timeout/JSON handling is consistent
     with the rest of the codebase. Network errors are caught so one failing
@@ -95,9 +111,10 @@ def reload_service(client: HAClient, service: str) -> tuple[str, bool]:
     domain, _, action = service.partition("/")
     try:
         ok = client.call_service(domain, action)
-    except HARequestError:
+    except HARequestError as e:
         ok = False
-    return (service, ok)
+        return (service, ok, str(e))
+    return (service, ok, None)
 
 
 def reload_config(summary: bool = False) -> bool:
@@ -156,27 +173,28 @@ def reload_config(summary: bool = False) -> bool:
             )
 
     all_ok = True
-    for service, ok in results:
+    for service, ok, error in results:
         label = SERVICE_LABELS.get(service, service)
         if ok:
             if not summary:
                 print(f"  \u2705 {label} reloaded")
         else:
+            suffix = f" ({error[:80]})" if error else ""
             if not summary:
-                print(f"  \u274c {label} failed to reload")
+                print(f"  \u274c {label} failed to reload{suffix}")
             all_ok = False
 
     elapsed = time.time() - start
 
     if summary:
         total = len(results)
-        passed = sum(1 for _, ok in results if ok)
+        passed = sum(1 for _, ok, _ in results if ok)
         if all_ok:
-            labels = ", ".join(sorted(SERVICE_LABELS.get(s, s) for s, _ in results))
+            labels = ", ".join(sorted(SERVICE_LABELS.get(s, s) for s, _, _ in results))
             print(f"RELOADED {passed}/{total} ({labels}) {elapsed:.1f}s")
         else:
             failed_labels = ", ".join(
-                sorted(SERVICE_LABELS.get(s, s) for s, ok in results if not ok)
+                sorted(SERVICE_LABELS.get(s, s) for s, ok, _ in results if not ok)
             )
             print(f"FAILED {passed}/{total} ({failed_labels} FAILED) {elapsed:.1f}s")
     else:

@@ -21,12 +21,16 @@ def patch_load_env():
 @pytest.fixture(autouse=True)
 def setup_env():
     """Set up default environment variables for testing."""
+    # Ensure staleness-related env vars are isolated from the real environment
     env = {
         "HA_URL": "http://localhost:8123",
         "HA_TOKEN": "mock_token",
     }
     if "CI" in os.environ:
         env["CI"] = "false"
+    for key in ("HA_STALE_FAIL", "HA_STALE_TIMEOUT"):
+        if key in os.environ:
+            env[key] = "false"
     with patch.dict("os.environ", env):
         yield
 
@@ -435,6 +439,115 @@ def test_retry_on_registry_read_failure(config_dir):
         assert any("sensor.test_temp" in w for w in v.warnings)
         assert call_count == 2
         mock_sleep.assert_called_once_with(0.1)
+
+
+def test_ha_stale_timeout_env_overrides_default(config_dir):
+    """HA_STALE_TIMEOUT env var overrides the default 2-second timeout."""
+    with patch("tools.validators.stale_sensors.HAClient") as mock_class:
+        inst = MagicMock()
+        inst.get_json.return_value = []
+        mock_class.return_value = inst
+        with patch.dict("os.environ", {"HA_STALE_TIMEOUT": "9"}):
+            v = StaleSensorValidator(str(config_dir))
+            v.validate_all()
+            mock_class.assert_called_once()
+            assert mock_class.call_args.kwargs["timeout"] == 9
+
+
+def test_fail_on_stale_mode_returns_false_when_stale(config_dir):
+    """fail_on_stale=True + stale sensors → validate_all returns False."""
+    _write_entity_registry(
+        config_dir,
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "platform": "zha",
+                "disabled_by": None,
+                "hidden_by": None,
+            }
+        ],
+    )
+    mock_client = _mock_states(
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "state": "21.5",
+                "last_updated": "2026-06-24T20:00:00+00:00",
+                "attributes": {},
+            }
+        ]
+    )
+    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
+        v = StaleSensorValidator(str(config_dir), fail_on_stale=True)
+        v._get_current_time = MagicMock(
+            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
+        )
+        assert v.validate_all() is False
+        assert any("failed" in e.lower() for e in v.errors)
+
+
+def test_fail_on_stale_off_keeps_diagnostic(config_dir):
+    """fail_on_stale=False (default) returns True even when stale."""
+    _write_entity_registry(
+        config_dir,
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "platform": "zha",
+                "disabled_by": None,
+                "hidden_by": None,
+            }
+        ],
+    )
+    mock_client = _mock_states(
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "state": "21.5",
+                "last_updated": "2026-06-24T20:00:00+00:00",
+                "attributes": {},
+            }
+        ]
+    )
+    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
+        v = StaleSensorValidator(str(config_dir), fail_on_stale=False)
+        v._get_current_time = MagicMock(
+            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
+        )
+        assert v.validate_all() is True
+        assert any("sensor.test_temp" in w for w in v.warnings)
+
+
+def test_fail_on_stale_no_stale_returns_true(config_dir):
+    """fail_on_stale=True with no stale sensors returns True."""
+    _write_entity_registry(
+        config_dir,
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "platform": "zha",
+                "disabled_by": None,
+                "hidden_by": None,
+            }
+        ],
+    )
+    mock_client = _mock_states(
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "state": "21.5",
+                "last_updated": "2026-06-25T20:00:00+00:00",
+                "attributes": {},
+            }
+        ]
+    )
+    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
+        v = StaleSensorValidator(str(config_dir), fail_on_stale=True)
+        v._get_current_time = MagicMock(
+            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
+        )
+        assert v.validate_all() is True
+        assert len(v.warnings) == 0
 
 
 def test_naive_datetime_handling():

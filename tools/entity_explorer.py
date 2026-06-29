@@ -27,7 +27,7 @@ def load_entity_registry(config_path: Path) -> dict | None:
     try:
         with open(registry_path, encoding="utf-8") as f:
             return json.load(f)
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         print(f"Error reading entity registry: {e}")
         return None
 
@@ -43,7 +43,7 @@ def load_area_registry(config_path: Path) -> dict[str, str]:
                 area_data = json.load(f)
                 for area in area_data.get("data", {}).get("areas", []):
                     area_names[area["id"]] = area["name"]
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, KeyError, AttributeError) as e:
             print(f"Warning: Could not load area names: {e}")
 
     return area_names
