@@ -22,9 +22,8 @@ This repository manages Home Assistant configuration files with automated valida
 - `tools/commands/` — Subcommands: validate, reload, entities, curl, edit
 - `tools/ha/client.py` — `HAClient` (importable REST API client)
 - `tools/ha/yaml_editor.py` — `YAMLEditor` (importable round-trip YAML)
-- `tools/validators/` — Validator implementations
-- `tools/cache.py`, `tools/common.py` — Caching, shared utilities
-- `tools/*_validator.py` etc. — **Backward-compat shims** (delegate to new package; prefer `ha_cli`)
+- `tools/validators/` — Validators: `base.py`, `duplicate_ids.py`, `entity_definitions.py`, `ha_official.py`, `references.py`, `services.py`, `stale_sensors.py`, `templates.py`, `yaml.py`
+- `tools/cache.py`, `tools/common.py` — Caching; shared utilities (`common.py` re-exports from `validators/base.py`)
 - `tools/_dev/api_diagnostic.py` — Dev-only (archived, excluded from lint/wheel)
 - `tests/conftest.py` — Shared fixtures (`config_dir`, `_stub_load_env_file`)
 
@@ -114,6 +113,8 @@ from tools.validators.templates import TemplateValidator
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.yaml import YAMLValidator
 from tools.validators.duplicate_ids import DuplicateIDValidator
+from tools.validators.base import ValidatorBase, HAYamlLoader
+from tools.validators.entity_definitions import EntityDefinitionExtractor
 ```
 
 ### MCP Server (ha-mcp)
@@ -138,7 +139,7 @@ from tools.validators.duplicate_ids import DuplicateIDValidator
 ### Python Tooling Patterns
 
 - **`contextlib.redirect_stdout` is NOT thread-safe** — mutates `sys.stdout` globally. For parallel validators, read `instance.errors`/`warnings`/`info` lists directly.
-- **Backward-compat shims + `__all__`:** `from X import *` re-exports break if `__all__` added. Pair with `test_shim_compatibility.py`.
+- **Removed backward-compat shims:** legacy `tools/*_validator.py` paths no longer exist. `test_shims_missing.py` asserts each raises `ImportError` — keep it updated when retiring compat layers.
 - **`load_env_file()` in tests:** Overrides monkeypatched env vars. Patch `tools.ha.client.load_env_file` (and `tools.validators.stale_sensors.load_env_file` if testing stale sensors) to a no-op. The autouse `_stub_load_env_file` fixture in `tests/conftest.py` covers both.
 - **`main()` returns `int`:** Validator/command `main()` returns 0 (pass) or 1 (fail). `__main__` blocks use `raise SystemExit(main())`.
 - **Stream separation:** Results/summaries → stdout; diagnostics/errors/warnings/verbose → stderr. Tests assert `captured.out` vs `captured.err`.

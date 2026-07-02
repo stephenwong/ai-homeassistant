@@ -52,7 +52,7 @@ flowchart LR
 > **1. Pull** — `make pull` syncs config from HA via rsync, triggers validation for integrity.  
 > **2. Backup** — `make backup` creates a timestamped tarball + changelog before making changes.  
 > **3. Edit** — Modify config files locally. `ha_cli edit` preserves YAML formatting. MCP tools provide live entity lookups.  
-> **4. Validate** — `make validate` runs 6 validators: YAML syntax, entity/device/area references, duplicate automation IDs, service references, Jinja2 template linting, and official HA `check_config`.  
+> **4. Validate** — `make validate` runs 7 validators: YAML syntax, entity/device/area references, duplicate automation IDs, service references, Jinja2 template linting, stale sensor detection, and official HA `check_config`.  
 > **5. Push** — `make push` validates then rsyncs to HA, blocking broken configs from reaching the server. HA reloads the new configuration automatically.
 
 ### 🔍 Debugging
@@ -216,12 +216,11 @@ make push  # Validates then uploads to HA
 │   ├── ha/                      # Shared modules
 │   │   ├── client.py            # HAClient — REST API client
 │   │   └── yaml_editor.py       # YAMLEditor — round-trip YAML editing
-│   ├── validators/              # Validators (yaml, references, duplicate_ids, services, templates, ha_official, stale_sensors)
-│   ├── *_validator.py           # Backward-compat shims (one per validator)
+│   ├── validators/              # Validators (base.py, duplicate_ids.py, entity_definitions.py, ha_official.py, ...)
 │   ├── reload_config.py         # HA config reload via API
 │   ├── entity_explorer.py       # Entity discovery/search
 │   ├── cache.py                 # SHA256 file-hash caching
-│   ├── common.py                # Shared utilities
+│   ├── common.py                # Shared utilities (re-exports from validators/)
 │   ├── generate_changelog.py    # Backup changelog generation
 │   ├── search_backups.py        # Full-text search across backups
 │   └── prune_backups.py         # Smart backup retention pruning
@@ -335,7 +334,7 @@ editor.add_automation({"alias": "...", "trigger": [...], "action": [...]})
 
 ## 🛡️ Validation System
 
-Six layers run on every `make validate` (and before every `make push`):
+Seven layers run on every `make validate` (and before every `make push`):
 
 ### 📝 1. YAML Syntax
 Validates YAML syntax with HA-specific tags (`!include`, `!secret`, `!input`), file encoding, and basic HA file structures.
@@ -352,7 +351,10 @@ Checks every `service:`/`action:` target in automations and scripts. Malformed s
 ### 🧪 5. Jinja2 Template Linting
 Renders every template string (`{{ }}` / `{% %}`) against HA's `/api/template` endpoint. Syntax errors and unknown filters fail; runtime-context variables yield warnings. Degrades to brace-balance check when offline.
 
-### 🏛️ 6. Official HA Validation
+### ⏳ 6. Stale Sensor Validation
+Queries the Home Assistant API for sensors stuck in stale states — common with battery-powered Zigbee devices that drop offline while reporting their last-known value. Detects staleness by comparing `last_updated`/`last_changed` timestamps against the current time with a configurable threshold. Default (`HA_STALE_FAIL=0`): passes with warnings. Set `HA_STALE_FAIL=1` or pass `--force` to fail on stale sensors. Automatically skipped in CI.
+
+### 🏛️ 7. Official HA Validation
 Uses Home Assistant's own `check_config`. **"Successful config (partial)"** is the normal local result — some integration packages can't install locally due to version pin differences, but this is expected and doesn't indicate a real config problem.
 
 ### ⚡ Validator Caching
