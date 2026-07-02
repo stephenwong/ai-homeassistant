@@ -939,3 +939,242 @@ class TestReferenceValidatorMain:
 
         monkeypatch.setattr("sys.argv", ["reference_validator", "/nonexistent"])
         assert main() == 1
+
+
+class TestCoverageExtras:
+    """Coverage Phase 0: remaining uncovered branches in references.py."""
+
+    def test_file_deps(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        deps = v.file_deps()
+        assert isinstance(deps, list)
+        assert "*.yaml" in deps
+
+    def test_load_restore_state_cache(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        r1 = v.load_restore_state_entities()
+        r2 = v.load_restore_state_entities()
+        assert r1 is r2
+
+    def test_load_restore_state_bad_json(self, setup_config):
+        restore_file = setup_config / ".storage" / "core.restore_state"
+        restore_file.write_text("not json")
+        v = ReferenceValidator(str(setup_config))
+        result = v.load_restore_state_entities()
+        assert result == set()
+        assert any("Failed to load restore state" in w for w in v.warnings)
+
+    def test_load_restore_state_various_entries(self, tmp_path):
+        storage = tmp_path / ".storage"
+        storage.mkdir()
+        data = {
+            "data": [
+                "not_a_dict",
+                {"state": "not_a_dict"},
+                {"state": {"entity_id": 123}},
+                {"state": {"entity_id": "no_dot"}},
+                {"state": {"entity_id": "sensor.restored"}},
+            ]
+        }
+        (storage / "core.restore_state").write_text(json.dumps(data))
+        v = ReferenceValidator(str(tmp_path))
+        result = v.load_restore_state_entities()
+        assert result == {"sensor.restored"}
+
+    def test_get_config_defined_entities_cache(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        r1 = v.get_config_defined_entities()
+        r2 = v.get_config_defined_entities()
+        assert r1 is r2
+
+    def test_extract_all_config_features(self, setup_config):
+        config_yaml = setup_config / "configuration.yaml"
+        config_yaml.write_text(
+            "group:\n"
+            "  my_group:\n"
+            "    entities: []\n"
+            "input_boolean:\n"
+            "  test_switch:\n"
+            "    name: Test\n"
+            "input_number:\n"
+            "  test_slider:\n"
+            "    initial: 5\n"
+            "input_text:\n"
+            "  test_text:\n"
+            "    initial: ''\n"
+            "input_select:\n"
+            "  test_select:\n"
+            "    options: [a]\n"
+            "input_datetime:\n"
+            "  test_date:\n"
+            "input_button:\n"
+            "  test_button:\n"
+            "template:\n"
+            "  - sensor:\n"
+            "      - name: Template One\n"
+            "        state: 'on'\n"
+            "  - sensor:\n"
+            "      - name: Template Two\n"
+            "        state: 'off'\n"
+            "sensor:\n"
+            "  - platform: template\n"
+            "    sensors:\n"
+            "      custom_temp:\n"
+            "        value_template: '{{ 42 }}'\n"
+            "binary_sensor:\n"
+            "  - platform: template\n"
+            "    sensors:\n"
+            "      custom_motion:\n"
+            "        value_template: '{{ 1 }}'\n"
+        )
+        v = ReferenceValidator(str(setup_config))
+        entities = v.get_config_defined_entities()
+        assert "group.my_group" in entities
+        assert "input_boolean.test_switch" in entities
+        assert "input_number.test_slider" in entities
+        assert "input_text.test_text" in entities
+        assert "input_select.test_select" in entities
+        assert "input_datetime.test_date" in entities
+        assert "input_button.test_button" in entities
+        assert "sensor.template_one" in entities
+        assert "sensor.template_two" in entities
+        assert "sensor.custom_temp" in entities
+        assert "binary_sensor.custom_motion" in entities
+
+    def test_extract_template_entities_non_dict(self, setup_config):
+        config_yaml = setup_config / "configuration.yaml"
+        config_yaml.write_text("template:\n  - not_a_dict\n")
+        v = ReferenceValidator(str(setup_config))
+        entities = v.get_config_defined_entities()
+        assert isinstance(entities, set)
+
+    def test_extract_template_entities_default_entity_id(self, setup_config):
+        config_yaml = setup_config / "configuration.yaml"
+        config_yaml.write_text(
+            "template:\n"
+            "  - sensor:\n"
+            "      - name: Named Only\n"
+            "        state: 'on'\n"
+            "      - default_entity_id: custom_sensor\n"
+            "        state: 'off'\n"
+            "      - default_entity_id: sensor.prefixed\n"
+            "        state: 'off'\n"
+            "  - binary_sensor:\n"
+            "      - default_entity_id: custom_binary\n"
+            "        state: 'on'\n"
+        )
+        v = ReferenceValidator(str(setup_config))
+        entities = v.get_config_defined_entities()
+        assert "sensor.named_only" in entities
+        assert "sensor.custom_sensor" in entities
+        assert "sensor.prefixed" in entities
+        assert "binary_sensor.custom_binary" in entities
+
+    def test_automation_id_fallback(self, setup_config):
+        (setup_config / "automations.yaml").write_text(
+            "- id: backup_lights\n"
+            "  trigger:\n    platform: time\n"
+            "  action:\n    service: test\n"
+        )
+        v = ReferenceValidator(str(setup_config))
+        entities = v.get_config_defined_entities()
+        assert "automation.backup_lights" in entities
+
+    def test_script_invalid_object_id_skipped(self, setup_config):
+        (setup_config / "scripts.yaml").write_text(
+            "UPPERCASE_SCRIPT:\n  sequence: []\nvalid_script:\n  sequence: []\n"
+        )
+        v = ReferenceValidator(str(setup_config))
+        entities = v.get_config_defined_entities()
+        assert "script.UPPERCASE_SCRIPT" not in entities
+        assert "script.valid_script" in entities
+
+    def test_scene_slugify(self, setup_config):
+        (setup_config / "scenes.yaml").write_text(
+            "- name: Evening Mode!!\n  entities: {}\n"
+        )
+        v = ReferenceValidator(str(setup_config))
+        entities = v.get_config_defined_entities()
+        assert "scene.evening_mode" in entities
+
+    def test_zone_storage_json(self, tmp_path):
+        storage = tmp_path / ".storage"
+        storage.mkdir()
+        (storage / "core.entity_registry").write_text('{"data":{"entities":[]}}')
+        (storage / "core.device_registry").write_text('{"data":{"devices":[]}}')
+        (storage / "core.area_registry").write_text('{"data":{"areas":[]}}')
+        zone_data = {"data": {"items": [{"name": "Back Yard"}, {"name": ""}]}}
+        (storage / "core.zone").write_text(json.dumps(zone_data))
+        v = ReferenceValidator(str(tmp_path))
+        entities = v.get_config_defined_entities()
+        assert "zone.back_yard" in entities
+        assert "zone." not in [e for e in entities if e == "zone."]
+
+    def test_validate_uuid_registry_id_known(self, setup_config):
+        """UUID referencing a known registry entity_id passes validation."""
+        test_file = setup_config / "test.yaml"
+        test_file.write_text("entity_id: aabbccddeeff00112233445566778899\n")
+        v = ReferenceValidator(str(setup_config))
+        assert v.validate_file_references(test_file) is True
+
+    def test_validate_restore_state_diagnostic(self, setup_config):
+        restore_file = setup_config / ".storage" / "core.restore_state"
+        restore_file.write_text(
+            json.dumps({"data": [{"state": {"entity_id": "sensor.old_relic"}}]})
+        )
+        test_file = setup_config / "test.yaml"
+        test_file.write_text("entity_id: sensor.old_relic\n")
+        v = ReferenceValidator(str(setup_config))
+        assert v.validate_file_references(test_file) is False
+        assert any("found in restore state" in w for w in v.warnings)
+        assert any("Unknown entity" in e for e in v.errors)
+
+    def test_validate_disabled_entity_behind_registry_id(self, setup_config):
+        test_file = setup_config / "test.yaml"
+        test_file.write_text("entity_id: ffeeddccbbaa99887766554433221100\n")
+        v = ReferenceValidator(str(setup_config))
+        assert v.validate_file_references(test_file) is True
+        assert any("disabled entity" in w for w in v.warnings)
+
+    def test_validate_unknown_area_warning(self, tmp_path):
+        storage = tmp_path / ".storage"
+        storage.mkdir()
+        (storage / "core.entity_registry").write_text('{"data":{"entities":[]}}')
+        (storage / "core.device_registry").write_text('{"data":{"devices":[]}}')
+        (storage / "core.area_registry").write_text('{"data":{"areas":[]}}')
+        test_file = tmp_path / "test.yaml"
+        test_file.write_text("area_id: missing_area\n")
+        v = ReferenceValidator(str(tmp_path))
+        assert v.validate_file_references(test_file) is True
+        assert any("Unknown area" in w for w in v.warnings)
+
+    def test_validate_disabled_entity_warning(self, setup_config):
+        """Entity in registry but disabled_by is not None."""
+        test_file = setup_config / "test.yaml"
+        test_file.write_text("entity_id: sensor.disabled_temp\n")
+        v = ReferenceValidator(str(setup_config))
+        assert v.validate_file_references(test_file) is True
+        assert any("disabled entity" in w for w in v.warnings)
+
+    def test_print_results_quiet(self, setup_config, capsys):
+        v = ReferenceValidator(str(setup_config), quiet=True)
+        v.print_results()
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_print_results_summary_errors_only(self, setup_config, capsys):
+        v = ReferenceValidator(str(setup_config), summary=True)
+        v.errors.append("Error one")
+        v.print_results()
+        captured = capsys.readouterr()
+        assert "FAIL" in captured.out
+        assert "Error one" in captured.err
+
+    def test_print_results_summary_warnings_only(self, setup_config, capsys):
+        v = ReferenceValidator(str(setup_config), summary=True)
+        v.warnings.append("Notify only")
+        v.print_results()
+        captured = capsys.readouterr()
+        assert "PASS" in captured.out
+        assert "with warnings" in captured.out
+        assert "Notify only" in captured.err

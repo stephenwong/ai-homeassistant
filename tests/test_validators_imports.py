@@ -156,3 +156,9 @@ class TestFileDeps:
             assert isinstance(deps, list)
             for d in deps:
                 assert isinstance(d, str)
+
+
+def test_entity_definitions_imports():
+    from tools.validators.entity_definitions import EntityDefinitionExtractor
+
+    assert {"sun.sun", "zone.home"} == EntityDefinitionExtractor.BUILTIN_ENTITIES
