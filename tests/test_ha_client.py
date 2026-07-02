@@ -125,100 +125,48 @@ def test_request_error_wording():
         client.get("/api/x")
 
 
-class TestGet:
-    def test_get_returns_response(self):
-        session = MagicMock()
-        session.get.return_value = MagicMock(status_code=200)
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        r = c.get("/api/")
-        assert r.status_code == 200
-        session.get.assert_called_once()
-        args, kwargs = session.get.call_args
-        assert args[0] == "http://ha.local:8123/api/"
-        assert kwargs["headers"]["Authorization"] == "Bearer tok"
-        assert kwargs["timeout"] == 10
-
-    def test_get_raises_on_request_exception(self):
-        session = MagicMock()
-        session.get.side_effect = requests.ConnectionError("boom")
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        with pytest.raises(HARequestError, match="GET /api/ failed: boom"):
-            c.get("/api/")
-
-
-class TestPost:
-    def test_post_returns_response(self):
-        session = MagicMock()
-        session.post.return_value = MagicMock(status_code=200)
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        r = c.post("/api/services/light/turn_on", json={"entity_id": "light.kitchen"})
-        assert r.status_code == 200
-        args, kwargs = session.post.call_args
-        assert args[0] == "http://ha.local:8123/api/services/light/turn_on"
-        assert kwargs["json"] == {"entity_id": "light.kitchen"}
-
-    def test_post_raises_on_request_exception(self):
-        session = MagicMock()
-        session.post.side_effect = requests.Timeout("slow")
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        with pytest.raises(HARequestError, match="POST .* failed: slow"):
-            c.post("/api/services/light/turn_on")
+@pytest.mark.parametrize(
+    ("verb", "url", "json_body"),
+    [
+        ("get", "/api/", None),
+        ("post", "/api/services/light/turn_on", {"entity_id": "light.kitchen"}),
+        ("put", "/api/config", {"key": "val"}),
+        ("delete", "/api/config/section", None),
+        ("patch", "/api/config", {"key": "val"}),
+    ],
+)
+def test_verb_returns_response(verb, url, json_body):
+    session = MagicMock()
+    response_mock = MagicMock(status_code=200)
+    setattr(session, verb, MagicMock(return_value=response_mock))
+    c = HAClient("http://ha.local:8123", "tok", session=session)
+    kwargs = {"json": json_body} if json_body is not None else {}
+    r = getattr(c, verb)(url, **kwargs)
+    assert r.status_code == 200
+    args, kwargs = getattr(session, verb).call_args
+    assert args[0] == f"http://ha.local:8123{url}"
+    assert kwargs["headers"]["Authorization"] == "Bearer tok"
+    assert kwargs["timeout"] == 10
+    if json_body is not None:
+        assert kwargs["json"] == json_body
 
 
-class TestPut:
-    def test_put_returns_response(self):
-        session = MagicMock()
-        session.put.return_value = MagicMock(status_code=200)
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        r = c.put("/api/config", json={"key": "val"})
-        assert r.status_code == 200
-        args, kwargs = session.put.call_args
-        assert args[0] == "http://ha.local:8123/api/config"
-        assert kwargs["json"] == {"key": "val"}
-
-    def test_put_raises_on_request_exception(self):
-        session = MagicMock()
-        session.put.side_effect = requests.ConnectionError("boom")
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        with pytest.raises(HARequestError, match="PUT .* failed: boom"):
-            c.put("/api/config")
-
-
-class TestDelete:
-    def test_delete_returns_response(self):
-        session = MagicMock()
-        session.delete.return_value = MagicMock(status_code=200)
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        r = c.delete("/api/config/section")
-        assert r.status_code == 200
-        args, kwargs = session.delete.call_args
-        assert args[0] == "http://ha.local:8123/api/config/section"
-
-    def test_delete_raises_on_request_exception(self):
-        session = MagicMock()
-        session.delete.side_effect = requests.Timeout("slow")
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        with pytest.raises(HARequestError, match="DELETE .* failed: slow"):
-            c.delete("/api/config/section")
-
-
-class TestPatch:
-    def test_patch_returns_response(self):
-        session = MagicMock()
-        session.patch.return_value = MagicMock(status_code=200)
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        r = c.patch("/api/config", json={"key": "val"})
-        assert r.status_code == 200
-        args, kwargs = session.patch.call_args
-        assert args[0] == "http://ha.local:8123/api/config"
-        assert kwargs["json"] == {"key": "val"}
-
-    def test_patch_raises_on_request_exception(self):
-        session = MagicMock()
-        session.patch.side_effect = requests.ConnectionError("boom")
-        c = HAClient("http://ha.local:8123", "tok", session=session)
-        with pytest.raises(HARequestError, match="PATCH .* failed: boom"):
-            c.patch("/api/config")
+@pytest.mark.parametrize(
+    ("verb", "url", "exception"),
+    [
+        ("get", "/api/", requests.ConnectionError("boom")),
+        ("post", "/api/services/light/turn_on", requests.Timeout("slow")),
+        ("put", "/api/config", requests.ConnectionError("boom")),
+        ("delete", "/api/config/section", requests.Timeout("slow")),
+        ("patch", "/api/config", requests.ConnectionError("boom")),
+    ],
+)
+def test_verb_raises_on_request_exception(verb, url, exception):
+    session = MagicMock()
+    setattr(session, verb, MagicMock(side_effect=exception))
+    c = HAClient("http://ha.local:8123", "tok", session=session)
+    with pytest.raises(HARequestError, match=f"{verb.upper()} .* failed"):
+        getattr(c, verb)(url)
 
 
 class TestGetJson:

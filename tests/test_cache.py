@@ -35,14 +35,14 @@ class TestComputeHash:
         assert hash1 == hash2
 
     def test_empty_patterns_produces_consistent_hash(self, tmp_path):
-        result = compute_hash(tmp_path, [])
-        assert isinstance(result, str)
-        assert len(result) == 64
+        assert compute_hash(tmp_path, []) == compute_hash(tmp_path, [])
+        (tmp_path / "a.yaml").write_text("x")
+        assert compute_hash(tmp_path, []) != compute_hash(tmp_path, ["*.yaml"])
 
     def test_no_matching_files_produces_consistent_hash(self, tmp_path):
-        result = compute_hash(tmp_path, ["*.yaml"])
-        assert isinstance(result, str)
-        assert len(result) == 64
+        empty = compute_hash(tmp_path, ["*.yaml"])
+        (tmp_path / "a.yaml").write_text("x")
+        assert compute_hash(tmp_path, ["*.yaml"]) != empty
 
     def test_multiple_files_produces_consistent_order(self, tmp_path):
         (tmp_path / "z.yaml").write_text("z")
@@ -54,10 +54,9 @@ class TestComputeHash:
     def test_overlapping_patterns_deduplicated(self, tmp_path):
         """When two patterns match the same file, the file is only hashed once."""
         (tmp_path / "a.yaml").write_text("hello")
-        # Both patterns match the same file
-        result = compute_hash(tmp_path, ["*.yaml", "a.yaml"])
-        assert isinstance(result, str)
-        assert len(result) == 64
+        assert compute_hash(tmp_path, ["*.yaml", "a.yaml"]) == compute_hash(
+            tmp_path, ["a.yaml"]
+        )
 
     def test_recursive_glob(self, tmp_path):
         """** patterns should match nested files."""

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tools import common as tools_common
 from tools.common import (
     DEFAULT_HA_URL,
     HAYamlLoader,
@@ -38,66 +39,28 @@ def test_ha_tag_loader(tag, argument):
     assert result == {"key": f"{tag} {argument}"}
 
 
-class TestLoadEnvFile:
-    """Test .env file loading."""
-
-    def setup_method(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.original_env = os.environ.copy()
-
-    def teardown_method(self):
-        shutil.rmtree(self.temp_dir)
-        # Restore env
-        os.environ.clear()
-        os.environ.update(self.original_env)
-
-    def test_load_env_file_sets_variables(self):
-        env_content = 'HA_TOKEN=test_token_123\nHA_URL="http://localhost:8123"\n'
-        # Create .env in the parent of tools/
-        env_path = Path(__file__).parent.parent / ".env"
-        existed = env_path.exists()
-        old_content = env_path.read_text() if existed else None
-
-        try:
-            env_path.write_text(env_content)
-            load_env_file()
-            assert os.environ.get("HA_TOKEN") == "test_token_123"
-            assert os.environ.get("HA_URL") == "http://localhost:8123"
-        finally:
-            if existed and old_content is not None:
-                env_path.write_text(old_content)
-            elif not existed:
-                env_path.unlink(missing_ok=True)
-
-    def test_load_env_file_skips_comments(self):
-        env_path = Path(__file__).parent.parent / ".env"
-        existed = env_path.exists()
-        old_content = env_path.read_text() if existed else None
-
-        try:
-            env_path.write_text("# This is a comment\nTEST_VAR=value\n")
-            load_env_file()
-            assert os.environ.get("TEST_VAR") == "value"
-        finally:
-            if existed and old_content is not None:
-                env_path.write_text(old_content)
-            elif not existed:
-                env_path.unlink(missing_ok=True)
-
-    def test_load_env_file_skips_empty_lines(self):
-        env_path = Path(__file__).parent.parent / ".env"
-        existed = env_path.exists()
-        old_content = env_path.read_text() if existed else None
-
-        try:
-            env_path.write_text("\n\nTEST_EMPTY=works\n\n")
-            load_env_file()
-            assert os.environ.get("TEST_EMPTY") == "works"
-        finally:
-            if existed and old_content is not None:
-                env_path.write_text(old_content)
-            elif not existed:
-                env_path.unlink(missing_ok=True)
+@pytest.mark.parametrize(
+    "content,key,expected",
+    [
+        (
+            'HA_TOKEN=tok\nHA_URL="http://localhost:8123"\n',
+            "HA_TOKEN",
+            "tok",
+        ),
+        ("# comment\nTEST_VAR=value\n", "TEST_VAR", "value"),
+        ("\n\nTEST_EMPTY=works\n\n", "TEST_EMPTY", "works"),
+    ],
+)
+def test_load_env_file_parses(content, key, expected, tmp_path, monkeypatch):
+    """Parametrized: normal values, comments, and empty lines."""
+    (tmp_path / ".env").write_text(content)
+    fake = tmp_path / "tools" / "common.py"
+    fake.parent.mkdir()
+    fake.touch()
+    monkeypatch.setattr(tools_common, "__file__", str(fake))
+    monkeypatch.setattr("os.environ", {})
+    load_env_file()
+    assert os.environ.get(key) == expected
 
 
 class TestGetEnvInt:

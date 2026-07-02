@@ -738,26 +738,13 @@ class TestPick:
         result = json.loads(capsys.readouterr().out)
         assert result == [{"state": "on"}, {"state": "off"}]
 
-    def test_pick_conflicts_with_count(self, capsys):
+    @pytest.mark.parametrize(
+        ("flag", "value"),
+        [("count", True), ("keys", True), ("filter", "."), ("raw", True)],
+    )
+    def test_pick_conflicts_with_flags(self, capsys, flag, value):
         with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(pick="state", count=True)
-            assert curl_cmd.run(args) == 1
-        err = capsys.readouterr().err
-        assert "Cannot combine" in err
-
-    def test_pick_conflicts_with_keys(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(pick="state", keys=True)
-            assert curl_cmd.run(args) == 1
-
-    def test_pick_conflicts_with_filter(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(pick="state", filter=".")
-            assert curl_cmd.run(args) == 1
-
-    def test_pick_conflicts_with_raw(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(pick="state", raw=True)
+            args = make_args(pick="state", **{flag: value})
             assert curl_cmd.run(args) == 1
 
     def test_pick_on_non_json_errors(self, mock_client, capsys):
@@ -956,24 +943,13 @@ class TestEntity:
         err = capsys.readouterr().err
         assert "invalid" in err.lower()
 
-    def test_entity_conflicts_with_count(self, capsys):
+    @pytest.mark.parametrize(
+        ("flag", "value"),
+        [("count", True), ("keys", True), ("filter", "."), ("raw", True)],
+    )
+    def test_entity_conflicts_with_flags(self, capsys, flag, value):
         with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(entity="sensor.x", count=True)
-            assert curl_cmd.run(args) == 1
-
-    def test_entity_conflicts_with_keys(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(entity="sensor.x", keys=True)
-            assert curl_cmd.run(args) == 1
-
-    def test_entity_conflicts_with_filter(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(entity="sensor.x", filter=".")
-            assert curl_cmd.run(args) == 1
-
-    def test_entity_conflicts_with_raw(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(entity="sensor.x", raw=True)
+            args = make_args(entity="sensor.x", **{flag: value})
             assert curl_cmd.run(args) == 1
 
     def test_entity_with_pick(self, mock_client, capsys):
@@ -1091,29 +1067,19 @@ class TestDomain:
         result = json.loads(capsys.readouterr().out)
         assert result == [{"e": "light.kitchen", "s": "on"}]
 
-    def test_domain_conflicts_with_entity(self, capsys):
+    @pytest.mark.parametrize(
+        ("flag", "value"),
+        [
+            ("entity", "sensor.x"),
+            ("count", True),
+            ("keys", True),
+            ("filter", "."),
+            ("raw", True),
+        ],
+    )
+    def test_domain_conflicts_with_flags(self, capsys, flag, value):
         with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(domain="light", entity="sensor.x")
-            assert curl_cmd.run(args) == 1
-
-    def test_domain_conflicts_with_count(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(domain="light", count=True)
-            assert curl_cmd.run(args) == 1
-
-    def test_domain_conflicts_with_keys(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(domain="light", keys=True)
-            assert curl_cmd.run(args) == 1
-
-    def test_domain_conflicts_with_filter(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(domain="light", filter=".")
-            assert curl_cmd.run(args) == 1
-
-    def test_domain_conflicts_with_raw(self, capsys):
-        with patch("tools.commands.curl.HAClient.from_env"):
-            args = make_args(domain="light", raw=True)
+            args = make_args(domain="light", **{flag: value})
             assert curl_cmd.run(args) == 1
 
     def test_domain_works_on_any_endpoint(self, mock_client, capsys):

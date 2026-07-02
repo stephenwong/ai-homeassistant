@@ -3,25 +3,20 @@
 from argparse import Namespace
 from unittest.mock import patch
 
+from tests.helpers import make_parser
 from tools.commands import entities as entities_cmd
 
 
 class TestAddParser:
     def test_subparser_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         entities_cmd.add_parser(subparsers)
         args = parser.parse_args(["entities"])
         assert args.command == "entities"
         assert callable(args.func)
 
     def test_accepts_all_flags(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         entities_cmd.add_parser(subparsers)
         args = parser.parse_args(
             [
@@ -45,47 +40,32 @@ class TestAddParser:
         assert args.json is True
 
     def test_summary_flag_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         entities_cmd.add_parser(subparsers)
         args = parser.parse_args(["entities", "--summary"])
         assert args.summary is True
 
     def test_no_summary_flag_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         entities_cmd.add_parser(subparsers)
         args = parser.parse_args(["entities", "--no-summary"])
         assert args.no_summary is True
 
     def test_summary_defaults_false(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         entities_cmd.add_parser(subparsers)
         args = parser.parse_args(["entities"])
         assert args.summary is False
         assert args.no_summary is False
 
     def test_force_flag_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         entities_cmd.add_parser(subparsers)
         args = parser.parse_args(["entities", "--force"])
         assert args.force is True
 
     def test_force_defaults_false(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         entities_cmd.add_parser(subparsers)
         args = parser.parse_args(["entities"])
         assert args.force is False

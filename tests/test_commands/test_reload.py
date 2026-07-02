@@ -3,43 +3,32 @@
 from argparse import Namespace
 from unittest.mock import patch
 
+from tests.helpers import make_parser
 from tools.commands import reload as reload_cmd
 
 
 class TestAddParser:
     def test_subparser_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         reload_cmd.add_parser(subparsers)
         args = parser.parse_args(["reload"])
         assert args.command == "reload"
         assert callable(args.func)
 
     def test_summary_flag_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers()
+        parser, subparsers = make_parser()
         reload_cmd.add_parser(subparsers)
         args = parser.parse_args(["reload", "--summary"])
         assert args.summary is True
 
     def test_no_summary_flag_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers()
+        parser, subparsers = make_parser()
         reload_cmd.add_parser(subparsers)
         args = parser.parse_args(["reload", "--no-summary"])
         assert args.no_summary is True
 
     def test_summary_defaults_false(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers()
+        parser, subparsers = make_parser()
         reload_cmd.add_parser(subparsers)
         args = parser.parse_args(["reload"])
         assert args.summary is False

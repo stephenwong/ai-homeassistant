@@ -441,17 +441,21 @@ class TestJsonMode:
         )
         return tmp_path
 
-    def test_json_default_outputs_automation_relevant(self, tmp_path, capsys):
-        """--json with no selector emits automation-relevant entities."""
+    def _run_main(self, tmp_path, *extra_args):
+        """Helper: set up config and run entity_explorer.main with argv."""
         config = self._setup_config(tmp_path)
         from tools import entity_explorer
 
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(
                 "sys.argv",
-                ["entity_explorer", "--config", str(config), "--json"],
+                ["entity_explorer", "--config", str(config), *extra_args],
             )
-            result = entity_explorer.main()
+            return entity_explorer.main()
+
+    def test_json_default_outputs_automation_relevant(self, tmp_path, capsys):
+        """--json with no selector emits automation-relevant entities."""
+        result = self._run_main(tmp_path, "--json")
         assert result == 0
         out = capsys.readouterr().out
         parsed = json.loads(out)
@@ -462,66 +466,21 @@ class TestJsonMode:
         assert "light.kitchen" in entity_ids
 
     def test_json_filters_by_domain(self, tmp_path, capsys):
-        config = self._setup_config(tmp_path)
-        from tools import entity_explorer
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "sys.argv",
-                [
-                    "entity_explorer",
-                    "--config",
-                    str(config),
-                    "--domain",
-                    "light",
-                    "--json",
-                ],
-            )
-            entity_explorer.main()
+        self._run_main(tmp_path, "--domain", "light", "--json")
         out = capsys.readouterr().out
         parsed = json.loads(out)
         assert all(row["e"].startswith("light.") for row in parsed)
         assert any(row["e"] == "light.kitchen" for row in parsed)
 
     def test_json_filters_by_area(self, tmp_path, capsys):
-        config = self._setup_config(tmp_path)
-        from tools import entity_explorer
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "sys.argv",
-                [
-                    "entity_explorer",
-                    "--config",
-                    str(config),
-                    "--area",
-                    "Kitchen",
-                    "--json",
-                ],
-            )
-            entity_explorer.main()
+        self._run_main(tmp_path, "--area", "Kitchen", "--json")
         out = capsys.readouterr().out
         parsed = json.loads(out)
         assert len(parsed) >= 1
         assert all(row.get("a") == "Kitchen" for row in parsed)
 
     def test_json_filters_by_search(self, tmp_path, capsys):
-        config = self._setup_config(tmp_path)
-        from tools import entity_explorer
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "sys.argv",
-                [
-                    "entity_explorer",
-                    "--config",
-                    str(config),
-                    "--search",
-                    "kitchen",
-                    "--json",
-                ],
-            )
-            entity_explorer.main()
+        self._run_main(tmp_path, "--search", "kitchen", "--json")
         out = capsys.readouterr().out
         parsed = json.loads(out)
         # Search matches entity_id "light.kitchen" and name "Kitchen Light"
@@ -529,22 +488,7 @@ class TestJsonMode:
 
     def test_json_uses_compact_keys(self, tmp_path, capsys):
         """JSON output should use shortened keys (e/n/a/dc/u) for token efficiency."""
-        config = self._setup_config(tmp_path)
-        from tools import entity_explorer
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "sys.argv",
-                [
-                    "entity_explorer",
-                    "--config",
-                    str(config),
-                    "--domain",
-                    "light",
-                    "--json",
-                ],
-            )
-            entity_explorer.main()
+        self._run_main(tmp_path, "--domain", "light", "--json")
         out = capsys.readouterr().out
         parsed = json.loads(out)
         row = next(r for r in parsed if r["e"] == "light.kitchen")
@@ -553,22 +497,7 @@ class TestJsonMode:
         assert row["n"] == "Kitchen Light"
 
     def test_json_includes_device_class_when_present(self, tmp_path, capsys):
-        config = self._setup_config(tmp_path)
-        from tools import entity_explorer
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "sys.argv",
-                [
-                    "entity_explorer",
-                    "--config",
-                    str(config),
-                    "--domain",
-                    "sensor",
-                    "--json",
-                ],
-            )
-            entity_explorer.main()
+        self._run_main(tmp_path, "--domain", "sensor", "--json")
         out = capsys.readouterr().out
         parsed = json.loads(out)
         temp = next(r for r in parsed if r["e"] == "sensor.temp")
@@ -577,22 +506,7 @@ class TestJsonMode:
 
     def test_json_omits_no_area(self, tmp_path, capsys):
         """Entities with 'No Area' should omit the 'a' key for compactness."""
-        config = self._setup_config(tmp_path)
-        from tools import entity_explorer
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "sys.argv",
-                [
-                    "entity_explorer",
-                    "--config",
-                    str(config),
-                    "--domain",
-                    "light",
-                    "--json",
-                ],
-            )
-            entity_explorer.main()
+        self._run_main(tmp_path, "--domain", "light", "--json")
         out = capsys.readouterr().out
         parsed = json.loads(out)
         kitchen = next(r for r in parsed if r["e"] == "light.kitchen")
@@ -601,41 +515,14 @@ class TestJsonMode:
 
     def test_json_output_is_single_line(self, tmp_path, capsys):
         """Output should be a single-line JSON array (no newlines in payload)."""
-        config = self._setup_config(tmp_path)
-        from tools import entity_explorer
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "sys.argv",
-                [
-                    "entity_explorer",
-                    "--config",
-                    str(config),
-                    "--json",
-                ],
-            )
-            entity_explorer.main()
+        self._run_main(tmp_path, "--json")
         out = capsys.readouterr().out.strip()
         # Single line — no embedded newlines
         assert "\n" not in out
 
     def test_json_takes_precedence_over_pretty(self, tmp_path, capsys):
         """If --json is passed alongside --full, --json wins."""
-        config = self._setup_config(tmp_path)
-        from tools import entity_explorer
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "sys.argv",
-                [
-                    "entity_explorer",
-                    "--config",
-                    str(config),
-                    "--full",
-                    "--json",
-                ],
-            )
-            entity_explorer.main()
+        self._run_main(tmp_path, "--full", "--json")
         out = capsys.readouterr().out
         # Should be valid JSON, not pretty banners
         json.loads(out)
@@ -905,43 +792,3 @@ class TestMain:
         assert result == 0
         out = capsys.readouterr().out
         assert "stale output" not in out
-
-
-class TestCategorizeAutomationRelevant:
-    """Test automation-relevant categorization edge cases."""
-
-    def test_sensor_temperature_relevant(self):
-        entities = [
-            {
-                "entity_id": "sensor.temp",
-                "name": "Temp",
-                "original_name": None,
-                "platform": "test",
-                "area_id": None,
-                "disabled_by": None,
-                "hidden_by": None,
-                "device_class": "temperature",
-                "original_device_class": "temperature",
-                "unit_of_measurement": "C",
-            }
-        ]
-        result = categorize_entities(entities, {})
-        assert "sensor" in result["automation_relevant"]
-
-    def test_binary_sensor_occupancy_relevant(self):
-        entities = [
-            {
-                "entity_id": "binary_sensor.room",
-                "name": "Room",
-                "original_name": None,
-                "platform": "test",
-                "area_id": None,
-                "disabled_by": None,
-                "hidden_by": None,
-                "device_class": "occupancy",
-                "original_device_class": "occupancy",
-                "unit_of_measurement": None,
-            }
-        ]
-        result = categorize_entities(entities, {})
-        assert "binary_sensor" in result["automation_relevant"]

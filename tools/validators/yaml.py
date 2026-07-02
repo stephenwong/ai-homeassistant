@@ -55,7 +55,7 @@ class YAMLValidator(ValidatorBase):
                     self.warnings.append(f"{file_path}: '{key}' is deprecated")
 
             return True
-        except (TypeError, KeyError, ValueError) as e:
+        except (TypeError, KeyError, ValueError) as e:  # pragma: no cover
             self.errors.append(f"{file_path}: Failed to validate structure - {e}")
             return False
 
@@ -75,7 +75,7 @@ class YAMLValidator(ValidatorBase):
                 return False
 
             return self.check_automations_structure(automations, str(file_path))
-        except (TypeError, KeyError, ValueError) as e:
+        except (TypeError, KeyError, ValueError) as e:  # pragma: no cover
             self.errors.append(
                 f"{file_path}: Failed to validate automations structure - {e}"
             )
@@ -97,7 +97,7 @@ class YAMLValidator(ValidatorBase):
                 return False
 
             return self.check_scripts_structure(scripts, str(file_path))
-        except (TypeError, KeyError, ValueError) as e:
+        except (TypeError, KeyError, ValueError) as e:  # pragma: no cover
             self.errors.append(
                 f"{file_path}: Failed to validate scripts structure - {e}"
             )

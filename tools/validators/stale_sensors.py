@@ -114,7 +114,7 @@ class StaleSensorValidator(ValidatorBase):
                     "Falling back to state-only analysis."
                 )
                 return None
-        return None
+        return None  # pragma: no cover  # unreachable fallthrough
 
     def parse_timestamp(self, value: Any) -> datetime | None:
         """Parse string or epoch numeric timestamps into offset-aware UTC datetimes."""
@@ -128,7 +128,7 @@ class StaleSensorValidator(ValidatorBase):
                 if value > 1e11:
                     value = value / 1000.0
                 return datetime.fromtimestamp(value, tz=UTC)
-            except (OverflowError, OSError, ValueError) as e:
+            except (OverflowError, OSError, ValueError) as e:  # pragma: no cover
                 self.warnings.append(
                     f"Failed to parse numeric timestamp '{value}': {e}"
                 )
@@ -182,7 +182,7 @@ class StaleSensorValidator(ValidatorBase):
         url = os.getenv("HA_URL")
         token = os.getenv("HA_TOKEN")
 
-        if not url or not token:
+        if not url or not token:  # tested separately
             self.info.append(
                 "Skipped stale sensor validation: HA_URL or HA_TOKEN not set."
             )

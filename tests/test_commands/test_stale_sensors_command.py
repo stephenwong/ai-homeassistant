@@ -4,16 +4,11 @@ import argparse
 from argparse import Namespace
 from unittest.mock import MagicMock, patch
 
-# Since tools/commands/stale_sensors.py doesn't exist yet, import under try-except.
-try:
-    from tools.commands import stale_sensors as stale_cmd
-except ImportError:
-    stale_cmd = None  # type: ignore
+from tools.commands import stale_sensors as stale_cmd
 
 
 class TestAddParser:
     def test_subparser_registered(self):
-        assert stale_cmd is not None
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
         stale_cmd.add_parser(subparsers)
@@ -22,7 +17,6 @@ class TestAddParser:
         assert callable(args.func)
 
     def test_accepts_all_flags(self):
-        assert stale_cmd is not None
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
         stale_cmd.add_parser(subparsers)
@@ -55,7 +49,6 @@ class TestAddParser:
 class TestRun:
     @patch("tools.commands.stale_sensors.StaleSensorValidator")
     def test_run_delegates_to_validator(self, mock_val_class):
-        assert stale_cmd is not None
         mock_val = MagicMock()
         mock_val.validate_all.return_value = True
         mock_val.warnings = []
@@ -89,7 +82,6 @@ class TestRun:
 
     @patch("tools.commands.stale_sensors.StaleSensorValidator")
     def test_fail_on_stale_behavior(self, mock_val_class):
-        assert stale_cmd is not None
         mock_val = MagicMock()
         mock_val.validate_all.return_value = True
         mock_val.warnings = ["sensor.test_temp is stale"]

@@ -1,16 +1,20 @@
 """TDD tests for tools/commands/edit.py — ha_cli edit subcommand."""
 
 from argparse import Namespace
+from unittest.mock import patch
 
+from tests.helpers import make_parser
 from tools.commands.edit import add_parser, run
+
+
+def _boom(*arguments, **keywords):
+    """Helper: raises TypeError. Used in monkeypatch tests."""
+    raise TypeError("boom")
 
 
 class TestAddParser:
     def test_subparser_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         add_parser(subparsers)
         args = parser.parse_args(["edit", "automations"])
         assert args.command == "edit"
@@ -18,10 +22,7 @@ class TestAddParser:
 
     def test_alias_positional_parsed_correctly(self):
         """edit <file> <alias> --show should parse alias as a positional."""
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         add_parser(subparsers)
         args = parser.parse_args(["edit", "automations", "Turn on Alarm", "--show"])
         assert args.file == "automations"
@@ -30,38 +31,26 @@ class TestAddParser:
 
     def test_config_dir_flag_defaults(self):
         """--config should default to 'config'."""
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         add_parser(subparsers)
         args = parser.parse_args(["edit", "automations", "--show"])
         assert args.config == "config"
         assert args.file == "automations"
 
     def test_summary_flag_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         add_parser(subparsers)
         args = parser.parse_args(["edit", "automations", "--summary"])
         assert args.summary is True
 
     def test_no_summary_flag_registered(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         add_parser(subparsers)
         args = parser.parse_args(["edit", "automations", "--no-summary"])
         assert args.no_summary is True
 
     def test_summary_defaults_false(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         add_parser(subparsers)
         args = parser.parse_args(["edit", "automations"])
         assert args.summary is False
@@ -422,3 +411,132 @@ delete:
         data = yaml.safe_load((tmp_path / "scripts.yaml").read_text())
         assert "delete" not in data
         assert "keep" in data
+
+    # ── Scripts --show (covers edit.py:181-190) ─────────────────────
+
+    def test_show_scripts_lists_keys(self, tmp_path, capsys):
+        _write_file(
+            tmp_path,
+            "scripts",
+            "morning:\n  sequence: []\nevening:\n  sequence: []\n",
+        )
+        run(self._ns(config=str(tmp_path), file="scripts", show=True))
+        out = capsys.readouterr().out
+        assert "morning" in out
+        assert "evening" in out
+
+    def test_show_one_script_displays_full(self, tmp_path, capsys):
+        _write_file(
+            tmp_path,
+            "scripts",
+            "morning:\n  alias: Morning\n  sequence: []\n",
+        )
+        run(self._ns(config=str(tmp_path), file="scripts", alias="morning", show=True))
+        assert "Morning" in capsys.readouterr().out
+
+    def test_show_missing_script_prints_error(self, tmp_path, capsys):
+        _write_file(tmp_path, "scripts", "morning:\n  sequence: []\n")
+        result = run(
+            self._ns(config=str(tmp_path), file="scripts", alias="ghost", show=True)
+        )
+        assert result == 1
+        assert "not found" in capsys.readouterr().err.lower()
+
+    # ── --add / --set error branches (covers 197-202, 213-217, 243-247) ──
+
+    def test_add_invalid_json_returns_error(self, tmp_path, capsys):
+        result = run(self._ns(config=str(tmp_path), add="{not json"))
+        assert result == 1
+        assert "invalid json" in capsys.readouterr().err.lower()
+
+    def test_add_json_array_returns_error(self, tmp_path, capsys):
+        result = run(self._ns(config=str(tmp_path), add="[1,2,3]"))
+        assert result == 1
+        assert "json object" in capsys.readouterr().err.lower()
+
+    def test_add_scripts_without_id_or_alias_errors(self, tmp_path, capsys):
+        _write_file(tmp_path, "scripts", "{}\n")
+        result = run(
+            self._ns(config=str(tmp_path), file="scripts", add='{"foo":"bar"}')
+        )
+        assert result == 1
+        err = capsys.readouterr().err.lower()
+        assert "id" in err or "alias" in err
+
+    def test_set_malformed_kv_returns_error(self, tmp_path, capsys):
+        _write_file(tmp_path, "automations", "[]")
+        result = run(self._ns(config=str(tmp_path), alias="X", set=["no_equals"]))
+        assert result == 1
+        assert "key=value" in capsys.readouterr().err.lower()
+
+    # ── TypeError handlers (covers 226-228, 260-262, 279-281) ──────────
+
+    def test_add_type_error_returns_error(self, tmp_path, capsys, monkeypatch):
+        _write_file(tmp_path, "automations", "[]")
+        monkeypatch.setattr("tools.commands.edit.YAMLEditor.add_automation", _boom)
+        result = run(self._ns(config=str(tmp_path), add='{"alias":"X","id":"x"}'))
+        assert result == 1
+        assert "boom" in capsys.readouterr().err
+
+    def test_set_type_error_returns_error(self, tmp_path, capsys, monkeypatch):
+        _write_file(
+            tmp_path,
+            "automations",
+            "- id: a\n  alias: A\n  triggers: []\n"
+            "  conditions: []\n  actions: []\n  mode: single\n",
+        )
+        monkeypatch.setattr("tools.commands.edit.YAMLEditor.update_automation", _boom)
+        result = run(self._ns(config=str(tmp_path), alias="A", set=["x=y"]))
+        assert result == 1
+        assert "boom" in capsys.readouterr().err
+
+    def test_remove_type_error_returns_error(self, tmp_path, capsys, monkeypatch):
+        _write_file(
+            tmp_path,
+            "automations",
+            "- id: a\n  alias: A\n  triggers: []\n"
+            "  conditions: []\n  actions: []\n  mode: single\n",
+        )
+        monkeypatch.setattr("tools.commands.edit.YAMLEditor.remove_automation", _boom)
+        result = run(self._ns(config=str(tmp_path), alias="A", remove=True))
+        assert result == 1
+        assert "boom" in capsys.readouterr().err
+
+    # ── ValueError on duplicate script key (covers 229-231) ─────────────
+
+    def test_add_duplicate_script_key_returns_error(self, tmp_path, capsys):
+        _write_file(tmp_path, "scripts", "morning:\n  sequence: []\n")
+        result = run(
+            self._ns(
+                config=str(tmp_path),
+                file="scripts",
+                add='{"id":"morning","alias":"M","sequence":[]}',
+            )
+        )
+        assert result == 1
+        assert "already exists" in capsys.readouterr().err.lower()
+
+    # ── Path traversal guard (covers 87-88, 116-118) ──────────────────
+
+    def test_path_traversal_rejected(self, capsys):
+        result = run(self._ns(config="config", file="../../../etc/passwd", show=True))
+        assert result == 1
+        assert "inside config directory" in capsys.readouterr().err.lower()
+
+    # ── Success prints (covers 235, 285) ──────────────────────────────
+
+    @patch("tools.common._is_tty", return_value=True)
+    def test_add_prints_success_when_verbose(self, mock_is_tty, tmp_path, capsys):
+        run(self._ns(config=str(tmp_path), add='{"alias":"New","id":"n"}'))
+        assert "Added:" in capsys.readouterr().out
+
+    @patch("tools.common._is_tty", return_value=True)
+    def test_remove_prints_success_when_verbose(self, mock_is_tty, tmp_path, capsys):
+        _write_file(
+            tmp_path,
+            "automations",
+            "- id: a\n  alias: A\n  triggers: []\n"
+            "  conditions: []\n  actions: []\n  mode: single\n",
+        )
+        run(self._ns(config=str(tmp_path), alias="A", remove=True))
+        assert "Removed:" in capsys.readouterr().out

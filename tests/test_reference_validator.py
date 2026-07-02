@@ -1108,7 +1108,7 @@ class TestCoverageExtras:
         v = ReferenceValidator(str(tmp_path))
         entities = v.get_config_defined_entities()
         assert "zone.back_yard" in entities
-        assert "zone." not in [e for e in entities if e == "zone."]
+        assert "zone." not in entities
 
     def test_validate_uuid_registry_id_known(self, setup_config):
         """UUID referencing a known registry entity_id passes validation."""

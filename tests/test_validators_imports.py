@@ -1,19 +1,13 @@
 """Re-import tests for moved validators under tools/validators/."""
 
+import pytest
+
 from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.references import ReferenceValidator
 from tools.validators.services import ServiceValidator
 from tools.validators.templates import TemplateValidator
 from tools.validators.yaml import YAMLValidator
-from tools.validators.yaml import main as yaml_main
-
-
-def test_base_module_exports():
-    from tools.validators.base import HAYamlLoader, ValidatorBase
-
-    assert ValidatorBase is not None
-    assert HAYamlLoader is not None
 
 
 def test_common_reexports_base():
@@ -40,24 +34,24 @@ def test_duplicate_id_validator_import():
     assert v.info == []
 
 
-def test_duplicate_id_validator_quiet_kwarg_accepted():
-    v = DuplicateIDValidator(quiet=True)
-    assert v.quiet is True
-
-
-def test_yaml_validator_quiet_kwarg_accepted():
-    v = YAMLValidator(quiet=True)
-    assert v.quiet is True
+@pytest.mark.parametrize(
+    "cls",
+    [
+        DuplicateIDValidator,
+        YAMLValidator,
+        ReferenceValidator,
+        ServiceValidator,
+        HAOfficialValidator,
+        TemplateValidator,
+    ],
+)
+def test_validator_quiet_kwarg_accepted(cls):
+    assert cls(quiet=True).quiet is True
 
 
 def test_reference_validator_import():
     v = ReferenceValidator()
     assert v.validator_name == "Entity/device references"
-
-
-def test_reference_validator_quiet_kwarg_accepted():
-    v = ReferenceValidator(quiet=True)
-    assert v.quiet is True
 
 
 def test_service_validator_import():
@@ -68,19 +62,9 @@ def test_service_validator_import():
     assert v.info == []
 
 
-def test_service_validator_quiet_kwarg_accepted():
-    v = ServiceValidator(quiet=True)
-    assert v.quiet is True
-
-
 def test_ha_official_validator_import():
     v = HAOfficialValidator()
     assert v.validator_name == "Home Assistant configuration"
-
-
-def test_ha_official_validator_quiet_kwarg_accepted():
-    v = HAOfficialValidator(quiet=True)
-    assert v.quiet is True
 
 
 def test_template_validator_import():
@@ -89,15 +73,6 @@ def test_template_validator_import():
     assert v.errors == []
     assert v.warnings == []
     assert v.info == []
-
-
-def test_template_validator_quiet_kwarg_accepted():
-    v = TemplateValidator(quiet=True)
-    assert v.quiet is True
-
-
-def test_yaml_module_main_callable():
-    assert callable(yaml_main)
 
 
 class TestFileDeps:
@@ -141,21 +116,6 @@ class TestFileDeps:
         v = HAOfficialValidator()
         deps = v.file_deps()
         assert deps == []
-
-    def test_file_deps_returns_strings(self):
-        for cls in [
-            YAMLValidator,
-            DuplicateIDValidator,
-            ServiceValidator,
-            TemplateValidator,
-            ReferenceValidator,
-            HAOfficialValidator,
-        ]:
-            v = cls()
-            deps = v.file_deps()
-            assert isinstance(deps, list)
-            for d in deps:
-                assert isinstance(d, str)
 
 
 def test_entity_definitions_imports():

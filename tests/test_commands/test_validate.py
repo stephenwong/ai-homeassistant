@@ -5,8 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.helpers import make_parser
 from tools.commands import validate
 from tools.commands.validate import ValidatorResult, _run_one, run, run_validators
+from tools.validators.yaml import YAMLValidator
 
 
 class TestValidatorResult:
@@ -82,12 +84,19 @@ class TestRunOne:
             result = _run_one(YAMLValidator, "YAML", "config", quiet=True, force=True)
         assert result.passed is False
 
-    def test_quiet_propagated_to_validator(self):
-        """The quiet kwarg should reach the validator instance."""
-        from tools.validators.yaml import YAMLValidator
+    def test_quiet_propagated_to_validator(self, config_dir, monkeypatch):
+        """_run_one forwards quiet to the validator instance."""
+        (config_dir / "configuration.yaml").write_text("homeassistant:\n")
+        captured = {}
+        orig_init = YAMLValidator.__init__
 
-        instance = YAMLValidator("config", quiet=True)
-        assert instance.quiet is True
+        def spy(self, *args, **kwargs):
+            captured["kwargs"] = kwargs
+            orig_init(self, *args, **kwargs)
+
+        monkeypatch.setattr(YAMLValidator, "__init__", spy)
+        _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=True)
+        assert captured["kwargs"].get("quiet") is True
 
     def test_cache_hit_returns_cached_result(self, config_dir):
         """When file hash matches cache, validation is skipped."""
@@ -536,69 +545,69 @@ class TestRun:
         assert "WARN" in err
         assert "--summary" in err
 
+    # ── Verbose mode with failure (covers 238, 260-272, 294) ──────
+
+    @patch("tools.common._is_tty", return_value=True)
+    def test_verbose_mode_with_failure_prints_detail(self, _, config_dir, capsys):
+        with patch(
+            "tools.commands.validate.run_validators",
+            return_value=[
+                ValidatorResult(
+                    "MyValidator", False, "some stdout output", "the error text", 1.5
+                ),
+            ],
+        ):
+            run(self._args(config_dir, quiet=False))
+        _, err = capsys.readouterr()
+        assert "MyValidator" in err  # 260
+        assert "FAILED" in err  # 238/262
+        assert "some stdout output" in err  # 264-267
+        assert "the error text" in err  # 268-271
+        assert "1.50s" in err  # 263
+        assert "failed" in err.lower()  # 294
+
 
 class TestAddParser:
     def test_subparser_registered_with_validate_name(self):
         """add_parser should register a 'validate' subcommand."""
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate"])
         assert args.command == "validate"
 
     def test_add_parser_attaches_run_func(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate"])
         assert callable(args.func)
 
     def test_force_flag_defaults_false(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate"])
         assert args.force is False
 
     def test_force_flag_set_true(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers(dest="command")
+        parser, subparsers = make_parser()
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate", "--force"])
         assert args.force is True
 
     def test_summary_flag_defaults_false(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers()
+        parser, subparsers = make_parser()
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate"])
         assert args.summary is False
         assert args.no_summary is False
 
     def test_summary_flag_set_true(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers()
+        parser, subparsers = make_parser()
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate", "--summary"])
         assert args.summary is True
 
     def test_no_summary_flag_set_true(self):
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        subparsers = parser.add_subparsers()
+        parser, subparsers = make_parser()
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate", "--no-summary"])
         assert args.no_summary is True

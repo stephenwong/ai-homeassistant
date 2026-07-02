@@ -643,3 +643,155 @@ def test_main_dispatch_with_ci_short_circuit(monkeypatch):
     monkeypatch.setenv("CI", "true")
     monkeypatch.setattr("sys.argv", ["stale_sensors", "config"])
     assert main() == 0
+
+
+# ── Timestamp parsing variants (covers 128-129, 148-156, 159) ──────────
+
+
+def test_parse_timestamp_milliseconds_epoch():
+    """parse_timestamp normalises ms-epoch timestamps by dividing by 1000."""
+    v = StaleSensorValidator()
+    result = v.parse_timestamp(1782331200000)
+    assert result == datetime.fromtimestamp(1782331200, tz=UTC)
+
+
+def test_parse_timestamp_numeric_string():
+    """parse_timestamp handles numeric strings via float conversion."""
+    v = StaleSensorValidator()
+    assert v.parse_timestamp("1782331200") == datetime.fromtimestamp(1782331200, tz=UTC)
+
+
+def test_parse_timestamp_ms_string():
+    """Millisecond epoch as a string is normalised by dividing by 1000."""
+    v = StaleSensorValidator()
+    result = v.parse_timestamp("1782331200000")
+    assert result == datetime.fromtimestamp(1782331200, tz=UTC)
+
+
+def test_parse_timestamp_malformed_string_appends_warning():
+    """A non-numeric, non-ISO string appends a warning and returns None."""
+    v = StaleSensorValidator()
+    assert v.parse_timestamp("not a date") is None
+    assert any("Failed to parse" in w for w in v.warnings)
+
+
+def test_parse_timestamp_unsupported_type_returns_none():
+    """parse_timestamp returns None for list/dict values."""
+    v = StaleSensorValidator()
+    assert v.parse_timestamp([1, 2]) is None
+    assert v.parse_timestamp({"nested": True}) is None
+
+
+# ── Invalid HA_STALE_TIMEOUT (covers 194) ──────────────────────────────
+
+
+def test_missing_ha_url_token_skips_gracefully(config_dir):
+    """When HA_URL or HA_TOKEN are not set, skip with info and return True."""
+    with patch.dict("os.environ", {}, clear=True):
+        v = StaleSensorValidator(str(config_dir))
+        assert v.validate_all() is True
+        assert any("not set" in i for i in v.info)
+
+
+def test_invalid_ha_stale_timeout_warns(config_dir):
+    """Non-integer HA_STALE_TIMEOUT logs an info warning with the default fallback."""
+    with patch("tools.validators.stale_sensors.HAClient") as mock_class:
+        inst = MagicMock()
+        inst.get_json.return_value = []
+        mock_class.return_value = inst
+        with patch.dict("os.environ", {"HA_STALE_TIMEOUT": "notanint"}):
+            v = StaleSensorValidator(str(config_dir))
+            v.validate_all()
+            assert any("must be an integer" in i for i in v.info)
+
+
+# ── API shape-guard continue paths (covers 203-206, 213, 217, 221, 270) ──
+
+
+def test_states_not_list_is_skipped(config_dir):
+    """When /api/states returns a dict instead of a list, skip with info."""
+    client = MagicMock()
+    client.get_json.return_value = {}
+    with patch("tools.validators.stale_sensors.HAClient", return_value=client):
+        v = StaleSensorValidator(str(config_dir))
+        assert v.validate_all() is True
+        assert any("invalid API states format" in i for i in v.info)
+
+
+def test_non_dict_state_entry_skipped(config_dir):
+    """Non-dict items in the states list are skipped (continue at 213)."""
+    with patch(
+        "tools.validators.stale_sensors.HAClient",
+        return_value=_mock_states(["oops", 42]),
+    ):
+        assert StaleSensorValidator(str(config_dir)).validate_all() is True
+
+
+def test_dotless_entity_id_skipped(config_dir):
+    """State entries without a '.' in entity_id are skipped (continue at 217)."""
+    states = [
+        {
+            "entity_id": "no_dot",
+            "last_updated": "2026-06-24T20:00:00+00:00",
+            "attributes": {},
+        }
+    ]
+    with patch(
+        "tools.validators.stale_sensors.HAClient",
+        return_value=_mock_states(states),
+    ):
+        assert StaleSensorValidator(str(config_dir)).validate_all() is True
+
+
+def test_non_sensor_domain_skipped(config_dir):
+    """States with domains not in only_domains are skipped (continue at 221)."""
+    states = [
+        {
+            "entity_id": "light.x",
+            "last_updated": "2026-06-24T20:00:00+00:00",
+            "attributes": {},
+        }
+    ]
+    with patch(
+        "tools.validators.stale_sensors.HAClient",
+        return_value=_mock_states(states),
+    ):
+        assert StaleSensorValidator(str(config_dir)).validate_all() is True
+
+
+def test_sensor_with_unparseable_baseline_skipped(config_dir):
+    """sensor.x with garbage last_updated yields no baseline → continue (270)."""
+    states = [
+        {
+            "entity_id": "sensor.x",
+            "last_updated": "garbage",
+            "attributes": {},
+        }
+    ]
+    with patch(
+        "tools.validators.stale_sensors.HAClient",
+        return_value=_mock_states(states),
+    ):
+        assert StaleSensorValidator(str(config_dir)).validate_all() is True
+
+
+# ── Binary sensor without heartbeat (covers 261) ───────────────────────
+# NOTE: Must override only_domains={"binary_sensor"} so the entity is not
+# filtered out at line 221 before reaching the heartbeat check at 258-261.
+
+
+def test_binary_sensor_without_heartbeat_skipped(config_dir):
+    """binary_sensor without last_seen/last_reported → continue (261)."""
+    states = [
+        {
+            "entity_id": "binary_sensor.x",
+            "last_updated": "2026-06-24T20:00:00+00:00",
+            "attributes": {},
+        }
+    ]
+    with patch(
+        "tools.validators.stale_sensors.HAClient",
+        return_value=_mock_states(states),
+    ):
+        v = StaleSensorValidator(str(config_dir), only_domains={"binary_sensor"})
+        assert v.validate_all() is True
