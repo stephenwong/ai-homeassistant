@@ -9,6 +9,21 @@ from tools.validators.yaml import YAMLValidator
 from tools.validators.yaml import main as yaml_main
 
 
+def test_base_module_exports():
+    from tools.validators.base import HAYamlLoader, ValidatorBase
+
+    assert ValidatorBase is not None
+    assert HAYamlLoader is not None
+
+
+def test_common_reexports_base():
+    import tools.common as c
+    import tools.validators.base as b
+
+    assert c.ValidatorBase is b.ValidatorBase
+    assert c.HAYamlLoader is b.HAYamlLoader
+
+
 def test_yaml_validator_import():
     v = YAMLValidator()
     assert v.validator_name == "YAML syntax"

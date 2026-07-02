@@ -10,8 +10,9 @@ import argparse
 import re
 from typing import Any
 
-from tools.common import HARequestError, ValidatorBase
+from tools.common import HARequestError
 from tools.ha.client import HAClient
+from tools.validators.base import ValidatorBase
 
 _SERVICE_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 _STEP_SERVICE_KEYS = ("action", "service")
@@ -74,12 +75,8 @@ class ServiceValidator(ValidatorBase):
                     valid.add(f"{domain}.{svc}")
         return valid
 
-    def validate_all(self) -> bool:
+    def _validate(self) -> bool:
         """Validate service references in all YAML files against HA API."""
-        if not self.config_dir.exists():
-            self.errors.append(f"Config directory {self.config_dir} does not exist")
-            return False
-
         found: list[tuple[str, str]] = []
         all_ok = True
         for fp in self.get_yaml_files():

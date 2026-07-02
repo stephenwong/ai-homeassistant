@@ -8,7 +8,7 @@ triggering and UI customization) and missing ``id`` fields.
 import argparse
 import collections
 
-from tools.common import ValidatorBase
+from tools.validators.base import ValidatorBase
 
 
 class DuplicateIDValidator(ValidatorBase):
@@ -60,12 +60,8 @@ class DuplicateIDValidator(ValidatorBase):
 
         return all_valid
 
-    def validate_all(self) -> bool:
+    def _validate(self) -> bool:
         """Run duplicate-ID detection on automations.yaml."""
-        if not self.config_dir.exists():
-            self.errors.append(f"Config directory {self.config_dir} does not exist")
-            return False
-
         automations_file = self.config_dir / "automations.yaml"
         if not automations_file.exists():
             return True  # nothing to check

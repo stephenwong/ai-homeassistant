@@ -10,8 +10,9 @@ import argparse
 import re
 from typing import Any
 
-from tools.common import HARequestError, ValidatorBase
+from tools.common import HARequestError
 from tools.ha.client import HAClient
+from tools.validators.base import ValidatorBase
 
 _TEMPLATE_RE = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.DOTALL)
 _RUNTIME_NAMES = frozenset(
@@ -79,12 +80,8 @@ class TemplateValidator(ValidatorBase):
             msg = resp.text
         return ("error", msg)
 
-    def validate_all(self) -> bool:
+    def _validate(self) -> bool:
         """Validate Jinja2 templates in all YAML files via HA render API."""
-        if not self.config_dir.exists():
-            self.errors.append(f"Config directory {self.config_dir} does not exist")
-            return False
-
         found: list[tuple[str, str]] = []
         all_ok = True
         for fp in self.get_yaml_files():

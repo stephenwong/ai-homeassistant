@@ -14,7 +14,8 @@ from typing import Any, TypedDict
 
 import yaml
 
-from tools.common import HAYamlLoader, ValidatorBase, resolve_summary
+from tools.common import resolve_summary
+from tools.validators.base import HAYamlLoader, ValidatorBase
 
 _OBJECT_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
@@ -763,12 +764,8 @@ class ReferenceValidator(ValidatorBase):
 
         return all_valid
 
-    def validate_all(self) -> bool:
+    def _validate(self) -> bool:
         """Validate all references in the config directory."""
-        if not self.config_dir.exists():
-            self.errors.append(f"Config directory {self.config_dir} does not exist")
-            return False
-
         yaml_files = self.get_yaml_files()
         if not yaml_files:
             self.warnings.append("No YAML files found in config directory")

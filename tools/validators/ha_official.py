@@ -10,7 +10,8 @@ import re
 import subprocess
 import sys
 
-from tools.common import ValidatorBase, get_env_int
+from tools.common import get_env_int
+from tools.validators.base import ValidatorBase
 
 
 class HAOfficialValidator(ValidatorBase):
@@ -182,12 +183,8 @@ class HAOfficialValidator(ValidatorBase):
                 # This is likely an actual error
                 self.errors.append(f"HA Error: {line}")
 
-    def validate_all(self) -> bool:
+    def _validate(self) -> bool:
         """Run complete validation using Home Assistant."""
-        if not self.config_dir.exists():
-            self.errors.append(f"Config directory {self.config_dir} does not exist")
-            return False
-
         # Check if configuration.yaml exists
         config_file = self.config_dir / "configuration.yaml"
         if not config_file.exists():

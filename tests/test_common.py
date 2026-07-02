@@ -241,6 +241,13 @@ class TestIsTTY:
 class TestValidatorBase:
     """Test ValidatorBase class."""
 
+    def test_template_missing_config_dir(self, tmp_path):
+        from tools.validators.base import ValidatorBase
+
+        v = ValidatorBase(str(tmp_path / "missing"))
+        assert v.validate_all() is False
+        assert any("does not exist" in e for e in v.errors)
+
     def setup_method(self):
         self.temp_dir = tempfile.mkdtemp()
         self.config_dir = Path(self.temp_dir)

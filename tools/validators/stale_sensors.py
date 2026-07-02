@@ -13,8 +13,9 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from tools.common import HARequestError, ValidatorBase, get_env_int, load_env_file
+from tools.common import HARequestError, get_env_int, load_env_file
 from tools.ha.client import HAClient
+from tools.validators.base import ValidatorBase
 
 
 class StaleSensorValidator(ValidatorBase):

@@ -5,7 +5,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from tools.common import ValidatorBase
+from tools.validators.base import ValidatorBase
 
 
 class YAMLValidator(ValidatorBase):
@@ -103,12 +103,8 @@ class YAMLValidator(ValidatorBase):
             )
             return False
 
-    def validate_all(self) -> bool:
+    def _validate(self) -> bool:
         """Validate all YAML files in the config directory."""
-        if not self.config_dir.exists():
-            self.errors.append(f"Config directory {self.config_dir} does not exist")
-            return False
-
         yaml_files = self.get_yaml_files()
         if not yaml_files:
             self.warnings.append("No YAML files found in config directory")
