@@ -71,7 +71,7 @@ warn_unused_configs = true
 # Relaxed settings for existing codebase
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
-check_untyped_defs = false
+check_untyped_defs = true
 disallow_untyped_decorators = false
 no_implicit_optional = false
 warn_return_any = false

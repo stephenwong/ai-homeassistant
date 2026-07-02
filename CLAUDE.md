@@ -237,4 +237,4 @@ Zone tuning: increase `inertia`/`loitering_time` for false alerts. After changes
 6. False Frigate alerts → check zoned vs unzoned, increase `inertia`/`loitering_time`
 7. Restart Frigate addon → SSH: `ssh homeassistant "ha apps restart ccab4aaf_frigate-fa-beta"`. Supervisor API returns 401.
 8. Z2M entity_ids stuck as hex → stop HA, clean entries from `entities`+`deleted_entities` in `core.entity_registry`, and `devices`+`deleted_devices` in `core.device_registry`, restart.
-9. "Incorrect config" / package install errors → expected false positives from pip version conflicts. Filtered in `ha_official_validator.py`. "Successful config (partial)" with exit 0 is correct.
+9. "Incorrect config" / package install errors → expected false positives from pip version conflicts. Filtered in `tools/validators/ha_official.py`. "Successful config (partial)" with exit 0 is correct.

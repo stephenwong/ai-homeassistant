@@ -79,7 +79,7 @@ push: check-env
 # Run all validation tests
 validate: check-setup
 	@echo "$(GREEN)Running Home Assistant configuration validation...$(NC)"
-	@$(UV_RUN) python $(TOOLS_PATH)/run_tests.py
+	@$(UV_RUN) python $(TOOLS_PATH)/ha_cli.py validate
 
 # Alias for validate
 test: validate
@@ -132,7 +132,7 @@ status: check-setup
 	fi
 	@echo ""
 	@echo "$(YELLOW)Entity Summary:$(NC)"
-	@$(UV_RUN) python $(TOOLS_PATH)/reference_validator.py --no-summary 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
+	@$(UV_RUN) python -m tools.validators.references --no-summary 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
 
 # Explore available Home Assistant entities
 entities: check-setup
@@ -205,7 +205,7 @@ check-setup:
 		echo "$(RED)uv not found. Install it: curl -LsSf https://astral.sh/uv/install.sh | sh$(NC)"; \
 		exit 1; \
 	fi
-	@if [ ! -f "$(TOOLS_PATH)/run_tests.py" ]; then \
+	@if [ ! -f "$(TOOLS_PATH)/ha_cli.py" ]; then \
 		echo "$(RED)Validation tools not found.$(NC)"; \
 		exit 1; \
 	fi
@@ -230,13 +230,13 @@ pull-storage:
 
 # Individual validation targets
 validate-yaml: check-setup
-	@$(UV_RUN) python $(TOOLS_PATH)/yaml_validator.py
+	@$(UV_RUN) python -m tools.validators.yaml
 
 validate-references: check-setup
-	@$(UV_RUN) python $(TOOLS_PATH)/reference_validator.py
+	@$(UV_RUN) python -m tools.validators.references
 
 validate-ha: check-setup
-	@$(UV_RUN) python $(TOOLS_PATH)/ha_official_validator.py
+	@$(UV_RUN) python -m tools.validators.ha_official
 
 # SSH connectivity test
 test-ssh:

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tools.ha_official_validator import HAOfficialValidator
+from tools.validators.ha_official import HAOfficialValidator
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ class TestHAOfficialValidatorMain:
     """Cover lines 169-186: main() function."""
 
     def test_main_valid(self, tmp_path, monkeypatch):
-        from tools.ha_official_validator import main
+        from tools.validators.ha_official import main
 
         (tmp_path / "configuration.yaml").write_text("homeassistant:\n  name: Test\n")
         monkeypatch.setattr("sys.argv", ["ha_official_validator", str(tmp_path)])
@@ -33,12 +33,12 @@ class TestHAOfficialValidatorMain:
         mock_result.stdout = "Configuration check successful!"
         mock_result.stderr = ""
         with patch(
-            "tools.ha_official_validator.subprocess.run", return_value=mock_result
+            "tools.validators.ha_official.subprocess.run", return_value=mock_result
         ):
             assert main() == 0
 
     def test_main_invalid(self, tmp_path, monkeypatch):
-        from tools.ha_official_validator import main
+        from tools.validators.ha_official import main
 
         monkeypatch.setattr("sys.argv", ["ha_official_validator", "/nonexistent"])
         assert main() == 1
@@ -156,7 +156,7 @@ class TestRunHACheckConfig:
         mock_result.stderr = ""
 
         with patch(
-            "tools.ha_official_validator.subprocess.run",
+            "tools.validators.ha_official.subprocess.run",
             return_value=mock_result,
         ):
             assert validator.run_ha_check_config() is True
@@ -168,14 +168,14 @@ class TestRunHACheckConfig:
         mock_result.stderr = ""
 
         with patch(
-            "tools.ha_official_validator.subprocess.run",
+            "tools.validators.ha_official.subprocess.run",
             return_value=mock_result,
         ):
             assert validator.run_ha_check_config() is False
 
     def test_timeout(self, validator):
         with patch(
-            "tools.ha_official_validator.subprocess.run",
+            "tools.validators.ha_official.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="test", timeout=120),
         ):
             assert validator.run_ha_check_config() is False
@@ -183,7 +183,7 @@ class TestRunHACheckConfig:
 
     def test_ha_not_found(self, validator):
         with patch(
-            "tools.ha_official_validator.subprocess.run",
+            "tools.validators.ha_official.subprocess.run",
             side_effect=FileNotFoundError,
         ):
             assert validator.run_ha_check_config() is False
@@ -192,7 +192,7 @@ class TestRunHACheckConfig:
     def test_generic_exception_propagates(self, validator):
         with (
             patch(
-                "tools.ha_official_validator.subprocess.run",
+                "tools.validators.ha_official.subprocess.run",
                 side_effect=RuntimeError("unexpected"),
             ),
             pytest.raises(RuntimeError),
@@ -217,7 +217,7 @@ class TestValidateAll:
         mock_result.stderr = ""
 
         with patch(
-            "tools.ha_official_validator.subprocess.run",
+            "tools.validators.ha_official.subprocess.run",
             return_value=mock_result,
         ):
             assert validator.validate_all() is True
@@ -230,7 +230,7 @@ def test_non_subprocess_error_propagates(monkeypatch, tmp_path):
     def boom(*a, **k):
         raise ValueError("unexpected logic bug")
 
-    monkeypatch.setattr("tools.ha_official_validator.subprocess.run", boom)
+    monkeypatch.setattr("tools.validators.ha_official.subprocess.run", boom)
     with pytest.raises(ValueError):
         v.validate_all()
 

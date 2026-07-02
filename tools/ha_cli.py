@@ -12,7 +12,6 @@ Subcommands:
     curl        Call HA REST API via HAClient (pure Python).
     edit        Edit automations/scripts with safe round-trip YAML.
 
-Backward-compat: ``python tools/run_tests.py`` delegates to ``ha_cli validate``.
 """
 
 import argparse

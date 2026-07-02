@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from tools.reference_validator import ReferenceValidator
+from tools.validators.references import ReferenceValidator
 
 
 @pytest.fixture
@@ -926,7 +926,7 @@ class TestReferenceValidatorMain:
     """Cover lines 509-524: main() function."""
 
     def test_main_valid(self, setup_config, monkeypatch):
-        from tools.reference_validator import main
+        from tools.validators.references import main
 
         (setup_config / "automations.yaml").write_text(
             "entity_id: sensor.temperature\n"
@@ -935,7 +935,7 @@ class TestReferenceValidatorMain:
         assert main() == 0
 
     def test_main_invalid(self, monkeypatch):
-        from tools.reference_validator import main
+        from tools.validators.references import main
 
         monkeypatch.setattr("sys.argv", ["reference_validator", "/nonexistent"])
         assert main() == 1

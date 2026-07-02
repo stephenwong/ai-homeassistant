@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from tools.yaml_validator import YAMLValidator
+from tools.validators.yaml import YAMLValidator
 
 
 @pytest.fixture
@@ -192,14 +192,14 @@ class TestYAMLValidatorMain:
 
     def test_main_valid(self, config_dir, monkeypatch):
 
-        from tools.yaml_validator import main
+        from tools.validators.yaml import main
 
         (config_dir / "configuration.yaml").write_text("homeassistant:\n  name: Test\n")
         monkeypatch.setattr("sys.argv", ["yaml_validator", str(config_dir)])
         assert main() == 0
 
     def test_main_invalid(self, monkeypatch):
-        from tools.yaml_validator import main
+        from tools.validators.yaml import main
 
         monkeypatch.setattr("sys.argv", ["yaml_validator", "/nonexistent"])
         assert main() == 1
