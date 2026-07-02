@@ -77,60 +77,40 @@ class HAClient:
             print(f"\u26a0\ufe0f  {warning}", file=sys.stderr)
         return cls(url, token, timeout=timeout)
 
-    def get(self, path: str, **kwargs: Any) -> requests.Response:
-        """GET ``path`` (e.g. ``/api/states``). Raises HARequestError on failure."""
+    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
+        """Dispatch a request to ``path``. Raises HARequestError on failure."""
         url = f"{self.url}{path}"
         try:
-            return self._session.get(
+            return getattr(self._session, method.lower())(
                 url, headers=self.headers, timeout=self.timeout, **kwargs
             )
         except requests.RequestException as e:
-            raise HARequestError(f"GET {path} failed: {e}") from e
+            raise HARequestError(f"{method.upper()} {path} failed: {e}") from e
+
+    def get(self, path: str, **kwargs: Any) -> requests.Response:
+        """GET ``path`` (e.g. ``/api/states``). Raises HARequestError on failure."""
+        return self._request("GET", path, **kwargs)
 
     def post(self, path: str, **kwargs: Any) -> requests.Response:
         """POST to ``path``. Raises HARequestError on failure."""
-        url = f"{self.url}{path}"
-        try:
-            return self._session.post(
-                url, headers=self.headers, timeout=self.timeout, **kwargs
-            )
-        except requests.RequestException as e:
-            raise HARequestError(f"POST {path} failed: {e}") from e
+        return self._request("POST", path, **kwargs)
 
     def put(self, path: str, **kwargs: Any) -> requests.Response:
         """PUT to ``path``. Raises HARequestError on failure."""
-        url = f"{self.url}{path}"
-        try:
-            return self._session.put(
-                url, headers=self.headers, timeout=self.timeout, **kwargs
-            )
-        except requests.RequestException as e:
-            raise HARequestError(f"PUT {path} failed: {e}") from e
+        return self._request("PUT", path, **kwargs)
 
     def delete(self, path: str, **kwargs: Any) -> requests.Response:
         """DELETE ``path``. Raises HARequestError on failure."""
-        url = f"{self.url}{path}"
-        try:
-            return self._session.delete(
-                url, headers=self.headers, timeout=self.timeout, **kwargs
-            )
-        except requests.RequestException as e:
-            raise HARequestError(f"DELETE {path} failed: {e}") from e
+        return self._request("DELETE", path, **kwargs)
 
     def patch(self, path: str, **kwargs: Any) -> requests.Response:
         """PATCH ``path``. Raises HARequestError on failure."""
-        url = f"{self.url}{path}"
-        try:
-            return self._session.patch(
-                url, headers=self.headers, timeout=self.timeout, **kwargs
-            )
-        except requests.RequestException as e:
-            raise HARequestError(f"PATCH {path} failed: {e}") from e
+        return self._request("PATCH", path, **kwargs)
 
     def get_json(self, path: str, **kwargs: Any) -> Any:
         """GET ``path`` and parse JSON. Returns None on non-JSON responses."""
         response = self.get(path, **kwargs)
-        if response.status_code != 200:
+        if response.status_code < 200 or response.status_code >= 300:
             raise HARequestError(
                 f"GET {path} returned HTTP {response.status_code}: "
                 f"{response.text[:200]}"

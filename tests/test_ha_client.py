@@ -83,6 +83,48 @@ class TestFromEnv:
             mock_load.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    "method,verb",
+    [
+        ("get", "get"),
+        ("post", "post"),
+        ("put", "put"),
+        ("delete", "delete"),
+        ("patch", "patch"),
+    ],
+)
+def test_http_methods_route_to_session_verb(method, verb):
+    session = MagicMock()
+    session_mock = MagicMock(return_value=requests.Response())
+    setattr(session, verb, session_mock)
+    client = HAClient("http://h.local:8123", "tok", session=session)
+    getattr(client, method)("/api/x")
+    session_mock.assert_called_once()
+    args, kwargs = session_mock.call_args
+    assert args[0] == "http://h.local:8123/api/x"
+    assert kwargs["headers"]["Authorization"] == "Bearer tok"
+    assert "timeout" in kwargs
+
+
+def test_get_json_accepts_2xx():
+    session = MagicMock()
+    resp = requests.Response()
+    resp.status_code = 201
+    resp._content = b'{"ok": true}'
+    resp.headers["Content-Type"] = "application/json"
+    session.get.return_value = resp
+    client = HAClient("http://h.local:8123", "tok", session=session)
+    assert client.get_json("/api/x") == {"ok": True}
+
+
+def test_request_error_wording():
+    session = MagicMock()
+    session.get.side_effect = requests.RequestException("boom")
+    client = HAClient("http://h.local:8123", "tok", session=session)
+    with pytest.raises(HARequestError, match=r"GET /api/x failed"):
+        client.get("/api/x")
+
+
 class TestGet:
     def test_get_returns_response(self):
         session = MagicMock()

@@ -112,8 +112,7 @@ def reload_service(client: HAClient, service: str) -> tuple[str, bool, str | Non
     try:
         ok = client.call_service(domain, action)
     except HARequestError as e:
-        ok = False
-        return (service, ok, str(e))
+        return (service, False, str(e))
     return (service, ok, None)
 
 
