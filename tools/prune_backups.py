@@ -14,6 +14,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 BACKUP_DIR = Path(__file__).parent.parent / "backups"
 BACKUP_PATTERN = re.compile(r"ha_config_(\d{8})_(\d{6})\.tar\.gz")
@@ -52,7 +53,7 @@ def get_backups() -> list[dict]:
 
 def group_by_retention_period(backups: list[dict], now: datetime) -> dict:
     """Group backups into retention periods."""
-    groups = {
+    groups: dict[str, Any] = {
         "keep_all": [],  # Last 7 days
         "daily": defaultdict(list),  # 7-30 days, one per day
         "weekly": defaultdict(list),  # 30+ days, one per week

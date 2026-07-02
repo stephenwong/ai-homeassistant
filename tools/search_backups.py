@@ -58,8 +58,8 @@ def search_backup(
 
                 try:
                     with extracted:
-                        context_before = deque(maxlen=context_lines)
-                        pending_after = []
+                        context_before: deque[str] = deque(maxlen=context_lines)
+                        pending_after: list[dict] = []
 
                         for line_num, raw_line in enumerate(extracted, start=1):
                             line = raw_line.decode("utf-8").rstrip("\n")
