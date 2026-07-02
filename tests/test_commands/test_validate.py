@@ -3,6 +3,8 @@
 from argparse import Namespace
 from unittest.mock import patch
 
+import pytest
+
 from tools.commands import validate
 from tools.commands.validate import ValidatorResult, _run_one, run, run_validators
 
@@ -187,6 +189,34 @@ class TestRunOne:
             )
         assert result.passed is False
         mock_save.assert_not_called()
+
+    def test_compute_hash_non_oserror_propagates(self, monkeypatch, tmp_path):
+        import tools.commands.validate as mod
+        from tools.validators.yaml import YAMLValidator
+
+        (tmp_path / "configuration.yaml").write_text("a: 1")
+        monkeypatch.setattr(
+            mod,
+            "compute_hash",
+            lambda *a, **k: (_ for _ in ()).throw(ValueError("bug")),
+        )
+        with pytest.raises(ValueError):
+            mod._run_one(YAMLValidator, "YAML", str(tmp_path), True, True)
+
+    def test_save_cache_unexpected_error_propagates(self, monkeypatch, tmp_path):
+        import tools.commands.validate as mod
+        from tools.validators.yaml import YAMLValidator
+
+        (tmp_path / "configuration.yaml").write_text("a: 1")
+        monkeypatch.setattr(mod, "compute_hash", lambda *a, **k: "fakehash")
+        monkeypatch.setattr(mod, "load_cache", lambda *a, **k: None)
+        monkeypatch.setattr(
+            mod,
+            "save_cache",
+            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        with pytest.raises(RuntimeError):
+            mod._run_one(YAMLValidator, "YAML", str(tmp_path), True, False)
 
     def test_save_cache_failure_does_not_crash(self, config_dir):
         """If saving cache throws, validation result is still returned."""

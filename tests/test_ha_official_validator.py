@@ -189,13 +189,15 @@ class TestRunHACheckConfig:
             assert validator.run_ha_check_config() is False
             assert any("not found" in e for e in validator.errors)
 
-    def test_generic_exception(self, validator):
-        with patch(
-            "tools.ha_official_validator.subprocess.run",
-            side_effect=RuntimeError("unexpected"),
+    def test_generic_exception_propagates(self, validator):
+        with (
+            patch(
+                "tools.ha_official_validator.subprocess.run",
+                side_effect=RuntimeError("unexpected"),
+            ),
+            pytest.raises(RuntimeError),
         ):
-            assert validator.run_ha_check_config() is False
-            assert any("unexpected" in e for e in validator.errors)
+            validator.run_ha_check_config()
 
 
 class TestValidateAll:
@@ -219,6 +221,18 @@ class TestValidateAll:
             return_value=mock_result,
         ):
             assert validator.validate_all() is True
+
+
+def test_non_subprocess_error_propagates(monkeypatch, tmp_path):
+    (tmp_path / "configuration.yaml").write_text("default_config:")
+    v = HAOfficialValidator(str(tmp_path))
+
+    def boom(*a, **k):
+        raise ValueError("unexpected logic bug")
+
+    monkeypatch.setattr("tools.ha_official_validator.subprocess.run", boom)
+    with pytest.raises(ValueError):
+        v.validate_all()
 
 
 class TestTimeoutConfiguration:

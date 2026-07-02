@@ -80,7 +80,7 @@ def _run_one(
     file_deps = instance.file_deps()
     fhash: str | None = None
     if file_deps:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError):
             fhash = compute_hash(instance.config_dir, file_deps)
 
     # --- cache check (skip when --force or when file_deps is empty) ---
@@ -126,7 +126,7 @@ def _run_one(
 
     # --- save to cache (only on success; failures always re-run) ---
     if passed and fhash is not None:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError, TypeError, ValueError):
             save_cache(instance.config_dir, name, description, fhash, True, duration)
 
     return ValidatorResult(

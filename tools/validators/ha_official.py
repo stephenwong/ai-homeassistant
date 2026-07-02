@@ -81,7 +81,7 @@ class HAOfficialValidator(ValidatorBase):
                 "Please install with: pip install homeassistant"
             )
             return False
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             self.errors.append(f"Failed to run Home Assistant config check: {e}")
             return False
 
