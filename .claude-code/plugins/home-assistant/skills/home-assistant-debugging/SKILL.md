@@ -188,6 +188,8 @@ Grep "automation_name_or_keyword" config/automations.yaml
 
 **Check automation traces** for execution history:
 - HA UI: Settings > Automations > find automation > three-dot menu > Traces
+- CLI: `ha_cli trace automation.<name>` — fetch trace data as JSON via the REST API
+- CLI: `ha_cli trace` — list all automations with available traces
 - Traces show each step: trigger matched, conditions evaluated, actions executed
 - If no traces exist, the trigger never fired
 - If traces show condition failure, read the condition values at that timestamp
@@ -213,11 +215,16 @@ When a service call doesn't work as expected:
 1. **Test the service directly** via API to isolate automation vs service issue
 2. **Check entity states** - is the target in expected state?
 3. **Check automation traces** (Settings > Automations > Traces) - did the automation run? Did each step succeed?
-4. **Check HA logs** via SSH:
+4. **Check HA logs** — two approaches:
 
 ```bash
-# Recent HA core logs
+# Option A: CLI (no SSH needed, REST API)
+ha_cli logs
+
+# Option B: SSH (full logs with follow)
 ssh homeassistant "ha core logs" | tail -100
+```
+
 
 # Follow logs in real-time (useful for reproducing issues)
 ssh homeassistant "ha core logs --follow"
@@ -234,20 +241,27 @@ This isolates whether the problem is:
 
 ## Direct HA API Access for Debugging
 
-Use `ha_cli curl` for API calls (see CLAUDE.md for general usage). Debugging-specific calls:
+Use `ha_cli` dedicated subcommands for common debugging tasks:
 
 ```bash
 # Check entity state and attributes (last_changed, last_triggered)
 ha_cli curl /api/states/sensor.entity_name --pretty
 
+# Query entity history over a period
+ha_cli history sensor.name                        # last 24 hours
+ha_cli history sensor.name --since 2026-06-27T00:00:00Z  # since timestamp
+
+# Fetch automation trace
+ha_cli trace automation.name                      # specific automation
+ha_cli trace                                      # list all traces
+
+# Fetch error log (no SSH needed)
+ha_cli logs
+
 # Query logbook for recent events (ISO 8601 UTC)
 # Example: ha_cli curl "/api/logbook/YYYY-MM-DDT00:00:00Z"
 # Use today's UTC date — e.g. 2026-06-27 for June 27, 2026
 ha_cli curl "/api/logbook/2026-06-27T00:00:00Z"
-
-# Query entity history over a period
-# Example: ha_cli curl "/api/history/period/YYYY-MM-DDT00:00:00Z?filter_entity_id=sensor.name"
-ha_cli curl "/api/history/period/2026-06-27T00:00:00Z?filter_entity_id=sensor.name"
 ```
 
 ### Bypass Validation for New Entities

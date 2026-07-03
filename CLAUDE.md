@@ -19,7 +19,7 @@ This repository manages Home Assistant configuration files with automated valida
 
 ### Tools Package (`tools/`)
 - `tools/ha_cli.py` — **Single CLI entry point**
-- `tools/commands/` — Subcommands: validate, reload, entities, curl, edit
+- `tools/commands/` — Subcommands: call, curl, edit, entities, history, logs, reload, stale_sensors, trace, validate
 - `tools/ha/client.py` — `HAClient` (importable REST API client)
 - `tools/ha/yaml_editor.py` — `YAMLEditor` (importable round-trip YAML)
 - `tools/validators/` — Validators: `base.py`, `duplicate_ids.py`, `entity_definitions.py`, `ha_official.py`, `references.py`, `services.py`, `stale_sensors.py`, `templates.py`, `yaml.py`
@@ -46,7 +46,7 @@ make test-ssh       Test SSH connection
 make clean          Remove temp/cache
 ```
 
-CLI: `uv run python tools/ha_cli.py {validate|reload|entities|curl|edit|stale_sensors}`
+CLI: `uv run python tools/ha_cli.py {validate|reload|entities|curl|edit|stale_sensors|call|history|logs|trace}`
 Flags: `--summary` (compact output, auto for agents/pipes), `--no-summary` (force verbose), `--force` (bypass cache)
 
 ### HA API Access — Three Tiers
@@ -71,6 +71,33 @@ uv run python tools/ha_cli.py curl /api/states --domain light --pick state  # fi
 uv run python tools/ha_cli.py curl /api/states --max-chars 500       # truncate output when >500 chars
 uv run python tools/ha_cli.py curl /api/states --no-guard            # disable guardrail (dump all)
 uv run python tools/ha_cli.py curl --post /api/services/light/turn_on -d '{"entity_id":"light.kitchen"}'
+```
+
+### ha_cli call
+```bash
+uv run python tools/ha_cli.py call light.turn_on -d '{"entity_id":"light.kitchen"}'  # call a service
+uv run python tools/ha_cli.py call light.turn_on --pretty                             # pretty-print response
+uv run python tools/ha_cli.py call automation.reload                                  # reload automations (no data)
+```
+
+### ha_cli logs
+```bash
+uv run python tools/ha_cli.py logs              # dump HA error log to stdout
+```
+
+### ha_cli history
+```bash
+uv run python tools/ha_cli.py history sensor.temp                     # last 24h of state history
+uv run python tools/ha_cli.py history sensor.temp --since 2026-07-01T00:00:00Z  # since timestamp
+uv run python tools/ha_cli.py history sensor.temp --end 2026-07-02T00:00:00Z    # until timestamp
+uv run python tools/ha_cli.py history sensor.temp --minimal           # omit attributes/context
+```
+
+### ha_cli trace
+```bash
+uv run python tools/ha_cli.py trace                                   # list all automation traces
+uv run python tools/ha_cli.py trace automation.morning_routine        # specific automation trace
+uv run python tools/ha_cli.py trace automation.foo --pretty           # pretty-print trace
 ```
 
 ### Compact Output (--summary)

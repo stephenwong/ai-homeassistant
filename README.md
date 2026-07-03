@@ -212,7 +212,7 @@ make push  # Validates then uploads to HA
 ```
 ├── tools/                       # Validation and management scripts
 │   ├── ha_cli.py                # Single CLI entry point
-│   ├── commands/                # CLI subcommands (validate, reload, entities, curl, edit, stale_sensors)
+│   ├── commands/                # CLI subcommands (call, curl, edit, entities, history, logs, reload, stale_sensors, trace, validate)
 │   ├── ha/                      # Shared modules
 │   │   ├── client.py            # HAClient — REST API client
 │   │   └── yaml_editor.py       # YAMLEditor — round-trip YAML editing
@@ -275,6 +275,23 @@ uv run python tools/ha_cli.py curl /api/states --abbrev
 uv run python tools/ha_cli.py curl /api/states --max-chars 500
 uv run python tools/ha_cli.py curl /api/states --no-guard
 uv run python tools/ha_cli.py curl /api/services/light/turn_on --post --data '{"entity_id":"light.kitchen"}'
+
+# Service Call (dedicated)
+uv run python tools/ha_cli.py call light.turn_on -d '{"entity_id":"light.kitchen"}'  # call a service
+uv run python tools/ha_cli.py call automation.reload                                   # reload with no data
+
+# Error Logs
+uv run python tools/ha_cli.py logs                              # fetch HA error log
+
+# State History
+uv run python tools/ha_cli.py history sensor.temp              # last 24 hours
+uv run python tools/ha_cli.py history sensor.temp --since 2026-07-01T00:00:00Z   # since timestamp
+uv run python tools/ha_cli.py history sensor.temp --minimal    # omit attributes/context
+
+# Automation Traces
+uv run python tools/ha_cli.py trace                             # list all automation traces
+uv run python tools/ha_cli.py trace automation.morning_routine  # specific automation trace
+uv run python tools/ha_cli.py trace --pretty                    # pretty-print trace
 
 # Stale Sensor Detection
 uv run python tools/ha_cli.py stale_sensors                     # Find stale sensors (summary mode auto)
