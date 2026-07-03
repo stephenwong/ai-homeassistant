@@ -106,7 +106,7 @@ uv run python tools/ha_cli.py trace automation.morning_routine        # specific
 uv run python tools/ha_cli.py trace --first 5                         # first 5 traces only (after dedupe in summary)
 uv run python tools/ha_cli.py trace automation.foo --pretty           # pretty-print trace
 ```
-Summary mode dedupes by item_id (keeps most-recent run), adds `runs` field when N>1. Single-entity traces also strip `changed_variables.this.attributes` (~30% additional savings beyond config/blueprint_inputs).
+Summary mode dedupes by item_id (keeps most-recent run), adds `runs` field when N>1. Single-entity traces strip `config`/`blueprint_inputs` plus all nested `.attributes` from `changed_variables` entity-state dicts. `--max-chars` is now enforced on single-entity dicts by dropping the largest trace step keys (with `_truncated`/`dropped_steps`/`kept_steps` markers and stderr notice).
 
 ### Compact Output (--summary)
 

@@ -301,7 +301,9 @@ uv run python tools/ha_cli.py trace --pretty                    # pretty-print t
 uv run python tools/ha_cli.py trace --first 5                   # first 5 traces only (after dedupe in summary)
 
 # Summary mode: dedupes by item_id (adds runs field when N>1), drops config/blueprint_inputs
-#   from single-entity traces, and strips changed_variables.this.attributes
+#   from single-entity traces, and strips changed_variables.this.attributes  
+#   (updated: strips .attributes from ALL changed_variables dicts, not just this;  
+#   --max-chars now enforced on single-entity dicts via step-key dropping)
 uv run python tools/ha_cli.py trace --summary
 
 # Stale Sensor Detection

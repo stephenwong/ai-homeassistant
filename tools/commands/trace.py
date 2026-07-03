@@ -148,12 +148,25 @@ def run(args: argparse.Namespace) -> int:
         if isinstance(data.get("trace"), dict):
             data["trace"] = _prune_trace_entries(data["trace"])
 
+    # Single-entity dict cap: drop largest trace step keys to fit --max-chars.
+    if args.entity_id and isinstance(data, dict):
+        max_chars = resolve_max_chars(args, summary)
+        if max_chars is not None:
+            data = _cap_trace_dict(data, max_chars)
+            if data.get("_truncated") is True:
+                total = data["dropped_steps"] + data["kept_steps"]
+                print(
+                    f"# trace truncated to ~{max_chars} chars "
+                    f"(dropped {data['dropped_steps']}/{total} steps)",
+                    file=sys.stderr,
+                )
+
     # Apply output shaping (--first, --pick, --max-chars).
     if not args.entity_id:
         # List mode: full output shaping.
         # NOTE: single-entity mode returns a dict; apply_output_shape does not
-        # truncate dicts (only lists). Single-entity traces may exceed --max-chars;
-        # --pick still works.
+        # truncate dicts (only lists). --max-chars for single-entity is handled
+        # above by _cap_trace_dict.
         data = apply_output_shape(
             data,
             first=args.first,
@@ -161,7 +174,7 @@ def run(args: argparse.Namespace) -> int:
             max_chars=resolve_max_chars(args, summary),
         )
     else:
-        # Single-entity dict: only --pick applies.
+        # Single-entity dict: only --pick applies (--max-chars handled above).
         data = apply_output_shape(data, pick=args.pick)
 
     if args.pretty:
@@ -173,9 +186,13 @@ def run(args: argparse.Namespace) -> int:
 
 
 def _prune_trace_entries(trace: dict) -> dict:
-    """Drop changed_variables.this.attributes from trace entries.
+    """Drop ``.attributes`` from all entity-state dicts within changed_variables.
 
-    Keeps this.entity_id and this.state for debugging context.
+    Strips the ``attributes`` key from *every* dict value inside
+    ``changed_variables`` (not just ``this``), keeping ``entity_id`` and
+    ``state`` for debugging context.  These entity-state attributes blobs
+    are the dominant contributor to trace size in complex automations.
+
     Defensive against malformed entries (non-list values, missing keys).
     Mutates nothing — returns a new dict.
     """
@@ -190,10 +207,68 @@ def _prune_trace_entries(trace: dict) -> dict:
                 new_entries.append(entry)
                 continue
             cv = entry.get("changed_variables")
-            if isinstance(cv, dict) and isinstance(cv.get("this"), dict):
-                this = dict(cv["this"])
-                this.pop("attributes", None)
-                entry = {**entry, "changed_variables": {**cv, "this": this}}
+            if isinstance(cv, dict):
+                new_cv = {}
+                for k, v in cv.items():
+                    if isinstance(v, dict) and "attributes" in v:
+                        new_cv[k] = {
+                            kk: vv for kk, vv in v.items() if kk != "attributes"
+                        }
+                    else:
+                        new_cv[k] = v
+                entry = {**entry, "changed_variables": new_cv}
             new_entries.append(entry)
         pruned[step_key] = new_entries
     return pruned
+
+
+def _cap_trace_dict(data: dict, max_chars: int) -> dict:
+    """Drop largest trace step keys until serialized dict fits within *max_chars*.
+
+    Appends top-level fields ``_truncated``, ``dropped_steps``, ``kept_steps``
+    when steps are removed.  Preserves at least one step and all top-level
+    fields (``item_id``, ``state``, ``last_step``, etc.).
+
+    Mutates nothing — returns a *new* dict (or the same reference when no
+    truncation is needed).
+    """
+    serialized = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+    if len(serialized) <= max_chars:
+        return data
+
+    trace = data.get("trace")
+    if not isinstance(trace, dict) or len(trace) < 2:
+        return data
+
+    # Sort step keys by serialized size, largest first.
+    step_sizes: list[tuple[str, int]] = sorted(
+        (
+            (k, len(json.dumps({k: v}, separators=(",", ":"), ensure_ascii=False)))
+            for k, v in trace.items()
+        ),
+        key=lambda x: -x[1],
+    )
+
+    original_count = len(trace)
+    remaining = dict(trace)
+
+    for step_key, _ in step_sizes:
+        if len(remaining) <= 1:
+            break
+        del remaining[step_key]
+        trial = {**data, "trace": remaining}
+        trial_ser = json.dumps(trial, separators=(",", ":"), ensure_ascii=False)
+        if len(trial_ser) <= max_chars:
+            break
+
+    dropped = original_count - len(remaining)
+    if dropped > 0:
+        data = {
+            **data,
+            "trace": remaining,
+            "_truncated": True,
+            "dropped_steps": dropped,
+            "kept_steps": len(remaining),
+        }
+
+    return data

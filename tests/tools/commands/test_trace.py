@@ -325,7 +325,21 @@ class TestSummaryModeSingle:
                             "entity_id": "automation.test",
                             "state": "on",
                             "attributes": {"friendly_name": "Test", "id": "test"},
-                        }
+                        },
+                        "trigger": {
+                            "entity_id": "binary_sensor.motion",
+                            "state": "on",
+                            "attributes": {
+                                "friendly_name": "Motion Sensor",
+                                "device_class": "motion",
+                                "battery_level": 85,
+                            },
+                        },
+                        "other_var": {
+                            "entity_id": "light.test",
+                            "state": "off",
+                            "attributes": {"brightness": 255},
+                        },
                     },
                 }
             ],
@@ -335,6 +349,22 @@ class TestSummaryModeSingle:
         "item_id": "test",
         "state": "stopped",
         "timestamp": {"start": "t1", "finish": "t2"},
+    }
+
+    BIG_TRACE_STEPS = 3
+    BIG_TRACE = {
+        "trace": {
+            f"step/{i}": [{"path": f"step/{i}", "result": {"value": "y" * 1800}}]
+            for i in range(BIG_TRACE_STEPS)
+        },
+        "config": {"alias": "Big"},
+        "blueprint_inputs": {},
+        "item_id": "big",
+        "state": "stopped",
+        "script_execution": "finished",
+        "last_step": "step/2",
+        "domain": "automation",
+        "trigger": "time",
     }
 
     def test_single_entity_summary_drops_config(self, mock_client, capsys):
@@ -396,6 +426,54 @@ class TestSummaryModeSingle:
                     # Should keep entity_id and state
                     if "entity_id" in this:
                         assert this["entity_id"] == "automation.test"
+
+    def test_summary_strips_all_attributes_in_changed_variables(
+        self, mock_client, capsys
+    ):
+        """Summary strips .attributes from ALL changed_variables, not just this."""
+        mock_client.command.side_effect = [
+            [{"item_id": "test", "run_id": "r1"}],
+            self.FULL_TRACE,
+        ]
+        args = make_args(entity_id="automation.test", summary=True, no_summary=False)
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        trace = result.get("trace", {})
+        for entries in trace.values():
+            if isinstance(entries, list):
+                for entry in entries:
+                    cv = entry.get("changed_variables") or {}
+                    for key, val in cv.items():
+                        if isinstance(val, dict):
+                            assert "attributes" not in val, (
+                                f"{key}.attributes stripped in summary: {val}"
+                            )
+                            # entity_id / state survive for debugging context
+
+    def test_no_summary_keeps_all_attributes_in_changed_variables(
+        self, mock_client, capsys
+    ):
+        """Verbose keeps .attributes in ALL changed_variables, not just this."""
+        mock_client.command.side_effect = [
+            [{"item_id": "test", "run_id": "r1"}],
+            self.FULL_TRACE,
+        ]
+        args = make_args(entity_id="automation.test")
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        trace = result.get("trace", {})
+        attrs_found = {"this": False, "trigger": False, "other_var": False}
+        for entries in trace.values():
+            if isinstance(entries, list):
+                for entry in entries:
+                    cv = entry.get("changed_variables") or {}
+                    for key in attrs_found:
+                        val = cv.get(key)
+                        if isinstance(val, dict) and "attributes" in val:
+                            attrs_found[key] = True
+        assert all(attrs_found.values()), (
+            f"all cv keys should have .attributes in verbose: {attrs_found}"
+        )
 
     def test_no_summary_keeps_this_attributes(self, mock_client, capsys):
         """Verbose mode keeps this.attributes intact."""
@@ -492,6 +570,58 @@ class TestSummaryModeSingle:
         assert trace_cmd.run(args) == 0
         result = __import__("json").loads(capsys.readouterr().out)
         assert result == [{"item_id": "x", "state": "stopped"}]
+
+    def test_single_entity_max_chars_caps_dict(self, mock_client, capsys):
+        """--max-chars caps single-entity trace dict by dropping largest step keys."""
+        mock_client.command.side_effect = [
+            [{"item_id": "big", "run_id": "r1"}],
+            self.BIG_TRACE,
+        ]
+        args = make_args(
+            entity_id="automation.big",
+            max_chars=2000,
+            summary=True,
+            no_summary=False,
+        )
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        serialized = json.dumps(result, separators=(",", ":"))
+        assert len(serialized) <= 2100  # small tolerance for _truncated marker
+        assert result.get("_truncated") is True
+        assert result.get("dropped_steps", 0) >= 1
+        assert result.get("kept_steps", 0) >= 1
+
+    def test_single_entity_max_chars_stderr_warning(self, mock_client, capsys):
+        """stderr warns when --max-chars forces truncation of a single-entity trace."""
+        mock_client.command.side_effect = [
+            [{"item_id": "big", "run_id": "r1"}],
+            self.BIG_TRACE,
+        ]
+        args = make_args(
+            entity_id="automation.big",
+            max_chars=2000,
+            summary=True,
+            no_summary=False,
+        )
+        assert trace_cmd.run(args) == 0
+        captured = capsys.readouterr()
+        assert "truncated" in captured.err.lower() or "dropped" in captured.err.lower()
+
+    def test_single_entity_max_chars_noop_when_fits(self, mock_client, capsys):
+        """--max-chars > actual size should not truncate or add _truncated marker."""
+        mock_client.command.side_effect = [
+            [{"item_id": "test", "run_id": "r1"}],
+            self.FULL_TRACE,
+        ]
+        args = make_args(
+            entity_id="automation.test",
+            max_chars=99999,
+            summary=True,
+            no_summary=False,
+        )
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert "_truncated" not in result
 
     def test_list_default_cap(self, mock_client, capsys):
         mock_client.command.return_value = [
