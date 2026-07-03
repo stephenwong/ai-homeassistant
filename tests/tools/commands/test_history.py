@@ -21,6 +21,9 @@ def make_args(**overrides):
         pretty=False,
         summary=False,
         no_summary=True,
+        first=None,
+        pick=None,
+        max_chars=None,
     )
     defaults.update(overrides)
     return Namespace(**defaults)
@@ -194,3 +197,62 @@ class TestRun:
         assert history_cmd.run(args) == 0
         out = capsys.readouterr().out
         assert "sensor.temp" in out
+
+
+SAMPLE_HISTORY_10 = [
+    {
+        "entity_id": "sensor.temp",
+        "state": str(i),
+        "last_changed": f"2026-07-03T0{i}:00:00Z",
+    }
+    for i in range(10)
+]
+
+
+class TestFirst:
+    def test_first_truncates_list(self, mock_client, capsys):
+        mock_client.get_json.return_value = [SAMPLE_HISTORY_10]
+        args = make_args(first=3)
+        assert history_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert len(result) == 3
+
+    def test_zero_rejected_by_argparse(self):
+        """The argparse type rejects 0; tested via parse failure."""
+        from tests.helpers import make_parser
+
+        parser, subparsers = make_parser()
+        history_cmd.add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["history", "sensor.t", "--first", "0"])
+
+
+class TestPick:
+    def test_pick_projects_fields(self, mock_client, capsys):
+        data = [
+            {"entity_id": "sensor.t", "state": "on", "attributes": {"x": 1}},
+        ]
+        mock_client.get_json.return_value = [data]
+        args = make_args(pick="entity_id,state")
+        assert history_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert list(result[0].keys()) == ["entity_id", "state"]
+
+    def test_pick_with_first_stacks(self, mock_client, capsys):
+        mock_client.get_json.return_value = [SAMPLE_HISTORY_10]
+        args = make_args(first=2, pick="entity_id")
+        assert history_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert len(result) == 2
+        assert all(k == "entity_id" for it in result for k in it)
+
+
+class TestMaxChars:
+    def test_truncates_list_when_exceeds(self, mock_client, capsys):
+        data = [{"state": "x" * 100} for _ in range(20)]
+        mock_client.get_json.return_value = [data]
+        args = make_args(max_chars=300)
+        assert history_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert result[-1].get("_truncated") is True
+        assert result[-1]["total"] == 20

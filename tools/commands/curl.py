@@ -22,8 +22,15 @@ import shutil
 import subprocess
 import sys
 
-from tools.common import HARequestError, _has_transform_flags, resolve_summary
+from tools.common import (
+    HARequestError,
+    _has_transform_flags,
+    non_negative_int,
+    positive_int,
+    resolve_summary,
+)
 from tools.ha.client import HAClient
+from tools.output_shape import apply_output_shape
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -84,12 +91,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
     # ---- output processing (mutually exclusive) ----
-    def _positive_int(value: str) -> int:
-        n = int(value)
-        if n < 1:
-            raise argparse.ArgumentTypeError("--first must be >= 1")
-        return n
-
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument(
         "--filter",
@@ -109,7 +110,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     output_group.add_argument(
         "--first",
         metavar="N",
-        type=_positive_int,
+        type=positive_int,
         help="Print first N items only",
     )
     output_group.add_argument(
@@ -132,16 +133,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
     # ---- byte-length truncation ----
-    def _positive_int_or_zero(value: str) -> int:
-        n = int(value)
-        if n < 0:
-            raise argparse.ArgumentTypeError("--max-chars must be >= 0")
-        return n
-
     parser.add_argument(
         "--max-chars",
         metavar="N",
-        type=_positive_int_or_zero,
+        type=non_negative_int,
         help="Truncate JSON output when serialized form exceeds N characters",
     )
 
@@ -385,39 +380,18 @@ def run(args: argparse.Namespace) -> int:
             )
         data = filtered
 
-    # 12. Apply --first (slice)
-    if args.first is not None:
-        if isinstance(data, list):
-            if args.first > len(data) and not summary:
-                print(
-                    f"# requested {args.first}, only {len(data)} items available",
-                    file=sys.stderr,
-                )
-            data = data[: args.first]
-        elif isinstance(data, dict):
-            items = list(data.items())
-            if args.first > len(items) and not summary:
-                print(
-                    f"# requested {args.first}, only {len(items)} keys available",
-                    file=sys.stderr,
-                )
-            data = dict(items[: args.first])
-        else:
-            data = [data]
+    # 12. Warn on --first overcount (verbose mode only)
+    if args.first is not None and not summary:
+        _warn_first_overcount(data, args.first)
 
-    # 13. Apply --pick (field projection)
-    if args.pick and args.pick.strip():
-        fields = [f.strip() for f in args.pick.split(",") if f.strip()]
-        data = _pick_fields(data, fields)
-
-    # 14. Apply --abbrev (short-key rename)
-    if args.abbrev:
-        data = _abbreviate(data)
-
-    # 15. Apply --max-chars (byte-length truncation)
-    is_exempt = args.count or args.keys or args.filter or args.raw
-    if args.max_chars is not None and not is_exempt:
-        data = _truncate_by_chars(data, args.max_chars, compact)
+    # 13-15. Apply shared output shaping (first → pick → abbrev → max_chars)
+    data = apply_output_shape(
+        data,
+        first=args.first,
+        pick=args.pick,
+        max_chars=args.max_chars,
+        abbrev=args.abbrev,
+    )
 
     # 16. Dump JSON
     if data is not None:
@@ -532,89 +506,15 @@ def _handle_keys(data) -> int:
     return 0
 
 
-def _pick_fields(data, fields: list[str]):
-    """Keep only the specified keys from each dict in data.
-
-    Args:
-        data: Parsed JSON — list, dict, or scalar.
-        fields: Key names to retain.
-
-    Returns:
-        Projected data (same shape as input).
-    """
-    if isinstance(data, list):
-        return [_pick_item(item, fields) for item in data]
-    if isinstance(data, dict):
-        return _pick_item(data, fields)
-    return data
-
-
-def _pick_item(item, fields: list[str]):
-    if not isinstance(item, dict):
-        return item
-    return {k: item[k] for k in fields if k in item}
-
-
-# ---------------------------------------------------------------------------
-# Byte-length truncation
-# ---------------------------------------------------------------------------
-
-
-def _truncate_by_chars(data, max_chars: int, compact: bool):
-    """Trim data so its JSON form fits within *max_chars* characters.
-
-    For lists, items are dropped from the end and a truncation marker is
-    appended.  For dicts/scalars no structural truncation is performed
-    (pass-through).  0 or negative *max_chars* disables truncation.
-    """
-    if max_chars <= 0:
-        return data
-
-    serialized = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
-    if len(serialized) <= max_chars:
-        return data
-
-    if not isinstance(data, list):
-        return data
-
-    original_len = len(data)
-    for n in range(original_len, 0, -1):
-        candidate = data[:n]
-        marker = {"_truncated": True, "shown": n, "total": original_len}
-        trial = candidate + [marker]
-        serialized = json.dumps(trial, separators=(",", ":"), ensure_ascii=False)
-        if len(serialized) <= max_chars:
-            return trial
-
-    # Even a single item + marker doesn't fit; return just the marker
-    marker = {"_truncated": True, "shown": 0, "total": original_len}
-    return [marker]
-
-
-# ---------------------------------------------------------------------------
-# Key abbreviation
-# ---------------------------------------------------------------------------
-
-ABBREV_MAP: dict[str, str] = {
-    "entity_id": "e",
-    "state": "s",
-    "attributes": "at",
-    "last_changed": "lc",
-    "last_updated": "lu",
-    "context": "ctx",
-}
-
-
-def _abbreviate(data):
-    """Shorten known JSON keys using ABBREV_MAP."""
-    if isinstance(data, list):
-        return [_abbreviate_item(item) for item in data]
-    if isinstance(data, dict):
-        return _abbreviate_item(data)
-    return data
-
-
-def _abbreviate_item(item):
-    if not isinstance(item, dict):
-        return item
-    return {ABBREV_MAP.get(k, k): v for k, v in item.items()}
+def _warn_first_overcount(data, n: int):
+    """Emit a warning to stderr when ``--first`` exceeds data length (verbose)."""
+    if isinstance(data, list) and n > len(data):
+        print(
+            f"# requested {n}, only {len(data)} items available",
+            file=sys.stderr,
+        )
+    elif isinstance(data, dict) and n > len(data):
+        print(
+            f"# requested {n}, only {len(data)} keys available",
+            file=sys.stderr,
+        )

@@ -220,7 +220,8 @@ make push  # Validates then uploads to HA
 │   ├── reload_config.py         # HA config reload via API
 │   ├── entity_explorer.py       # Entity discovery/search
 │   ├── cache.py                 # SHA256 file-hash caching
-│   ├── common.py                # Shared utilities (re-exports from validators/)
+│   ├── common.py                # Shared utilities (re-exports from validators/, argparse types)
+│   ├── output_shape.py          # Shared JSON output-shaping (--first/--pick/--abbrev/--max-chars)
 │   ├── generate_changelog.py    # Backup changelog generation
 │   ├── search_backups.py        # Full-text search across backups
 │   └── prune_backups.py         # Smart backup retention pruning
@@ -281,17 +282,25 @@ uv run python tools/ha_cli.py call light.turn_on -d '{"entity_id":"light.kitchen
 uv run python tools/ha_cli.py call automation.reload                                   # reload with no data
 
 # Error Logs
-uv run python tools/ha_cli.py logs                              # fetch HA error log
+uv run python tools/ha_cli.py logs                              # fetch HA system log (structured JSON)
 
 # State History
 uv run python tools/ha_cli.py history sensor.temp              # last 24 hours
 uv run python tools/ha_cli.py history sensor.temp --since 2026-07-01T00:00:00Z   # since timestamp
+uv run python tools/ha_cli.py history sensor.temp --end 2026-07-02T00:00:00Z     # until timestamp
 uv run python tools/ha_cli.py history sensor.temp --minimal    # omit attributes/context
+uv run python tools/ha_cli.py history sensor.temp --first 20   # first 20 state records only
+uv run python tools/ha_cli.py history sensor.temp --pick state # keep only specified keys (projection)
+uv run python tools/ha_cli.py history sensor.temp --max-chars 2000  # truncate output to ~2KB
 
 # Automation Traces
 uv run python tools/ha_cli.py trace                             # list all automation traces
 uv run python tools/ha_cli.py trace automation.morning_routine  # specific automation trace
 uv run python tools/ha_cli.py trace --pretty                    # pretty-print trace
+uv run python tools/ha_cli.py trace --first 5                   # first 5 traces only
+
+# Summary mode drops redundant "config" field from single-entity traces
+uv run python tools/ha_cli.py trace --summary
 
 # Stale Sensor Detection
 uv run python tools/ha_cli.py stale_sensors                     # Find stale sensors (summary mode auto)
@@ -390,6 +399,8 @@ For Python scripts and tests, import from the package directly:
 ```python
 from tools.ha.client import HAClient              # REST API client
 from tools.ha.yaml_editor import YAMLEditor        # Round-trip YAML editing
+from tools.output_shape import apply_output_shape # --first/--pick/--abbrev/--max-chars
+from tools.common import positive_int             # argparse type validators
 from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.references import ReferenceValidator
 from tools.validators.services import ServiceValidator

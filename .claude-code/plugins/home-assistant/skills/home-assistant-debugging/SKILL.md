@@ -188,7 +188,7 @@ Grep "automation_name_or_keyword" config/automations.yaml
 
 **Check automation traces** for execution history:
 - HA UI: Settings > Automations > find automation > three-dot menu > Traces
-- CLI: `ha_cli trace automation.<name>` — fetch trace data as JSON via the REST API
+- CLI: `ha_cli trace automation.<name>` — fetch trace data as JSON via the WebSocket API
 - CLI: `ha_cli trace` — list all automations with available traces
 - Traces show each step: trigger matched, conditions evaluated, actions executed
 - If no traces exist, the trigger never fired
@@ -218,8 +218,9 @@ When a service call doesn't work as expected:
 4. **Check HA logs** — two approaches:
 
 ```bash
-# Option A: CLI (no SSH needed, REST API)
+# Option A: CLI (structured JSON via WebSocket)
 ha_cli logs
+ha_cli logs --level ERROR
 
 # Option B: SSH (full logs with follow)
 ssh homeassistant "ha core logs" | tail -100
@@ -250,12 +251,14 @@ ha_cli curl /api/states/sensor.entity_name --pretty
 # Query entity history over a period
 ha_cli history sensor.name                        # last 24 hours
 ha_cli history sensor.name --since 2026-06-27T00:00:00Z  # since timestamp
+ha_cli history sensor.name --first 20             # first 20 state records only
+ha_cli history sensor.name --pick state,last_changed  # keep only those fields (saves tokens)
 
 # Fetch automation trace
 ha_cli trace automation.name                      # specific automation
 ha_cli trace                                      # list all traces
 
-# Fetch error log (no SSH needed)
+# Fetch system log (structured JSON, WebSocket)
 ha_cli logs
 
 # Query logbook for recent events (ISO 8601 UTC)

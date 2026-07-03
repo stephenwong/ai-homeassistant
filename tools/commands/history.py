@@ -6,8 +6,9 @@ import re
 import sys
 import urllib.parse
 
-from tools.common import HARequestError, resolve_summary
+from tools.common import HARequestError, non_negative_int, positive_int, resolve_summary
 from tools.ha.client import HAClient
+from tools.output_shape import apply_output_shape
 
 _ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 
@@ -44,6 +45,23 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--pretty",
         action="store_true",
         help="Pretty-print JSON output with indent=2 (default: compact)",
+    )
+    parser.add_argument(
+        "--first",
+        metavar="N",
+        type=positive_int,
+        help="Show only the first N state records",
+    )
+    parser.add_argument(
+        "--pick",
+        metavar="FIELDS",
+        help="Keep only specified JSON keys (comma-separated)",
+    )
+    parser.add_argument(
+        "--max-chars",
+        metavar="N",
+        type=non_negative_int,
+        help="Truncate JSON output when serialized form exceeds N characters",
     )
     parser.add_argument(
         "--summary",
@@ -94,6 +112,14 @@ def run(args: argparse.Namespace) -> int:
     # Unwrap nested list: [[state, state, ...]] -> [state, state, ...]
     if isinstance(data, list) and data and isinstance(data[0], list):
         data = data[0]
+
+    # Apply token-reduction shapes (--first, --pick, --max-chars)
+    data = apply_output_shape(
+        data,
+        first=args.first,
+        pick=args.pick,
+        max_chars=args.max_chars,
+    )
 
     if args.pretty:
         print(json.dumps(data, indent=2, ensure_ascii=False))

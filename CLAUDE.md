@@ -23,7 +23,8 @@ This repository manages Home Assistant configuration files with automated valida
 - `tools/ha/client.py` — `HAClient` (importable REST API client)
 - `tools/ha/yaml_editor.py` — `YAMLEditor` (importable round-trip YAML)
 - `tools/validators/` — Validators: `base.py`, `duplicate_ids.py`, `entity_definitions.py`, `ha_official.py`, `references.py`, `services.py`, `stale_sensors.py`, `templates.py`, `yaml.py`
-- `tools/cache.py`, `tools/common.py` — Caching; shared utilities (`common.py` re-exports from `validators/base.py`)
+- `tools/cache.py`, `tools/common.py` — Caching; shared utilities (`common.py` re-exports from `validators/base.py`, defines `positive_int`/`non_negative_int` argparse types)
+- `tools/output_shape.py` — Shared JSON output-shaping (`apply_output_shape()` for --first/--pick/--abbrev/--max-chars)
 - `tools/_dev/api_diagnostic.py` — Dev-only (archived, excluded from lint/wheel)
 - `tests/conftest.py` — Shared fixtures (`config_dir`, `_stub_load_env_file`)
 
@@ -82,7 +83,8 @@ uv run python tools/ha_cli.py call automation.reload                            
 
 ### ha_cli logs
 ```bash
-uv run python tools/ha_cli.py logs              # dump HA error log to stdout
+uv run python tools/ha_cli.py logs              # fetch HA system log (structured JSON, WebSocket)
+uv run python tools/ha_cli.py logs --level ERROR  # filter by severity
 ```
 
 ### ha_cli history
@@ -91,14 +93,19 @@ uv run python tools/ha_cli.py history sensor.temp                     # last 24h
 uv run python tools/ha_cli.py history sensor.temp --since 2026-07-01T00:00:00Z  # since timestamp
 uv run python tools/ha_cli.py history sensor.temp --end 2026-07-02T00:00:00Z    # until timestamp
 uv run python tools/ha_cli.py history sensor.temp --minimal           # omit attributes/context
+uv run python tools/ha_cli.py history sensor.temp --first 20          # first 20 state records only
+uv run python tools/ha_cli.py history sensor.temp --pick state        # keep only specified keys (projection)
+uv run python tools/ha_cli.py history sensor.temp --max-chars 2000    # truncate serialized output to ~2KB
 ```
 
 ### ha_cli trace
 ```bash
-uv run python tools/ha_cli.py trace                                   # list all automation traces
+uv run python tools/ha_cli.py trace                                   # list all automation traces (WebSocket)
 uv run python tools/ha_cli.py trace automation.morning_routine        # specific automation trace
+uv run python tools/ha_cli.py trace --first 5                         # first 5 traces only
 uv run python tools/ha_cli.py trace automation.foo --pretty           # pretty-print trace
 ```
+Summary mode (auto for agents) drops the redundant `config` field from single-entity traces (85% payload savings — config is fetchable separately via `ha_config_get_automation`).
 
 ### Compact Output (--summary)
 
@@ -134,6 +141,8 @@ Programmatic: `from tools.ha.yaml_editor import YAMLEditor`
 ```python
 from tools.ha.client import HAClient        # HAClient.from_env()
 from tools.ha.yaml_editor import YAMLEditor
+from tools.output_shape import apply_output_shape, ABBREV_MAP  # --first/--pick/--abbrev/--max-chars
+from tools.common import positive_int, non_negative_int        # argparse type validators
 from tools.validators.references import ReferenceValidator
 from tools.validators.services import ServiceValidator
 from tools.validators.templates import TemplateValidator

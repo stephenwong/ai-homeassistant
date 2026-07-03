@@ -4,10 +4,12 @@ Consolidates the duplicated auth/header/timeout/JSON-parse code that previously
 lived in `tools/reload_config.py` and `tools/ha_api_diagnostic.py`.
 """
 
+import asyncio
 import os
 import sys
 from typing import Any
 
+import aiohttp
 import requests
 
 from tools.common import (
@@ -133,3 +135,120 @@ class HAClient:
         path = f"/api/services/{domain}/{service}"
         response = self.post(path, json=data or {})
         return response.status_code == 200
+
+
+class HAWSClient:
+    """Thin WebSocket client for HA commands not available via REST.
+
+    HA removed /api/error_log and /api/automation/trace from the REST API.
+    These are now WebSocket-only (system_log/list, trace/list, trace/get).
+    """
+
+    def __init__(
+        self,
+        url: str,
+        token: str,
+        *,
+        timeout: int = 10,
+        session_factory=None,
+    ):
+        error = validate_ha_url(url)
+        if error:
+            raise HARequestError(error)
+        if not token:
+            raise HARequestError(
+                "HA_TOKEN not found. Set it in .env or the environment."
+            )
+        self.url = url.rstrip("/")
+        self.token = token
+        self.timeout = timeout
+        self._session_factory = session_factory
+        self._msg_id = 0
+
+    @classmethod
+    def from_env(cls) -> HAWSClient:
+        """Construct a client from HA_URL/HA_TOKEN/HA_REQUEST_TIMEOUT."""
+        load_env_file()
+        url = os.getenv("HA_URL", DEFAULT_HA_URL)
+        token = os.getenv("HA_TOKEN", "")
+        timeout, warning = get_env_int("HA_REQUEST_TIMEOUT", 10)
+        if warning:
+            print(f"\u26a0\ufe0f  {warning}", file=sys.stderr)
+        return cls(url, token, timeout=timeout)
+
+    @property
+    def _ws_url(self) -> str:
+        """Convert http URL to WebSocket URL (ws:// or wss://)."""
+        url = self.url
+        if url.lower().startswith("https://"):
+            return "wss://" + url[8:]
+        return "ws://" + url[7:]
+
+    def command(self, command_type: str, **params: Any) -> Any:
+        """Send a WebSocket command synchronously, return the result.
+
+        Raises HARequestError on connection failure, auth failure, or
+        command failure.
+        """
+        self._msg_id = 0
+        return asyncio.run(self._command(command_type, **params))
+
+    async def _command(self, command_type: str, **params: Any) -> Any:
+        session_factory = self._session_factory or aiohttp.ClientSession
+        ws_timeout = aiohttp.ClientWSTimeout(
+            ws_receive=self.timeout, ws_close=self.timeout
+        )
+        try:
+            async with (
+                session_factory() as session,
+                session.ws_connect(
+                    f"{self._ws_url}/api/websocket",
+                    timeout=ws_timeout,
+                ) as ws,
+            ):
+                await self._authenticate(ws)
+                return await self._send_and_receive(ws, command_type, **params)
+        except (OSError, aiohttp.ClientError) as e:
+            raise HARequestError(
+                f"cannot connect to HA WebSocket at {self._ws_url}: {e}"
+            ) from e
+
+    async def _authenticate(self, ws) -> None:
+        """Perform the WebSocket auth handshake."""
+        msg = await ws.receive_json()
+        if msg.get("type") != "auth_required":
+            raise HARequestError(
+                f"unexpected WebSocket message: expected auth_required, "
+                f"got {msg.get('type')}"
+            )
+        await ws.send_json({"type": "auth", "access_token": self.token})
+        msg = await ws.receive_json()
+        if msg.get("type") == "auth_invalid":
+            raise HARequestError(
+                f"authentication failed \u2014 check HA_TOKEN: "
+                f"{msg.get('message', 'invalid token')}"
+            )
+        if msg.get("type") != "auth_ok":
+            raise HARequestError(
+                f"unexpected WebSocket message: expected auth_ok, got {msg.get('type')}"
+            )
+
+    async def _send_and_receive(self, ws, command_type: str, **params: Any) -> Any:
+        """Send a command and loop until we receive the matching result."""
+        self._msg_id += 1
+        sent_id = self._msg_id
+        await ws.send_json({"id": sent_id, "type": command_type, **params})
+
+        # Loop until we get our result, skipping event/pong/other messages.
+        for _ in range(100):
+            msg = await ws.receive_json()
+            if msg.get("type") == "result" and msg.get("id") == sent_id:
+                if not msg.get("success", False):
+                    error = msg.get("error", {})
+                    raise HARequestError(
+                        f"{command_type} failed: "
+                        f"{error.get('message', 'unknown error')}"
+                    )
+                return msg.get("result")
+
+        raise HARequestError(f"{command_type} timed out waiting for result")

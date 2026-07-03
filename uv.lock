@@ -954,6 +954,7 @@ name = "ha-config-tools"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "homeassistant" },
     { name = "jsonschema" },
     { name = "pyyaml" },
@@ -976,6 +977,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp" },
     { name = "homeassistant", specifier = ">=2024.1.0" },
     { name = "jsonschema" },
     { name = "pyyaml", specifier = ">=6.0.0" },

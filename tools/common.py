@@ -97,6 +97,22 @@ def _has_transform_flags(args: argparse.Namespace) -> bool:
     )
 
 
+def positive_int(value: str) -> int:
+    """Argparse type: reject values < 1."""
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError("value must be >= 1")
+    return n
+
+
+def non_negative_int(value: str) -> int:
+    """Argparse type: reject values < 0."""
+    n = int(value)
+    if n < 0:
+        raise argparse.ArgumentTypeError("value must be >= 0")
+    return n
+
+
 def resolve_summary(args: argparse.Namespace) -> bool:
     """Resolve summary/verbose mode from argparse --summary/--no-summary flags.
 

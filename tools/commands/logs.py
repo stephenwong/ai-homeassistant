@@ -1,18 +1,40 @@
-"""``logs`` subcommand: fetch Home Assistant error log."""
+"""``logs`` subcommand: fetch Home Assistant system log via WebSocket."""
 
 import argparse
+import json
 import sys
 
 from tools.common import HARequestError, resolve_summary
-from tools.ha.client import HAClient
+from tools.ha.client import HAWSClient
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     """Wire the ``logs`` subparser."""
     parser = subparsers.add_parser(
         "logs",
-        help="Fetch Home Assistant error log.",
-        description="Print the Home Assistant error log to stdout via the REST API.",
+        help="Fetch Home Assistant system log.",
+        description=(
+            "Fetch the Home Assistant system log via WebSocket API. "
+            "Returns structured JSON entries (ERROR and WARNING levels). "
+            "Use --level to filter by severity."
+        ),
+    )
+    parser.add_argument(
+        "--level",
+        type=str.upper,
+        choices=["ERROR", "WARNING"],
+        help="Filter by severity level (case-insensitive)",
+    )
+    parser.add_argument(
+        "--first",
+        metavar="N",
+        type=int,
+        help="Show only the first N log entries",
+    )
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="Pretty-print JSON output with indent=2 (default: compact)",
     )
     parser.add_argument(
         "--summary",
@@ -29,22 +51,49 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``logs`` subcommand. Returns exit code."""
-    resolve_summary(args)
+    summary = resolve_summary(args)
+
+    if args.first is not None and args.first < 1:
+        print("\u274c --first must be >= 1", file=sys.stderr)
+        return 1
+
     try:
-        client = HAClient.from_env()
+        client = HAWSClient.from_env()
     except HARequestError as e:
         print(f"\u274c {e}", file=sys.stderr)
         return 1
+
     try:
-        resp = client.get("/api/error_log")
+        entries = client.command("system_log/list")
     except HARequestError as e:
         print(f"\u274c {e}", file=sys.stderr)
         return 1
-    if not resp.ok:
-        print(
-            f"\u274c HTTP {resp.status_code}: {resp.text[:200]}",
-            file=sys.stderr,
-        )
-        return 1
-    sys.stdout.write(resp.text)
+
+    if not isinstance(entries, list):
+        entries = []
+
+    if args.level:
+        target = args.level.upper()
+        entries = [e for e in entries if e.get("level", "").upper() == target]
+
+    if args.first is not None:
+        entries = entries[: args.first]
+
+    # Summary-mode projection: compact fields for non-TTY agents.
+    if summary and not args.pretty:
+        entries = [
+            {
+                "level": e.get("level"),
+                "name": e.get("name"),
+                "message": e.get("message"),
+                "timestamp": e.get("timestamp"),
+            }
+            for e in entries
+        ]
+
+    if args.pretty:
+        print(json.dumps(entries, indent=2, ensure_ascii=False))
+    else:
+        print(json.dumps(entries, separators=(",", ":"), ensure_ascii=False))
+
     return 0
