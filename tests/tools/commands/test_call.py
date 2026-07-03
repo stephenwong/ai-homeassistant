@@ -19,6 +19,8 @@ def make_args(**overrides):
         pretty=False,
         summary=False,
         no_summary=True,
+        pick=None,
+        max_chars=None,
     )
     defaults.update(overrides)
     return Namespace(**defaults)
@@ -190,3 +192,25 @@ class TestRun:
         assert call_cmd.run(args) == 0
         out = capsys.readouterr().out
         assert '"entity_id":"light.kitchen"' in out
+
+
+class TestPick:
+    def test_pick_keeps_fields(self, mock_client, capsys):
+        mock_client.post.return_value = json_resp(
+            [{"entity_id": "light.kitchen", "state": "on", "attributes": {}}]
+        )
+        args = make_args(service="light.turn_on", pick="entity_id,state")
+        assert call_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert result == [{"entity_id": "light.kitchen", "state": "on"}]
+
+
+class TestMaxChars:
+    def test_truncates_large_list_response(self, mock_client, capsys):
+        mock_client.post.return_value = json_resp(
+            [{"id": i, "blob": "x" * 200} for i in range(100)]
+        )
+        args = make_args(service="light.turn_on", max_chars=500)
+        assert call_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert result[-1].get("_truncated") is True

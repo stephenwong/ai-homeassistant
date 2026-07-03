@@ -2,7 +2,7 @@
 
 import pytest
 
-from tools.output_shape import ABBREV_MAP, apply_output_shape
+from tools.output_shape import apply_output_shape
 
 
 class TestNoOp:
@@ -85,53 +85,6 @@ class TestPick:
         assert apply_output_shape(42, pick="state") == 42
 
 
-class TestAbbrev:
-    def test_renames_known_keys(self):
-        data = [
-            {
-                "entity_id": "sensor.a",
-                "state": "on",
-                "attributes": {},
-                "context": {"id": "x"},
-                "last_changed": "t1",
-                "last_updated": "t2",
-            }
-        ]
-        assert apply_output_shape(data, abbrev=True) == [
-            {
-                "e": "sensor.a",
-                "s": "on",
-                "at": {},
-                "ctx": {"id": "x"},
-                "lc": "t1",
-                "lu": "t2",
-            }
-        ]
-
-    def test_unknown_keys_pass_through(self):
-        assert apply_output_shape(
-            [{"entity_id": "sensor.a", "custom": 42}], abbrev=True
-        ) == [{"e": "sensor.a", "custom": 42}]
-
-    def test_single_dict(self):
-        assert apply_output_shape(
-            {"entity_id": "sensor.a", "state": "on"}, abbrev=True
-        ) == {"e": "sensor.a", "s": "on"}
-
-    def test_scalar_passes_through(self):
-        assert apply_output_shape(42, abbrev=True) == 42
-
-    def test_abbrev_map_contents(self):
-        assert ABBREV_MAP["entity_id"] == "e"
-        assert ABBREV_MAP["state"] == "s"
-
-    def test_non_dict_in_list_passes_through(self):
-        assert apply_output_shape([42, {"entity_id": "a"}], abbrev=True) == [
-            42,
-            {"e": "a"},
-        ]
-
-
 class TestMaxChars:
     def test_truncates_list_with_marker(self):
         data = [{"id": i, "data": "x" * 50} for i in range(20)]
@@ -172,7 +125,7 @@ class TestMaxChars:
 
 
 class TestOrdering:
-    """Transforms apply in order: first → pick → abbrev → max_chars."""
+    """Transforms apply in order: first → pick → max_chars."""
 
     def test_first_then_pick(self):
         data = [
@@ -185,28 +138,13 @@ class TestOrdering:
             {"state": "off"},
         ]
 
-    def test_pick_then_abbrev(self):
-        data = [{"entity_id": "sensor.a", "state": "on", "attributes": {}}]
-        assert apply_output_shape(data, pick="entity_id,state", abbrev=True) == [
-            {"e": "sensor.a", "s": "on"}
-        ]
-
-    def test_first_then_abbrev(self):
-        data = [
-            {"entity_id": "sensor.a", "state": "on"},
-            {"entity_id": "sensor.b", "state": "off"},
-        ]
-        assert apply_output_shape(data, first=1, abbrev=True) == [
-            {"e": "sensor.a", "s": "on"}
-        ]
-
-    def test_first_pick_abbrev_maxchars(self):
+    def test_first_pick_maxchars(self):
         data = [
             {"entity_id": f"sensor.{i}", "state": str(i), "attributes": {"x": i}}
             for i in range(50)
         ]
         result = apply_output_shape(
-            data, first=20, pick="entity_id,state", abbrev=True, max_chars=100
+            data, first=20, pick="entity_id,state", max_chars=100
         )
         assert isinstance(result, list)
         assert result[-1].get("_truncated") is True

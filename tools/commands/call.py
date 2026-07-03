@@ -6,8 +6,14 @@ import json
 import re
 import sys
 
-from tools.common import HARequestError, resolve_summary
+from tools.common import (
+    HARequestError,
+    add_output_shape_args,
+    resolve_max_chars,
+    resolve_summary,
+)
 from tools.ha.client import HAClient
+from tools.output_shape import apply_output_shape
 
 _SERVICE_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 
@@ -31,6 +37,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "-d",
         help="JSON data to pass to the service (must be a JSON object)",
     )
+    add_output_shape_args(parser, first=False)
     parser.add_argument(
         "--pretty",
         action="store_true",
@@ -51,7 +58,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``call`` subcommand. Returns exit code."""
-    resolve_summary(args)
+    summary = resolve_summary(args)
 
     if not _SERVICE_RE.fullmatch(args.service):
         print(
@@ -108,6 +115,11 @@ def run(args: argparse.Namespace) -> int:
             data = resp.json()
 
     if data is not None:
+        data = apply_output_shape(
+            data,
+            pick=args.pick,
+            max_chars=resolve_max_chars(args, summary),
+        )
         if args.pretty:
             print(json.dumps(data, indent=2, ensure_ascii=False))
         else:

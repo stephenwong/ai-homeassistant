@@ -18,6 +18,8 @@ def make_args(**overrides):
         pretty=False,
         summary=False,
         no_summary=True,
+        pick=None,
+        max_chars=None,
     )
     defaults.update(overrides)
     return Namespace(**defaults)
@@ -160,7 +162,66 @@ class TestRun:
         assert logs_cmd.run(args) == 0
         out = capsys.readouterr().out
         parsed = json.loads(out)
-        assert set(parsed[0].keys()) == {"level", "name", "message", "timestamp"}
+        assert set(parsed[0].keys()) == {
+            "level",
+            "name",
+            "message",
+            "timestamp",
+            "count",
+            "first_occurred",
+        }
+        assert parsed[0]["count"] == 5
+        assert parsed[0]["first_occurred"] == "2026-01-01"
+
+    def test_summary_drops_first_occurred_when_count_is_one(self, mock_client, capsys):
+        mock_client.command.return_value = [
+            {
+                "level": "ERROR",
+                "name": "test",
+                "message": ["x"],
+                "timestamp": 1.0,
+                "count": 1,
+                "first_occurred": "2026-01-01",
+            },
+        ]
+        args = make_args(summary=True, no_summary=False)
+        assert logs_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result[0]["count"] == 1
+        assert "first_occurred" not in result[0]
+
+    def test_summary_omits_first_occurred_when_count_is_none(self, mock_client, capsys):
+        mock_client.command.return_value = [
+            {
+                "level": "ERROR",
+                "name": "test",
+                "message": ["x"],
+                "timestamp": 1.0,
+            },
+        ]
+        args = make_args(summary=True, no_summary=False)
+        assert logs_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result[0]["count"] is None
+        assert "first_occurred" not in result[0]
+
+    def test_summary_bool_count_no_first_occurred(self, mock_client, capsys):
+        """Boolean count values should be treated as non-int (bool guard)."""
+        mock_client.command.return_value = [
+            {
+                "level": "ERROR",
+                "name": "test",
+                "message": ["x"],
+                "timestamp": 1.0,
+                "count": True,
+                "first_occurred": "2026-01-01",
+            },
+        ]
+        args = make_args(summary=True, no_summary=False)
+        assert logs_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result[0]["count"] is True
+        assert "first_occurred" not in result[0]
 
     def test_missing_token_returns_1(self, capsys):
         with patch("tools.commands.logs.HAWSClient.from_env") as m:
@@ -178,3 +239,64 @@ class TestRun:
         assert logs_cmd.run(args) == 1
         err = capsys.readouterr().err
         assert "unknown command" in err
+
+
+class TestPick:
+    def test_pick_keeps_fields(self, mock_client, capsys):
+        mock_client.command.return_value = [
+            {
+                "level": "ERROR",
+                "name": "x.y",
+                "message": "m",
+                "timestamp": 1.0,
+                "extra": "z",
+            }
+        ]
+        args = make_args(pick="level,message")
+        assert logs_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert result == [{"level": "ERROR", "message": "m"}]
+
+
+class TestSummaryCompaction:
+    def test_collapses_long_name(self, mock_client, capsys):
+        mock_client.command.return_value = [
+            {
+                "level": "WARNING",
+                "name": "custom_components.localtuya.common",
+                "message": "x",
+                "timestamp": 1.0,
+            }
+        ]
+        args = make_args(summary=True, no_summary=False)
+        assert logs_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert result[0]["name"] == "localtuya.common"
+
+    def test_flattens_message_list(self, mock_client, capsys):
+        mock_client.command.return_value = [
+            {
+                "level": "WARNING",
+                "name": "x.y",
+                "message": ["first", "second"],
+                "timestamp": 1.0,
+            }
+        ]
+        args = make_args(summary=True, no_summary=False)
+        assert logs_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert result[0]["message"] == "first"
+
+
+class TestDefaultCap:
+    def test_summary_default_cap(self, mock_client, capsys):
+        mock_client.command.return_value = [
+            {"level": "WARNING", "name": "x.y", "message": "x" * 200, "timestamp": 1.0}
+            for _ in range(200)
+        ]
+        args = make_args(summary=True, no_summary=False)
+        assert logs_cmd.run(args) == 0
+        out = capsys.readouterr().out
+        assert len(out) <= 8000
+        result = __import__("json").loads(out)
+        assert result[-1].get("_truncated") is True

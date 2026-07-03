@@ -17,6 +17,7 @@ def make_args(**overrides):
         entity_id="sensor.temp",
         since=None,
         end=None,
+        hours=None,
         minimal=False,
         pretty=False,
         summary=False,
@@ -130,6 +131,61 @@ class TestRun:
         args = make_args()
         assert history_cmd.run(args) == 0
         out = capsys.readouterr().out
+        assert out.strip() == "[]"
+
+    # ------------------------------------------------------------------
+    # Empty-result hints
+    # ------------------------------------------------------------------
+
+    def test_empty_hint_verbose_default(self, mock_client, capsys):
+        mock_client.get_json.return_value = [[]]
+        args = make_args(no_summary=True, summary=False)
+        assert history_cmd.run(args) == 0
+        out, err = capsys.readouterr()
+        assert out.strip() == "[]"
+        assert "sensor.temp" in err
+        assert "last 24h" in err
+
+    def test_empty_hint_summary_default(self, mock_client, capsys):
+        mock_client.get_json.return_value = [[]]
+        args = make_args(summary=True, no_summary=False)
+        assert history_cmd.run(args) == 0
+        out, err = capsys.readouterr()
+        assert out.strip() == "[]"
+        assert "last 6h" in err
+
+    def test_empty_hint_with_explicit_hours(self, mock_client, capsys):
+        mock_client.get_json.return_value = [[]]
+        args = make_args(hours=12)
+        assert history_cmd.run(args) == 0
+        out, err = capsys.readouterr()
+        assert out.strip() == "[]"
+        assert "last 12h" in err
+
+    def test_empty_hint_with_since(self, mock_client, capsys):
+        mock_client.get_json.return_value = [[]]
+        args = make_args(since="2026-07-01T00:00:00Z", end="2026-07-02T00:00:00Z")
+        assert history_cmd.run(args) == 0
+        out, err = capsys.readouterr()
+        assert out.strip() == "[]"
+        assert "since 2026-07-01" in err
+        assert "until 2026-07-02" in err
+
+    def test_empty_hint_with_since_no_end(self, mock_client, capsys):
+        mock_client.get_json.return_value = [[]]
+        args = make_args(since="2026-07-01T00:00:00Z")
+        assert history_cmd.run(args) == 0
+        out, err = capsys.readouterr()
+        assert out.strip() == "[]"
+        assert "since" in err
+        assert "until" not in err
+
+    def test_empty_history_stdout_unchanged(self, mock_client, capsys):
+        """Existing test: stdout must stay '[]' even with hint."""
+        mock_client.get_json.return_value = [[]]
+        args = make_args()
+        assert history_cmd.run(args) == 0
+        out, _ = capsys.readouterr()
         assert out.strip() == "[]"
 
     def test_since_inserted_into_path(self, mock_client, capsys):
@@ -256,3 +312,36 @@ class TestMaxChars:
         result = __import__("json").loads(capsys.readouterr().out)
         assert result[-1].get("_truncated") is True
         assert result[-1]["total"] == 20
+
+
+class TestHours:
+    def test_hours_sets_since_path(self, mock_client, capsys):
+        mock_client.get_json.return_value = []
+        args = make_args(hours=1.5)
+        assert history_cmd.run(args) == 0
+        path, _ = mock_client.get_json.call_args
+        assert "/api/history/period/" in path[0]
+
+    def test_hours_zero_rejected(self):
+        parser, subparsers = make_parser()
+        history_cmd.add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["history", "sensor.temp", "--hours", "0"])
+
+    def test_hours_negative_rejected(self):
+        parser, subparsers = make_parser()
+        history_cmd.add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["history", "sensor.temp", "--hours", "-1"])
+
+
+class TestDefaultCap:
+    def test_summary_default_cap(self, mock_client, capsys):
+        data = [{"state": "x" * 200} for _ in range(200)]
+        mock_client.get_json.return_value = [data]
+        args = make_args(summary=True, no_summary=False)
+        assert history_cmd.run(args) == 0
+        out = capsys.readouterr().out
+        assert len(out) <= 8000
+        result = __import__("json").loads(out)
+        assert result[-1].get("_truncated") is True

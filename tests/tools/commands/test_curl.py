@@ -29,7 +29,6 @@ def make_args(**overrides):
         raw=False,
         pretty=False,
         pick=None,
-        abbrev=False,
         entity=None,
         domain=None,
         max_chars=None,
@@ -188,14 +187,6 @@ class TestArgparse:
         args = parse(["/api/states"])
         assert args.pick is None
 
-    def test_abbrev_flag_registered(self):
-        args = parse(["/api/states", "--abbrev"])
-        assert args.abbrev is True
-
-    def test_abbrev_defaults_false(self):
-        args = parse(["/api/states"])
-        assert args.abbrev is False
-
     def test_entity_flag_registered(self):
         args = parse(["/api/states", "--entity", "sensor.x"])
         assert args.entity == "sensor.x"
@@ -233,6 +224,22 @@ class TestArgparse:
     def test_no_guard_defaults_false(self):
         args = parse(["/api/states"])
         assert args.no_guard is False
+
+    def test_no_guard_help_mentions_cap(self, capsys):
+        """The --no-guard help text should mention it also disables max-chars."""
+        with pytest.raises(SystemExit):
+            _ = parse(["--help"])
+        out, _ = capsys.readouterr()
+        # Find the --no-guard help description (not the usage synopsis line).
+        # The help description starts with two spaces, then `--no-guard`.
+        for line in out.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("--no-guard") and not stripped.startswith("usage"):
+                assert "max-chars" in line.lower(), (
+                    f"--no-guard help should mention max-chars: {line!r}"
+                )
+                return
+        pytest.fail("--no-guard help description not found in output")
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +543,7 @@ class TestCount:
         mock_client.get.return_value = text_resp("hello world", ct="text/plain")
         args = make_args(count=True, endpoint="/api/")
         assert curl_cmd.run(args) == 0
-        assert capsys.readouterr().out.strip() == "11"  # len(b"hello world")
+        assert capsys.readouterr().out.strip() == "0"  # non-JSON returns 0
 
     def test_count_empty_non_json(self, mock_client, capsys):
         r = MagicMock()
@@ -620,6 +627,19 @@ class TestKeys:
         out, err = capsys.readouterr()
         assert "not a JSON object or list" in err
         assert out.strip() == "42"
+
+    def test_keys_summary_drops_inline_list(self, mock_client, capsys):
+        mock_client.get.return_value = json_resp(
+            [{"id": 1, "name": "a"}, {"id": 2, "name": "b", "extra": True}]
+        )
+        args = make_args(keys=True, summary=True, no_summary=False)
+        assert curl_cmd.run(args) == 0
+        out, err = capsys.readouterr()
+        assert "2 items" in err
+        assert "extra" not in err  # inline list suppressed in summary
+        assert "id" not in err
+        parsed = json.loads(out)
+        assert sorted(parsed) == ["extra", "id", "name"]
 
 
 # ---------------------------------------------------------------------------
@@ -801,109 +821,6 @@ class TestPick:
 # ---------------------------------------------------------------------------
 
 
-class TestAbbrev:
-    """Tests for --abbrev — rename known keys to short forms."""
-
-    def test_abbrev_renames_known_keys(self, mock_client, capsys):
-        data = [
-            {
-                "entity_id": "sensor.a",
-                "state": "on",
-                "attributes": {},
-                "context": {"id": "x"},
-                "last_changed": "t1",
-                "last_updated": "t2",
-            },
-        ]
-        mock_client.get.return_value = json_resp(data)
-        args = make_args(abbrev=True)
-        assert curl_cmd.run(args) == 0
-        result = json.loads(capsys.readouterr().out)
-        assert result == [
-            {
-                "e": "sensor.a",
-                "s": "on",
-                "at": {},
-                "ctx": {"id": "x"},
-                "lc": "t1",
-                "lu": "t2",
-            },
-        ]
-
-    def test_abbrev_noop_without_flag(self, mock_client, capsys):
-        data = [{"entity_id": "sensor.a", "state": "on"}]
-        mock_client.get.return_value = json_resp(data)
-        args = make_args()
-        assert curl_cmd.run(args) == 0
-        result = json.loads(capsys.readouterr().out)
-        assert result == data
-
-    def test_abbrev_unknown_keys_pass_through(self, mock_client, capsys):
-        data = [{"entity_id": "sensor.a", "custom_key": 42}]
-        mock_client.get.return_value = json_resp(data)
-        args = make_args(abbrev=True)
-        assert curl_cmd.run(args) == 0
-        result = json.loads(capsys.readouterr().out)
-        assert result == [{"e": "sensor.a", "custom_key": 42}]
-
-    def test_abbrev_with_pick_stacks_pick_then_rename(self, mock_client, capsys):
-        data = [{"entity_id": "sensor.a", "state": "on", "attributes": {}}]
-        mock_client.get.return_value = json_resp(data)
-        args = make_args(pick="entity_id,state", abbrev=True)
-        assert curl_cmd.run(args) == 0
-        result = json.loads(capsys.readouterr().out)
-        assert result == [{"e": "sensor.a", "s": "on"}]
-
-    def test_abbrev_with_pretty(self, mock_client, capsys):
-        data = [{"entity_id": "sensor.a", "state": "on"}]
-        mock_client.get.return_value = json_resp(data)
-        args = make_args(abbrev=True, pretty=True)
-        assert curl_cmd.run(args) == 0
-        out = capsys.readouterr().out
-        assert '"e":' in out
-        assert '"s":' in out
-        assert "    " in out
-
-    def test_abbrev_single_dict(self, mock_client, capsys):
-        data = {"entity_id": "sensor.a", "state": "on"}
-        mock_client.get.return_value = json_resp(data)
-        args = make_args(abbrev=True)
-        assert curl_cmd.run(args) == 0
-        result = json.loads(capsys.readouterr().out)
-        assert result == {"e": "sensor.a", "s": "on"}
-
-    def test_abbrev_non_dict_passes_through(self, mock_client, capsys):
-        mock_client.get.return_value = json_resp(42)
-        args = make_args(abbrev=True)
-        assert curl_cmd.run(args) == 0
-        assert json.loads(capsys.readouterr().out) == 42
-
-    def test_abbrev_with_first_stacks_slice_then_rename(self, mock_client, capsys):
-        data = [
-            {"entity_id": "sensor.a", "state": "on"},
-            {"entity_id": "sensor.b", "state": "off"},
-        ]
-        mock_client.get.return_value = json_resp(data)
-        args = make_args(first=1, abbrev=True)
-        assert curl_cmd.run(args) == 0
-        result = json.loads(capsys.readouterr().out)
-        assert result == [{"e": "sensor.a", "s": "on"}]
-
-    def test_abbrev_empty_list(self, mock_client, capsys):
-        mock_client.get.return_value = json_resp([])
-        args = make_args(abbrev=True)
-        assert curl_cmd.run(args) == 0
-        assert json.loads(capsys.readouterr().out) == []
-
-    def test_abbrev_mixed_list(self, mock_client, capsys):
-        data = [42, {"entity_id": "sensor.a", "state": "on"}]
-        mock_client.get.return_value = json_resp(data)
-        args = make_args(abbrev=True)
-        assert curl_cmd.run(args) == 0
-        result = json.loads(capsys.readouterr().out)
-        assert result == [42, {"e": "sensor.a", "s": "on"}]
-
-
 # ---------------------------------------------------------------------------
 # --entity (server-side single fetch)
 # ---------------------------------------------------------------------------
@@ -959,14 +876,6 @@ class TestEntity:
         assert curl_cmd.run(args) == 0
         result = json.loads(capsys.readouterr().out)
         assert result == {"entity_id": "sensor.test", "state": "on"}
-
-    def test_entity_with_abbrev(self, mock_client, capsys):
-        data = {"entity_id": "sensor.test", "state": "on"}
-        mock_client.get.return_value = json_resp(data)
-        args = make_args(entity="sensor.test", abbrev=True)
-        assert curl_cmd.run(args) == 0
-        result = json.loads(capsys.readouterr().out)
-        assert result == {"e": "sensor.test", "s": "on"}
 
     def test_entity_not_found_errors(self, mock_client, capsys):
         mock_client.get.return_value = json_resp(None, status=404)
@@ -1056,16 +965,6 @@ class TestDomain:
         assert curl_cmd.run(args) == 0
         result = json.loads(capsys.readouterr().out)
         assert len(result) == 2  # first 2 of the filtered set
-
-    def test_domain_with_abbrev(self, mock_client, capsys):
-        data = [
-            {"entity_id": "light.kitchen", "state": "on"},
-        ]
-        mock_client.get.return_value = json_resp(data)
-        args = make_args(domain="light", abbrev=True)
-        assert curl_cmd.run(args) == 0
-        result = json.loads(capsys.readouterr().out)
-        assert result == [{"e": "light.kitchen", "s": "on"}]
 
     @pytest.mark.parametrize(
         ("flag", "value"),
@@ -1192,6 +1091,48 @@ class TestMaxChars:
         # Should truncate further (3 items of ~110 bytes each >> 50 chars)
         assert result[-1].get("_truncated") is True
         assert result[-1]["shown"] < 3
+
+
+class TestDefaultCap:
+    def _big(self, n=200):
+        return [{"id": i, "blob": "x" * 200} for i in range(n)]
+
+    def test_summary_caps_large_output(self, mock_client, capsys):
+        mock_client.get.return_value = json_resp(self._big())
+        args = make_args(endpoint="/api/history/period", summary=True, no_summary=False)
+        assert curl_cmd.run(args) == 0
+        out = capsys.readouterr().out
+        assert len(out) <= 8000
+        assert json.loads(out)[-1].get("_truncated") is True
+
+    def test_verbose_no_cap(self, mock_client, capsys):
+        mock_client.get.return_value = json_resp(self._big())
+        args = make_args(endpoint="/api/history/period", no_summary=True, summary=False)
+        assert curl_cmd.run(args) == 0
+        assert len(capsys.readouterr().out) > 20000
+
+    def test_env_override(self, mock_client, capsys, monkeypatch):
+        monkeypatch.setenv("HA_CLI_MAX_CHARS", "1500")
+        mock_client.get.return_value = json_resp(self._big(50))
+        args = make_args(endpoint="/api/history/period", summary=True, no_summary=False)
+        assert curl_cmd.run(args) == 0
+        assert len(capsys.readouterr().out) <= 1500
+
+    def test_explicit_zero_disables(self, mock_client, capsys):
+        mock_client.get.return_value = json_resp(self._big())
+        args = make_args(
+            endpoint="/api/history/period", max_chars=0, summary=True, no_summary=False
+        )
+        assert curl_cmd.run(args) == 0
+        assert len(capsys.readouterr().out) > 20000
+
+    def test_no_guard_disables_default_cap(self, mock_client, capsys):
+        mock_client.get.return_value = json_resp(self._big())
+        args = make_args(
+            endpoint="/api/states", no_guard=True, summary=True, no_summary=False
+        )
+        assert curl_cmd.run(args) == 0
+        assert len(capsys.readouterr().out) > 20000
 
 
 # ---------------------------------------------------------------------------
@@ -1352,6 +1293,18 @@ class TestFilter:
             assert curl_cmd.run(args) == 0
         err = capsys.readouterr().err
         assert "no effect with --filter" in err
+
+    def test_filter_emits_deprecation_warning(self, mock_client, capsys):
+        mock_client.get.return_value = json_resp([{"entity_id": "sensor.test"}])
+        mock_jq = MagicMock(returncode=0, stdout="1\n")
+        with (
+            patch("tools.commands.curl.shutil.which", return_value="/usr/bin/jq"),
+            patch("tools.commands.curl.subprocess.run", return_value=mock_jq),
+        ):
+            args = make_args(filter=".")
+            assert curl_cmd.run(args) == 0
+        err = capsys.readouterr().err
+        assert "deprecated" in err.lower()
 
 
 # ---------------------------------------------------------------------------

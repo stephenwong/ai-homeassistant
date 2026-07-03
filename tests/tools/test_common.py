@@ -165,6 +165,71 @@ class TestResolveSummary:
         assert result is True
 
 
+class TestResolveMaxChars:
+    def _args(self, **kw):
+        ns = argparse.Namespace()
+        ns.max_chars = None
+        for k, v in kw.items():
+            setattr(ns, k, v)
+        return ns
+
+    def test_explicit_wins_over_env(self, monkeypatch):
+        from tools.common import resolve_max_chars
+
+        monkeypatch.setenv("HA_CLI_MAX_CHARS", "2000")
+        assert resolve_max_chars(self._args(max_chars=500), summary=True) == 500
+
+    def test_zero_disables(self):
+        from tools.common import resolve_max_chars
+
+        assert resolve_max_chars(self._args(max_chars=0), summary=True) is None
+
+    def test_env_overrides_default(self, monkeypatch):
+        from tools.common import resolve_max_chars
+
+        monkeypatch.setenv("HA_CLI_MAX_CHARS", "3000")
+        assert resolve_max_chars(self._args(), summary=True) == 3000
+
+    def test_default_only_in_summary(self, monkeypatch):
+        from tools.common import DEFAULT_SUMMARY_MAX_CHARS, resolve_max_chars
+
+        monkeypatch.delenv("HA_CLI_MAX_CHARS", raising=False)
+        assert (
+            resolve_max_chars(self._args(), summary=True) == DEFAULT_SUMMARY_MAX_CHARS
+        )
+        assert resolve_max_chars(self._args(), summary=False) is None
+
+    def test_invalid_env_falls_through(self, monkeypatch):
+        from tools.common import DEFAULT_SUMMARY_MAX_CHARS, resolve_max_chars
+
+        monkeypatch.setenv("HA_CLI_MAX_CHARS", "not-a-number")
+        assert (
+            resolve_max_chars(self._args(), summary=True) == DEFAULT_SUMMARY_MAX_CHARS
+        )
+
+
+class TestAddOutputShapeArgs:
+    def test_registers_all_flags(self):
+        from tools.common import add_output_shape_args
+
+        p = argparse.ArgumentParser()
+        add_output_shape_args(p)
+        ns = p.parse_args(["--first", "5", "--pick", "a,b", "--max-chars", "100"])
+        assert ns.first == 5
+        assert ns.pick == "a,b"
+        assert ns.max_chars == 100
+
+    def test_partial_registration(self):
+        from tools.common import add_output_shape_args
+
+        p = argparse.ArgumentParser()
+        add_output_shape_args(p, first=False, max_chars=False)
+        ns = p.parse_args(["--pick", "a"])
+        assert ns.pick == "a"
+        assert not hasattr(ns, "first")
+        assert not hasattr(ns, "max_chars")
+
+
 class TestIsTTY:
     """Tests for _is_tty()."""
 

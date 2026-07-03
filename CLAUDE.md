@@ -24,7 +24,7 @@ This repository manages Home Assistant configuration files with automated valida
 - `tools/ha/yaml_editor.py` — `YAMLEditor` (importable round-trip YAML)
 - `tools/validators/` — Validators: `base.py`, `duplicate_ids.py`, `entity_definitions.py`, `ha_official.py`, `references.py`, `services.py`, `stale_sensors.py`, `templates.py`, `yaml.py`
 - `tools/cache.py`, `tools/common.py` — Caching; shared utilities (`common.py` re-exports from `validators/base.py`, defines `positive_int`/`non_negative_int` argparse types)
-- `tools/output_shape.py` — Shared JSON output-shaping (`apply_output_shape()` for --first/--pick/--abbrev/--max-chars)
+- `tools/output_shape.py` — Shared JSON output-shaping (`apply_output_shape()` for --first/--pick/--max-chars)
 - `tools/_dev/api_diagnostic.py` — Dev-only (archived, excluded from lint/wheel)
 - `tests/conftest.py` — Shared fixtures (`config_dir`, `_stub_load_env_file`)
 
@@ -66,11 +66,10 @@ uv run python tools/ha_cli.py curl /api/states --count      # item count
 uv run python tools/ha_cli.py curl /api/states --keys       # key names only
 uv run python tools/ha_cli.py curl /api/states --first 3    # first N items
 uv run python tools/ha_cli.py curl /api/states --pick state,entity_id  # keep only those keys
-uv run python tools/ha_cli.py curl /api/states --abbrev     # short keys (e→entity_id, s→state)
 uv run python tools/ha_cli.py curl /api/states --entity sensor.temp   # single entity fetch
 uv run python tools/ha_cli.py curl /api/states --domain light --pick state  # filter by domain
 uv run python tools/ha_cli.py curl /api/states --max-chars 500       # truncate output when >500 chars
-uv run python tools/ha_cli.py curl /api/states --no-guard            # disable guardrail (dump all)
+uv run python tools/ha_cli.py curl /api/states --no-guard            # disable guardrail AND max-chars cap (dump all)
 uv run python tools/ha_cli.py curl --post /api/services/light/turn_on -d '{"entity_id":"light.kitchen"}'
 ```
 
@@ -86,6 +85,7 @@ uv run python tools/ha_cli.py call automation.reload                            
 uv run python tools/ha_cli.py logs              # fetch HA system log (structured JSON, WebSocket)
 uv run python tools/ha_cli.py logs --level ERROR  # filter by severity
 ```
+Summary mode includes `count` (occurrence count, null for rare entries) and `first_occurred` (when count > 1).
 
 ### ha_cli history
 ```bash
@@ -97,15 +97,16 @@ uv run python tools/ha_cli.py history sensor.temp --first 20          # first 20
 uv run python tools/ha_cli.py history sensor.temp --pick state        # keep only specified keys (projection)
 uv run python tools/ha_cli.py history sensor.temp --max-chars 2000    # truncate serialized output to ~2KB
 ```
+Empty results emit a stderr hint with the time window and entity_id (agents: don't mute both streams).
 
 ### ha_cli trace
 ```bash
 uv run python tools/ha_cli.py trace                                   # list all automation traces (WebSocket)
 uv run python tools/ha_cli.py trace automation.morning_routine        # specific automation trace
-uv run python tools/ha_cli.py trace --first 5                         # first 5 traces only
+uv run python tools/ha_cli.py trace --first 5                         # first 5 traces only (after dedupe in summary)
 uv run python tools/ha_cli.py trace automation.foo --pretty           # pretty-print trace
 ```
-Summary mode (auto for agents) drops the redundant `config` field from single-entity traces (85% payload savings — config is fetchable separately via `ha_config_get_automation`).
+Summary mode dedupes by item_id (keeps most-recent run), adds `runs` field when N>1. Single-entity traces also strip `changed_variables.this.attributes` (~30% additional savings beyond config/blueprint_inputs).
 
 ### Compact Output (--summary)
 
@@ -141,7 +142,7 @@ Programmatic: `from tools.ha.yaml_editor import YAMLEditor`
 ```python
 from tools.ha.client import HAClient        # HAClient.from_env()
 from tools.ha.yaml_editor import YAMLEditor
-from tools.output_shape import apply_output_shape, ABBREV_MAP  # --first/--pick/--abbrev/--max-chars
+from tools.output_shape import apply_output_shape  # --first/--pick/--max-chars
 from tools.common import positive_int, non_negative_int        # argparse type validators
 from tools.validators.references import ReferenceValidator
 from tools.validators.services import ServiceValidator
@@ -167,9 +168,10 @@ from tools.validators.entity_definitions import EntityDefinitionExtractor
 - **Automations:** `home-assistant-automation` skill; scripts/scenes: `home-assistant-best-practices` skill
 - **Debugging:** `home-assistant-debugging` skill
 - **Python changes:** **Always TDD** — write tests first, confirm red, then implement.
+- **After tests pass:** update `README.md`, this context file (`CLAUDE.md`), and relevant skills to reflect any behavior, entity, or workflow changes.
 - **Before committing:** `make lint` (or `make lint-fix`)
 - **After concurrency/parallel/error-handling changes:** `code-review:code-review` as "State Machine Auditor"
-- **Rubber duck review:** At least one review pass in a separate agent before finishing. Repeat until clean.
+- **Rubber duck review:** invoke the `rubber-duck-review` skill when wanted (explicit, not automatic).
 - **Before finishing:** `reflect` skill to capture learnings.
 
 ### Python Tooling Patterns

@@ -5,8 +5,14 @@ import json
 import re
 import sys
 
-from tools.common import HARequestError, positive_int, resolve_summary
+from tools.common import (
+    HARequestError,
+    add_output_shape_args,
+    resolve_max_chars,
+    resolve_summary,
+)
 from tools.ha.client import HAWSClient
+from tools.output_shape import apply_output_shape
 
 _ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 
@@ -28,12 +34,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help="Automation entity ID (e.g. automation.morning_routine)",
     )
-    parser.add_argument(
-        "--first",
-        metavar="N",
-        type=positive_int,
-        help="Show only the first N traces (list mode only)",
-    )
+    add_output_shape_args(parser)
     parser.add_argument(
         "--pretty",
         action="store_true",
@@ -106,17 +107,34 @@ def run(args: argparse.Namespace) -> int:
             data = client.command("trace/list", domain="automation")
             # Summary-mode projection: compact fields for non-TTY agents.
             if summary and not args.pretty:
-                data = [
+                # Project to compact fields first.
+                compact = [
                     {
                         "item_id": t.get("item_id"),
                         "state": t.get("state"),
                         "trigger": t.get("trigger"),
-                        "timestamp": t.get("timestamp"),
+                        "timestamp": (t.get("timestamp") or {}).get("start"),
                     }
                     for t in data
                 ]
-            if args.first is not None:
-                data = data[: args.first]
+                # Sort newest-first, then dedupe by item_id keeping most-recent.
+                compact.sort(
+                    key=lambda x: x.get("timestamp") or "",
+                    reverse=True,
+                )
+                seen: dict[str, dict] = {}
+                run_counts: dict[str, int] = {}
+                for entry in compact:
+                    iid = entry.get("item_id") or ""
+                    run_counts[iid] = run_counts.get(iid, 0) + 1
+                    if iid not in seen:
+                        seen[iid] = entry
+                data = list(seen.values())
+                # Add runs field only when there's actual duplication.
+                for entry in data:
+                    n = run_counts.get(entry.get("item_id") or "", 1)
+                    if n > 1:
+                        entry["runs"] = n
     except HARequestError as e:
         print(f"\u274c {e}", file=sys.stderr)
         return 1
@@ -127,6 +145,24 @@ def run(args: argparse.Namespace) -> int:
         data = {
             k: v for k, v in data.items() if k not in ("config", "blueprint_inputs")
         }
+        if isinstance(data.get("trace"), dict):
+            data["trace"] = _prune_trace_entries(data["trace"])
+
+    # Apply output shaping (--first, --pick, --max-chars).
+    if not args.entity_id:
+        # List mode: full output shaping.
+        # NOTE: single-entity mode returns a dict; apply_output_shape does not
+        # truncate dicts (only lists). Single-entity traces may exceed --max-chars;
+        # --pick still works.
+        data = apply_output_shape(
+            data,
+            first=args.first,
+            pick=args.pick,
+            max_chars=resolve_max_chars(args, summary),
+        )
+    else:
+        # Single-entity dict: only --pick applies.
+        data = apply_output_shape(data, pick=args.pick)
 
     if args.pretty:
         print(json.dumps(data, indent=2, ensure_ascii=False))
@@ -134,3 +170,30 @@ def run(args: argparse.Namespace) -> int:
         print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
 
     return 0
+
+
+def _prune_trace_entries(trace: dict) -> dict:
+    """Drop changed_variables.this.attributes from trace entries.
+
+    Keeps this.entity_id and this.state for debugging context.
+    Defensive against malformed entries (non-list values, missing keys).
+    Mutates nothing — returns a new dict.
+    """
+    pruned: dict = {}
+    for step_key, entries in trace.items():
+        if not isinstance(entries, list):
+            pruned[step_key] = entries
+            continue
+        new_entries = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                new_entries.append(entry)
+                continue
+            cv = entry.get("changed_variables")
+            if isinstance(cv, dict) and isinstance(cv.get("this"), dict):
+                this = dict(cv["this"])
+                this.pop("attributes", None)
+                entry = {**entry, "changed_variables": {**cv, "this": this}}
+            new_entries.append(entry)
+        pruned[step_key] = new_entries
+    return pruned

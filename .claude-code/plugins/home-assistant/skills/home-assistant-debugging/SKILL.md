@@ -249,17 +249,17 @@ Use `ha_cli` dedicated subcommands for common debugging tasks:
 ha_cli curl /api/states/sensor.entity_name --pretty
 
 # Query entity history over a period
-ha_cli history sensor.name                        # last 24 hours
+ha_cli history sensor.name                        # last 24 hours (empty = stderr hint)
 ha_cli history sensor.name --since 2026-06-27T00:00:00Z  # since timestamp
 ha_cli history sensor.name --first 20             # first 20 state records only
 ha_cli history sensor.name --pick state,last_changed  # keep only those fields (saves tokens)
 
-# Fetch automation trace
+# Fetch automation trace (summary dedupes, strips verbose fields)
 ha_cli trace automation.name                      # specific automation
-ha_cli trace                                      # list all traces
+ha_cli trace                                      # list all traces (deduped in summary)
 
 # Fetch system log (structured JSON, WebSocket)
-ha_cli logs
+ha_cli logs                                       # summary: count + first_occurred included
 
 # Query logbook for recent events (ISO 8601 UTC)
 # Example: ha_cli curl "/api/logbook/YYYY-MM-DDT00:00:00Z"

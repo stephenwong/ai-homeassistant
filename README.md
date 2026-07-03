@@ -10,7 +10,7 @@ A toolkit for managing Home Assistant configurations — automated validation, s
 - 🚀 **Safe Deployments** — `make push` validates first, blocks invalid configs from reaching HA
 - 🔍 **Entity Discovery** — Search and explore entities by name, domain, area, or state
 - 🤖 **AI Assistant Ready** — MCP server integration, instruction files, and pre-built skills for AI coding assistants
-- 🪶 **Token-Efficient Output** — Compact summary mode (auto-detected for pipes/agents), field projection (`--pick`, `--abbrev`), result limiting (`--first`, `--max-chars`), and guardrails to prevent AI context overload
+- 🪶 **Token-Efficient Output** — Compact summary mode (auto-detected for pipes/agents), field projection (`--pick`), result limiting (`--first`, `--max-chars`), and guardrails to prevent AI context overload
 - 📦 **Importable Python Modules** — `HAClient`, `YAMLEditor`, and validators for scripts and tests
 - 💾 **Backup System** — Timestamped config backups with changelogs and full-text search
 
@@ -221,7 +221,7 @@ make push  # Validates then uploads to HA
 │   ├── entity_explorer.py       # Entity discovery/search
 │   ├── cache.py                 # SHA256 file-hash caching
 │   ├── common.py                # Shared utilities (re-exports from validators/, argparse types)
-│   ├── output_shape.py          # Shared JSON output-shaping (--first/--pick/--abbrev/--max-chars)
+│   ├── output_shape.py          # Shared JSON output-shaping (--first/--pick/--max-chars)
 │   ├── generate_changelog.py    # Backup changelog generation
 │   ├── search_backups.py        # Full-text search across backups
 │   └── prune_backups.py         # Smart backup retention pruning
@@ -272,9 +272,8 @@ uv run python tools/ha_cli.py curl /api/states                # Guardrail: count
 uv run python tools/ha_cli.py curl /api/states --pick state,entity_id
 uv run python tools/ha_cli.py curl /api/states --entity sensor.temp
 uv run python tools/ha_cli.py curl /api/states --domain light --first 5
-uv run python tools/ha_cli.py curl /api/states --abbrev
 uv run python tools/ha_cli.py curl /api/states --max-chars 500
-uv run python tools/ha_cli.py curl /api/states --no-guard
+uv run python tools/ha_cli.py curl /api/states --no-guard          # bypass guardrail AND max-chars cap
 uv run python tools/ha_cli.py curl /api/services/light/turn_on --post --data '{"entity_id":"light.kitchen"}'
 
 # Service Call (dedicated)
@@ -283,6 +282,7 @@ uv run python tools/ha_cli.py call automation.reload                            
 
 # Error Logs
 uv run python tools/ha_cli.py logs                              # fetch HA system log (structured JSON)
+# Summary mode includes count (occurrence count) and first_occurred (when count>1)
 
 # State History
 uv run python tools/ha_cli.py history sensor.temp              # last 24 hours
@@ -292,14 +292,16 @@ uv run python tools/ha_cli.py history sensor.temp --minimal    # omit attributes
 uv run python tools/ha_cli.py history sensor.temp --first 20   # first 20 state records only
 uv run python tools/ha_cli.py history sensor.temp --pick state # keep only specified keys (projection)
 uv run python tools/ha_cli.py history sensor.temp --max-chars 2000  # truncate output to ~2KB
+# Empty results emit stderr hint with time window and entity_id
 
 # Automation Traces
 uv run python tools/ha_cli.py trace                             # list all automation traces
 uv run python tools/ha_cli.py trace automation.morning_routine  # specific automation trace
 uv run python tools/ha_cli.py trace --pretty                    # pretty-print trace
-uv run python tools/ha_cli.py trace --first 5                   # first 5 traces only
+uv run python tools/ha_cli.py trace --first 5                   # first 5 traces only (after dedupe in summary)
 
-# Summary mode drops redundant "config" field from single-entity traces
+# Summary mode: dedupes by item_id (adds runs field when N>1), drops config/blueprint_inputs
+#   from single-entity traces, and strips changed_variables.this.attributes
 uv run python tools/ha_cli.py trace --summary
 
 # Stale Sensor Detection
@@ -399,7 +401,7 @@ For Python scripts and tests, import from the package directly:
 ```python
 from tools.ha.client import HAClient              # REST API client
 from tools.ha.yaml_editor import YAMLEditor        # Round-trip YAML editing
-from tools.output_shape import apply_output_shape # --first/--pick/--abbrev/--max-chars
+from tools.output_shape import apply_output_shape # --first/--pick/--max-chars
 from tools.common import positive_int             # argparse type validators
 from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.references import ReferenceValidator

@@ -18,6 +18,8 @@ def make_args(**overrides):
         pretty=False,
         summary=False,
         no_summary=True,
+        pick=None,
+        max_chars=None,
     )
     defaults.update(overrides)
     return Namespace(**defaults)
@@ -57,6 +59,59 @@ SAMPLE_TRACES = [
         "last_step": "action/1",
         "trigger": "time",
         "domain": "automation",
+    },
+]
+
+DUPLICATE_TRACES = [
+    {
+        "item_id": "morning_routine",
+        "run_id": "abc123",
+        "state": "stopped",
+        "timestamp": {
+            "start": "2026-07-02T11:00:00Z",
+            "finish": "2026-07-02T11:00:01Z",
+        },
+        "trigger": "state of binary_sensor.is_daytime",
+    },
+    {
+        "item_id": "morning_routine",
+        "run_id": "xyz789",
+        "state": "stopped",
+        "timestamp": {
+            "start": "2026-07-03T11:00:00Z",
+            "finish": "2026-07-03T11:00:01Z",
+        },
+        "trigger": "state of binary_sensor.is_daytime",
+    },
+    {
+        "item_id": "morning_routine",
+        "run_id": "old999",
+        "state": "stopped",
+        "timestamp": {
+            "start": "2026-07-01T11:00:00Z",
+            "finish": "2026-07-01T11:00:01Z",
+        },
+        "trigger": "state of binary_sensor.is_daytime",
+    },
+    {
+        "item_id": "evening_lights",
+        "run_id": "def456",
+        "state": "stopped",
+        "timestamp": {
+            "start": "2026-07-02T20:00:00Z",
+            "finish": "2026-07-02T20:00:02Z",
+        },
+        "trigger": "time",
+    },
+    {
+        "item_id": "evening_lights",
+        "run_id": "ghi012",
+        "state": "stopped",
+        "timestamp": {
+            "start": "2026-07-03T20:00:00Z",
+            "finish": "2026-07-03T20:00:02Z",
+        },
+        "trigger": "time",
     },
 ]
 
@@ -127,6 +182,48 @@ class TestRun:
         assert set(parsed[0].keys()) == {"item_id", "state", "trigger", "timestamp"}
         # Ensure full-field keys are absent in summary mode
         assert {"script_execution", "last_step", "domain"}.isdisjoint(parsed[0].keys())
+
+    def test_summary_dedupes_by_item_id(self, mock_client, capsys):
+        """Summary mode dedupes trace list to one entry per item_id + runs field."""
+        mock_client.command.return_value = DUPLICATE_TRACES
+        args = make_args(summary=True, no_summary=False)
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert len(result) == 2  # 2 unique item_ids
+        runs_by_id = {e["item_id"]: e.get("runs") for e in result}
+        assert runs_by_id["morning_routine"] == 3
+        assert runs_by_id["evening_lights"] == 2
+        # Kept the most-recent timestamp
+        kept = {e["item_id"]: e["timestamp"] for e in result}
+        assert kept["morning_routine"] == "2026-07-03T11:00:00Z"
+        assert kept["evening_lights"] == "2026-07-03T20:00:00Z"
+
+    def test_summary_omits_runs_when_no_dupes(self, mock_client, capsys):
+        """runs field is absent when all item_ids are unique."""
+        mock_client.command.return_value = SAMPLE_TRACES
+        args = make_args(summary=True, no_summary=False)
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        for entry in result:
+            assert "runs" not in entry
+
+    def test_summary_first_slices_after_dedupe(self, mock_client, capsys):
+        """--first in summary mode slices the deduped list."""
+        mock_client.command.return_value = DUPLICATE_TRACES
+        args = make_args(summary=True, no_summary=False, first=1)
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert len(result) == 1
+        # Most recent run (evening_lights has newest timestamp)
+        assert result[0]["item_id"] == "evening_lights"
+
+    def test_verbose_keeps_all_entries(self, mock_client, capsys):
+        """Verbose mode (no summary) still returns all entries."""
+        mock_client.command.return_value = DUPLICATE_TRACES
+        args = make_args()
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert len(result) == 5
 
     def test_list_mode_first_n(self, mock_client, capsys):
         mock_client.command.return_value = SAMPLE_TRACES
@@ -218,7 +315,21 @@ class TestSummaryModeSingle:
     """In summary mode, single-entity trace drops verbose fields."""
 
     FULL_TRACE = {
-        "trace": {"trigger/1": {"result": {"value": True}}},
+        "trace": {
+            "trigger/0": [
+                {
+                    "path": "trigger/0",
+                    "timestamp": "2026-07-03T13:00:00.434087+00:00",
+                    "changed_variables": {
+                        "this": {
+                            "entity_id": "automation.test",
+                            "state": "on",
+                            "attributes": {"friendly_name": "Test", "id": "test"},
+                        }
+                    },
+                }
+            ],
+        },
         "config": {"alias": "Test", "triggers": [], "actions": []},
         "blueprint_inputs": {"param": "x"},
         "item_id": "test",
@@ -263,3 +374,141 @@ class TestSummaryModeSingle:
         result = json.loads(capsys.readouterr().out)
         assert "config" in result
         assert "blueprint_inputs" in result
+
+    def test_summary_strips_this_attributes(self, mock_client, capsys):
+        """Summary mode strips changed_variables.this.attributes."""
+        mock_client.command.side_effect = [
+            [{"item_id": "test", "run_id": "r1"}],
+            self.FULL_TRACE,
+        ]
+        args = make_args(entity_id="automation.test", summary=True, no_summary=False)
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        trace = result.get("trace", {})
+        for entries in trace.values():
+            if isinstance(entries, list):
+                for entry in entries:
+                    cv = entry.get("changed_variables") or {}
+                    this = cv.get("this") or {}
+                    assert "attributes" not in this, (
+                        f"this.attributes should be stripped: {this}"
+                    )
+                    # Should keep entity_id and state
+                    if "entity_id" in this:
+                        assert this["entity_id"] == "automation.test"
+
+    def test_no_summary_keeps_this_attributes(self, mock_client, capsys):
+        """Verbose mode keeps this.attributes intact."""
+        mock_client.command.side_effect = [
+            [{"item_id": "test", "run_id": "r1"}],
+            self.FULL_TRACE,
+        ]
+        args = make_args(entity_id="automation.test")
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        trace = result.get("trace", {})
+        attrs_found = False
+        for entries in trace.values():
+            if isinstance(entries, list):
+                for entry in entries:
+                    cv = entry.get("changed_variables") or {}
+                    this = cv.get("this") or {}
+                    if "attributes" in this:
+                        attrs_found = True
+        assert attrs_found, "this.attributes should survive in verbose mode"
+
+    def test_summary_with_pretty_keeps_this_attributes(self, mock_client, capsys):
+        """--pretty overrides summary projection; this.attributes survives."""
+        mock_client.command.side_effect = [
+            [{"item_id": "test", "run_id": "r1"}],
+            self.FULL_TRACE,
+        ]
+        args = make_args(
+            entity_id="automation.test", summary=True, no_summary=False, pretty=True
+        )
+        assert trace_cmd.run(args) == 0
+        result = json.loads(capsys.readouterr().out)
+        trace = result.get("trace", {})
+        attrs_found = False
+        for entries in trace.values():
+            if isinstance(entries, list):
+                for entry in entries:
+                    cv = entry.get("changed_variables") or {}
+                    this = cv.get("this") or {}
+                    if "attributes" in this:
+                        attrs_found = True
+        assert attrs_found, "this.attributes should survive with --pretty"
+
+    def test_prune_malformed_trace_does_not_crash(self, mock_client, capsys):
+        """Malformed trace entries (non-list values, missing cv) should not crash."""
+        weird_trace = {
+            "trace": {
+                "trigger/0": "not_a_list",
+                "trigger/1": [{"path": "x"}],  # no changed_variables
+                "trigger/2": [{"changed_variables": None}],
+                "trigger/3": [{"changed_variables": {"this": None}}],
+                "trigger/4": [
+                    {"changed_variables": {"this": {"state": "on"}}}
+                ],  # no attrs
+            },
+            "config": {},
+            "item_id": "test",
+            "state": "stopped",
+        }
+        mock_client.command.side_effect = [
+            [{"item_id": "test", "run_id": "r1"}],
+            weird_trace,
+        ]
+        args = make_args(entity_id="automation.test", summary=True, no_summary=False)
+        assert trace_cmd.run(args) == 0
+
+    def test_summary_timestamp_is_start_string(self, mock_client, capsys):
+        mock_client.command.return_value = [
+            {
+                "item_id": "x",
+                "state": "stopped",
+                "trigger": "t",
+                "timestamp": {
+                    "start": "2026-07-02T13:00:00+00:00",
+                    "finish": "2026-07-02T13:00:01+00:00",
+                },
+            }
+        ]
+        args = make_args(summary=True, no_summary=False)
+        assert trace_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert result[0]["timestamp"] == "2026-07-02T13:00:00+00:00"
+
+    def test_pick_keeps_fields(self, mock_client, capsys):
+        mock_client.command.return_value = [
+            {
+                "item_id": "x",
+                "state": "stopped",
+                "trigger": "t",
+                "timestamp": {"start": "s", "finish": "f"},
+            }
+        ]
+        args = make_args(pick="item_id,state")
+        assert trace_cmd.run(args) == 0
+        result = __import__("json").loads(capsys.readouterr().out)
+        assert result == [{"item_id": "x", "state": "stopped"}]
+
+    def test_list_default_cap(self, mock_client, capsys):
+        mock_client.command.return_value = [
+            {
+                "item_id": f"auto_{i}",
+                "state": "stopped",
+                "trigger": "t",
+                "timestamp": {
+                    "start": f"2026-07-02T{i:02d}:00:00+00:00",
+                    "finish": "f",
+                },
+            }
+            for i in range(200)
+        ]
+        args = make_args(summary=True, no_summary=False)
+        assert trace_cmd.run(args) == 0
+        out = capsys.readouterr().out
+        assert len(out) <= 8000
+        result = __import__("json").loads(out)
+        assert result[-1].get("_truncated") is True

@@ -5,12 +5,26 @@ import json
 import re
 import sys
 import urllib.parse
+from datetime import UTC, datetime, timedelta
 
-from tools.common import HARequestError, non_negative_int, positive_int, resolve_summary
+from tools.common import (
+    HARequestError,
+    add_output_shape_args,
+    resolve_max_chars,
+    resolve_summary,
+)
 from tools.ha.client import HAClient
 from tools.output_shape import apply_output_shape
 
 _ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
+
+
+def _positive_float(value: str) -> float:
+    """Argparse type: reject values <= 0."""
+    f = float(value)
+    if f <= 0:
+        raise argparse.ArgumentTypeError("must be > 0")
+    return f
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -20,7 +34,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Fetch entity state history.",
         description=(
             "Fetch state history for an entity from Home Assistant. "
-            "Defaults to the last 24 hours."
+            "Defaults to 6 hours in summary mode, 24 hours otherwise."
         ),
     )
     parser.add_argument(
@@ -37,6 +51,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="End timestamp in ISO8601 format (e.g. 2026-07-02T00:00:00Z)",
     )
     parser.add_argument(
+        "--hours",
+        type=_positive_float,
+        help="Time window in hours (default: 6 in summary, 24 in verbose)",
+    )
+    parser.add_argument(
         "--minimal",
         action="store_true",
         help="Omit attributes and context from the response",
@@ -46,23 +65,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Pretty-print JSON output with indent=2 (default: compact)",
     )
-    parser.add_argument(
-        "--first",
-        metavar="N",
-        type=positive_int,
-        help="Show only the first N state records",
-    )
-    parser.add_argument(
-        "--pick",
-        metavar="FIELDS",
-        help="Keep only specified JSON keys (comma-separated)",
-    )
-    parser.add_argument(
-        "--max-chars",
-        metavar="N",
-        type=non_negative_int,
-        help="Truncate JSON output when serialized form exceeds N characters",
-    )
+    add_output_shape_args(parser)
     parser.add_argument(
         "--summary",
         action="store_true",
@@ -78,7 +81,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``history`` subcommand. Returns exit code."""
-    resolve_summary(args)
+    summary = resolve_summary(args)
 
     if not _ENTITY_RE.fullmatch(args.entity_id):
         print(
@@ -88,8 +91,14 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     path = "/api/history/period"
-    if args.since:
+    if args.hours is not None:
+        since = datetime.now(UTC) - timedelta(hours=args.hours)
+        path += "/" + urllib.parse.quote(since.isoformat(), safe=":")
+    elif args.since:
         path += "/" + urllib.parse.quote(args.since, safe=":")
+    elif summary:
+        since = datetime.now(UTC) - timedelta(hours=6)
+        path += "/" + urllib.parse.quote(since.isoformat(), safe=":")
 
     params: dict[str, str] = {"filter_entity_id": args.entity_id}
     if args.end:
@@ -113,12 +122,28 @@ def run(args: argparse.Namespace) -> int:
     if isinstance(data, list) and data and isinstance(data[0], list):
         data = data[0]
 
+    # Empty-result hint for agents (stderr, stdout stays []).
+    if isinstance(data, list) and not data:
+        if args.hours is not None:
+            window = f"last {args.hours:g}h"
+        elif args.since:
+            window = f"since {args.since}" + (f" until {args.end}" if args.end else "")
+        elif summary:
+            window = "last 6h"
+        else:
+            window = "last 24h (HA default)"
+        print(
+            f"# no history for {args.entity_id} in {window} "
+            f"(verify entity_id; try --hours 48 or wider)",
+            file=sys.stderr,
+        )
+
     # Apply token-reduction shapes (--first, --pick, --max-chars)
     data = apply_output_shape(
         data,
         first=args.first,
         pick=args.pick,
-        max_chars=args.max_chars,
+        max_chars=resolve_max_chars(args, summary),
     )
 
     if args.pretty:

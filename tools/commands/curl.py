@@ -8,7 +8,6 @@ Token-efficiency flags for agents:
   ``--keys``     — print key names only (no values)
   ``--first N``  — print first N items
   ``--pick F``   — keep only specified JSON keys (per-item projection)
-  ``--abbrev``   — rename known keys to short forms (e, s, at, lc, lu, ctx)
   ``--entity ID`` — fetch a single entity by id (server-side)
   ``--domain D``  — filter list response by domain (client-side)
   ``--max-chars N`` — truncate JSON output when it exceeds N bytes
@@ -25,8 +24,9 @@ import sys
 from tools.common import (
     HARequestError,
     _has_transform_flags,
-    non_negative_int,
+    add_output_shape_args,
     positive_int,
+    resolve_max_chars,
     resolve_summary,
 )
 from tools.ha.client import HAClient
@@ -129,30 +129,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument(
         "--no-guard",
         action="store_true",
-        help="Disable bare-endpoint guardrail (dump all entities even in summary)",
+        help="Disable guardrail AND default max-chars cap (dump all entities)",
     )
 
-    # ---- byte-length truncation ----
-    parser.add_argument(
-        "--max-chars",
-        metavar="N",
-        type=non_negative_int,
-        help="Truncate JSON output when serialized form exceeds N characters",
-    )
-
-    # ---- key abbreviation ----
-    parser.add_argument(
-        "--abbrev",
-        action="store_true",
-        help="Shorten known JSON keys (e→entity_id, s→state, at→attributes, etc.)",
-    )
-
-    # ---- field projection (outside output_group — stacks with --first) ----
-    parser.add_argument(
-        "--pick",
-        metavar="FIELDS",
-        help="Keep only specified JSON keys (comma-separated). Stacks with --first.",
-    )
+    # ---- shared token-reduction flags (--pick, --max-chars) ----
+    add_output_shape_args(parser, first=False)
 
     # ---- summary / quiet mode ----
     parser.add_argument(
@@ -354,11 +335,15 @@ def run(args: argparse.Namespace) -> int:
 
     # 10. Dispatch by output flag (early-exit handlers)
     if args.filter:
+        print(
+            "\u26a0\ufe0f  --filter is deprecated; use --pick or --keys instead",
+            file=sys.stderr,
+        )
         return _handle_filter(args.filter, data, content_type, compact)
     if args.count:
         return _handle_count(data, raw_text, is_json)
     if args.keys:
-        return _handle_keys(data)
+        return _handle_keys(data, summary=summary)
     if args.raw:
         print(raw_text, end="")
         return 0
@@ -384,13 +369,17 @@ def run(args: argparse.Namespace) -> int:
     if args.first is not None and not summary:
         _warn_first_overcount(data, args.first)
 
-    # 13-15. Apply shared output shaping (first → pick → abbrev → max_chars)
+    # 13-15. Apply shared output shaping (first → pick → max_chars)
+    effective_max_chars = (
+        None
+        if args.no_guard and args.max_chars is None
+        else resolve_max_chars(args, summary)
+    )
     data = apply_output_shape(
         data,
         first=args.first,
         pick=args.pick,
-        max_chars=args.max_chars,
-        abbrev=args.abbrev,
+        max_chars=effective_max_chars,
     )
 
     # 16. Dump JSON
@@ -455,21 +444,15 @@ def _handle_filter(
 
 
 def _handle_count(data, raw_text: str, is_json: bool) -> int:
-    """Print the length of a JSON collection or scalar indicator."""
+    """Print the length of a JSON collection; 0 otherwise."""
     if isinstance(data, (list, dict)):
         print(len(data))
-    elif isinstance(data, (bool, int, float, str)):
-        print(0)
-    elif is_json and data is None:
-        print(0)  # JSON null → not a collection
-    elif raw_text:
-        print(len(raw_text.encode("utf-8")))  # non-JSON fallback
     else:
         print(0)
     return 0
 
 
-def _handle_keys(data) -> int:
+def _handle_keys(data, summary: bool = False) -> int:
     """Print unique JSON key names (metadata to stderr, keys to stdout)."""
     if isinstance(data, list):
         count = len(data)
@@ -483,10 +466,13 @@ def _handle_keys(data) -> int:
                     all_keys.update(item.keys())
             keys = sorted(all_keys)
             if keys:
-                print(
-                    f"# {count} items, {len(keys)} unique keys: {', '.join(keys)}",
-                    file=sys.stderr,
-                )
+                if summary:
+                    print(f"# {count} items, {len(keys)} keys", file=sys.stderr)
+                else:
+                    print(
+                        f"# {count} items, {len(keys)} unique keys: {', '.join(keys)}",
+                        file=sys.stderr,
+                    )
                 print(json.dumps(keys, separators=(",", ":")))
             else:
                 print(f"# {count} items (non-dict, no keys available)", file=sys.stderr)

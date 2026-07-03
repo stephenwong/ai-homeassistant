@@ -12,6 +12,7 @@ from tools.validators.base import (  # noqa: F401 — re-exported
 )
 
 DEFAULT_HA_URL = "http://homeassistant.local:8123"
+DEFAULT_SUMMARY_MAX_CHARS = 8000
 
 
 def load_env_file():
@@ -80,7 +81,7 @@ def _has_transform_flags(args: argparse.Namespace) -> bool:
     explicitly requested transformed output.  Returning True means the
     guardrail should not fire.
 
-    Flags checked: count, keys, first, filter, raw, pick, abbrev, entity,
+    Flags checked: count, keys, first, filter, raw, pick, entity,
     domain, max_chars.
     """
     return bool(
@@ -90,7 +91,6 @@ def _has_transform_flags(args: argparse.Namespace) -> bool:
         or args.filter
         or args.raw
         or bool(args.pick)
-        or args.abbrev
         or bool(args.entity)
         or bool(args.domain)
         or args.max_chars is not None
@@ -137,6 +137,59 @@ def resolve_summary(args: argparse.Namespace) -> bool:
     if explicit_no_summary:
         return False
     return not _is_tty()
+
+
+def resolve_max_chars(args: argparse.Namespace, summary: bool) -> int | None:
+    """Resolve effective --max-chars: explicit flag > HA_CLI_MAX_CHARS env > default.
+
+    Returns None when no cap should apply. ``--max-chars 0`` always disables.
+    """
+    explicit = getattr(args, "max_chars", None)
+    if explicit is not None:
+        return explicit if explicit > 0 else None
+
+    env_val = os.getenv("HA_CLI_MAX_CHARS")
+    if env_val:
+        try:
+            n = int(env_val)
+            if n > 0:
+                return n
+        except ValueError:
+            pass
+
+    if summary:
+        return DEFAULT_SUMMARY_MAX_CHARS
+    return None
+
+
+def add_output_shape_args(
+    parser: argparse.ArgumentParser,
+    *,
+    first: bool = True,
+    pick: bool = True,
+    max_chars: bool = True,
+) -> None:
+    """Attach the standard token-reduction flags to *parser*."""
+    if first:
+        parser.add_argument(
+            "--first",
+            metavar="N",
+            type=positive_int,
+            help="Keep only the first N items",
+        )
+    if pick:
+        parser.add_argument(
+            "--pick",
+            metavar="FIELDS",
+            help="Keep only specified JSON keys (comma-separated)",
+        )
+    if max_chars:
+        parser.add_argument(
+            "--max-chars",
+            metavar="N",
+            type=non_negative_int,
+            help="Truncate JSON above N chars (0 disables; default 8000 in summary)",
+        )
 
 
 class HARequestError(Exception):
