@@ -13,7 +13,7 @@ from tools.common import (
     resolve_summary,
 )
 from tools.ha.client import HAClient
-from tools.output_shape import apply_output_shape
+from tools.output_shape import apply_output_shape, print_json
 
 _SERVICE_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 
@@ -37,7 +37,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "-d",
         help="JSON data to pass to the service (must be a JSON object)",
     )
-    add_output_shape_args(parser, first=False)
+    add_output_shape_args(parser)
     parser.add_argument(
         "--pretty",
         action="store_true",
@@ -117,13 +117,11 @@ def run(args: argparse.Namespace) -> int:
     if data is not None:
         data = apply_output_shape(
             data,
+            first=args.first,
             pick=args.pick,
             max_chars=resolve_max_chars(args, summary),
         )
-        if args.pretty:
-            print(json.dumps(data, indent=2, ensure_ascii=False))
-        else:
-            print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
+        print_json(data, pretty=args.pretty)
     else:
         sys.stdout.write(raw_text)
 

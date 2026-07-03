@@ -163,8 +163,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description="Run YAML, reference, and HA-official validators in parallel.",
     )
     parser.add_argument(
-        "config_dir",
-        nargs="?",
+        "--config",
+        "-c",
         default="config",
         help="Path to the config directory (default: config)",
     )
@@ -193,7 +193,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``validate`` subcommand. Returns exit code."""
-    config_dir = args.config_dir
+    config_dir = args.config
     quiet = bool(getattr(args, "quiet", False))
     force = bool(getattr(args, "force", False))
 

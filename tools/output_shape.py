@@ -65,6 +65,18 @@ def _pick_item(item, fields: list[str]):
     return {k: item[k] for k in fields if k in item}
 
 
+def print_json(data, *, pretty: bool = False) -> None:
+    """Print JSON to stdout with configurable indentation.
+
+    Compact output (no whitespace) by default; pretty-print with indent=2
+    when *pretty* is True.
+    """
+    if pretty:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
+
+
 def _truncate_by_chars(data, max_chars: int):
     """Drop trailing list items until compact JSON fits within *max_chars*.
 

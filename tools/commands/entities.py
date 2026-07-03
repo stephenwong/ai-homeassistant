@@ -1,8 +1,8 @@
-"""``entities`` subcommand: thin wrapper around entity_explorer.main()."""
+"""``entities`` subcommand: browse the entity registry."""
 
 import argparse
 
-from tools import entity_explorer
+from tools import entity_registry
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -54,24 +54,5 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``entities`` subcommand. Returns exit code."""
-    argv: list[str] = []
-    if args.config:
-        argv.extend(["--config", args.config])
-    if args.domain:
-        argv.extend(["--domain", args.domain])
-    if args.area:
-        argv.extend(["--area", args.area])
-    if args.search:
-        argv.extend(["--search", args.search])
-    if args.full:
-        argv.append("--full")
-    if args.json:
-        argv.append("--json")
-    if getattr(args, "summary", False):
-        argv.append("--summary")
-    if getattr(args, "no_summary", False):
-        argv.append("--no-summary")
-    if getattr(args, "force", False):
-        argv.append("--force")
-    result = entity_explorer.main(argv)
+    result = entity_registry.run(args)
     return int(result) if isinstance(result, int) else 0

@@ -22,7 +22,6 @@ def make_args(**overrides):
         endpoint="/api/states",
         method="GET",
         data=None,
-        filter=None,
         count=False,
         keys=False,
         first=None,
@@ -122,10 +121,6 @@ class TestArgparse:
         with pytest.raises(SystemExit):
             parse(["api/states"])
 
-    def test_filter_flag(self):
-        args = parse(["/api/states", "--filter", ". | length"])
-        assert args.filter == ". | length"
-
     def test_count_flag(self):
         args = parse(["/api/states", "--count"])
         assert args.count is True
@@ -153,10 +148,6 @@ class TestArgparse:
     def test_pretty_flag(self):
         args = parse(["/api/states", "--pretty"])
         assert args.pretty is True
-
-    def test_filter_raw_conflict(self):
-        with pytest.raises(SystemExit):
-            parse(["/api/states", "--filter", ".", "--raw"])
 
     def test_count_keys_conflict(self):
         with pytest.raises(SystemExit):
@@ -276,18 +267,6 @@ class TestSummaryMode:
         assert curl_cmd.run(args) == 0
         err = capsys.readouterr().err
         assert "no effect with --keys" not in err
-
-    def test_summary_suppresses_pretty_filter_warning(self, mock_client, capsys):
-        mock_client.get.return_value = json_resp([{"id": 1}])
-        with (
-            patch("tools.commands.curl.shutil.which", return_value="/usr/bin/jq"),
-            patch("tools.commands.curl.subprocess.run") as mock_run,
-        ):
-            mock_run.return_value = MagicMock(returncode=0, stdout="1\n")
-            args = make_args(filter=".", pretty=True, summary=True, no_summary=False)
-            assert curl_cmd.run(args) == 0
-        err = capsys.readouterr().err
-        assert "no effect with --filter" not in err
 
     def test_summary_suppresses_first_overcount(self, mock_client, capsys):
         data = [{"id": i} for i in range(3)]
@@ -473,13 +452,6 @@ class TestErrorHandling:
         assert curl_cmd.run(args) == 0
         err = capsys.readouterr().err
         assert "ignored for DELETE" in err
-
-    def test_non_json_filter_errors(self, mock_client, capsys):
-        mock_client.get.return_value = text_resp("<html>HA</html>", ct="text/html")
-        args = make_args(filter=".")
-        assert curl_cmd.run(args) == 1
-        err = capsys.readouterr().err
-        assert "Cannot use --filter on non-JSON response" in err
 
     def test_non_json_first_errors(self, mock_client, capsys):
         mock_client.get.return_value = text_resp("<html>HA</html>", ct="text/html")
@@ -760,7 +732,7 @@ class TestPick:
 
     @pytest.mark.parametrize(
         ("flag", "value"),
-        [("count", True), ("keys", True), ("filter", "."), ("raw", True)],
+        [("count", True), ("keys", True), ("raw", True)],
     )
     def test_pick_conflicts_with_flags(self, capsys, flag, value):
         with patch("tools.commands.curl.HAClient.from_env"):
@@ -862,7 +834,7 @@ class TestEntity:
 
     @pytest.mark.parametrize(
         ("flag", "value"),
-        [("count", True), ("keys", True), ("filter", "."), ("raw", True)],
+        [("count", True), ("keys", True), ("raw", True)],
     )
     def test_entity_conflicts_with_flags(self, capsys, flag, value):
         with patch("tools.commands.curl.HAClient.from_env"):
@@ -972,7 +944,6 @@ class TestDomain:
             ("entity", "sensor.x"),
             ("count", True),
             ("keys", True),
-            ("filter", "."),
             ("raw", True),
         ],
     )
@@ -1211,69 +1182,6 @@ class TestGuardrail:
         result = json.loads(capsys.readouterr().out)
         assert result["entity_id"] == "sensor.test"
 
-
-# ---------------------------------------------------------------------------
-# --filter (jq)
-# ---------------------------------------------------------------------------
-
-
-class TestFilter:
-    def test_filter_with_jq(self, mock_client):
-        data = [{"entity_id": "sensor.test"}]
-        mock_client.get.return_value = json_resp(data)
-        mock_jq = MagicMock()
-        mock_jq.returncode = 0
-        mock_jq.stdout = "1\n"
-        with (
-            patch("tools.commands.curl.shutil.which", return_value="/usr/bin/jq"),
-            patch(
-                "tools.commands.curl.subprocess.run", return_value=mock_jq
-            ) as mock_run,
-        ):
-            args = make_args(filter=". | length")
-            assert curl_cmd.run(args) == 0
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args
-        assert call_args.args[0] == ["jq", "--raw-output", ". | length"]
-        kw = call_args.kwargs
-        assert kw["input"] == '[{"entity_id":"sensor.test"}]'
-        assert kw["capture_output"] is True
-        assert kw["text"] is True
-        assert kw["timeout"] == 10
-
-    def test_filter_without_jq(self, mock_client, capsys):
-        mock_client.get.return_value = json_resp([{"id": 1}])
-        with patch("tools.commands.curl.shutil.which", return_value=None):
-            args = make_args(filter=".")
-            assert curl_cmd.run(args) == 0
-        out, err = capsys.readouterr()
-        assert "jq not installed" in err
-        assert '"id":1' in out or '"id": 1' in out
-
-    def test_filter_on_non_json(self, mock_client, capsys):
-        mock_client.get.return_value = text_resp("not json", ct="text/html")
-        with patch("tools.commands.curl.shutil.which", return_value="/usr/bin/jq"):
-            args = make_args(filter=".")
-            assert curl_cmd.run(args) == 1
-        err = capsys.readouterr().err
-        assert "Cannot use --filter on non-JSON response" in err
-
-    def test_filter_with_jq_on_empty_array(self, mock_client):
-        """--filter on [] should pass through to jq, not reject as 'not JSON'."""
-        mock_client.get.return_value = json_resp([])
-        mock_jq = MagicMock()
-        mock_jq.returncode = 0
-        mock_jq.stdout = "0\n"
-        with (
-            patch("tools.commands.curl.shutil.which", return_value="/usr/bin/jq"),
-            patch(
-                "tools.commands.curl.subprocess.run", return_value=mock_jq
-            ) as mock_run,
-        ):
-            args = make_args(filter=".")
-            assert curl_cmd.run(args) == 0
-        mock_run.assert_called_once()
-
     def test_unknown_method_returns_one(self, mock_client, capsys):
         """Calling run() with an unrecognized method should error."""
         args = make_args(endpoint="/api/")
@@ -1281,30 +1189,6 @@ class TestFilter:
         assert curl_cmd.run(args) == 1
         err = capsys.readouterr().err
         assert "Unknown HTTP method" in err
-
-    def test_pretty_with_filter_warns(self, mock_client, capsys):
-        mock_client.get.return_value = json_resp([{"id": 1}])
-        with (
-            patch("tools.commands.curl.shutil.which", return_value="/usr/bin/jq"),
-            patch("tools.commands.curl.subprocess.run") as mock_run,
-        ):
-            mock_run.return_value = MagicMock(returncode=0, stdout="1\n")
-            args = make_args(filter=".", pretty=True)
-            assert curl_cmd.run(args) == 0
-        err = capsys.readouterr().err
-        assert "no effect with --filter" in err
-
-    def test_filter_emits_deprecation_warning(self, mock_client, capsys):
-        mock_client.get.return_value = json_resp([{"entity_id": "sensor.test"}])
-        mock_jq = MagicMock(returncode=0, stdout="1\n")
-        with (
-            patch("tools.commands.curl.shutil.which", return_value="/usr/bin/jq"),
-            patch("tools.commands.curl.subprocess.run", return_value=mock_jq),
-        ):
-            args = make_args(filter=".")
-            assert curl_cmd.run(args) == 0
-        err = capsys.readouterr().err
-        assert "deprecated" in err.lower()
 
 
 # ---------------------------------------------------------------------------

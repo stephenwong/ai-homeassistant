@@ -218,7 +218,7 @@ make push  # Validates then uploads to HA
 │   │   └── yaml_editor.py       # YAMLEditor — round-trip YAML editing
 │   ├── validators/              # Validators (base.py, duplicate_ids.py, entity_definitions.py, ha_official.py, ...)
 │   ├── reload_config.py         # HA config reload via API
-│   ├── entity_explorer.py       # Entity discovery/search
+│   ├── entity_registry.py       # Entity registry explorer (local-file based)
 │   ├── cache.py                 # SHA256 file-hash caching
 │   ├── common.py                # Shared utilities (re-exports from validators/, argparse types)
 │   ├── output_shape.py          # Shared JSON output-shaping (--first/--pick/--max-chars)

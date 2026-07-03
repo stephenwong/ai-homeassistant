@@ -17,8 +17,6 @@ import argparse
 import contextlib
 import json
 import re
-import shutil
-import subprocess
 import sys
 
 from tools.common import (
@@ -30,7 +28,7 @@ from tools.common import (
     resolve_summary,
 )
 from tools.ha.client import HAClient
-from tools.output_shape import apply_output_shape
+from tools.output_shape import apply_output_shape, print_json
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -93,11 +91,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     # ---- output processing (mutually exclusive) ----
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument(
-        "--filter",
-        metavar="F",
-        help="jq filter expression (requires jq installed)",
-    )
-    output_group.add_argument(
         "--count",
         action="store_true",
         help="Print number of items (list items or top-level dict keys)",
@@ -119,12 +112,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Print raw response body (skip JSON processing entirely)",
     )
 
-    parser.add_argument(
-        "--pretty",
-        action="store_true",
-        help="Pretty-print JSON with indent=2 (default: compact)",
-    )
-
     # ---- bare-endpoint guardrail ----
     parser.add_argument(
         "--no-guard",
@@ -135,16 +122,23 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     # ---- shared token-reduction flags (--pick, --max-chars) ----
     add_output_shape_args(parser, first=False)
 
+    # ---- output formatting ----
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="Pretty-print JSON with indent=2 (default: compact)",
+    )
+
     # ---- summary / quiet mode ----
     parser.add_argument(
         "--summary",
         action="store_true",
-        help="Compact output; suppresses informational stderr warnings",
+        help="Compact output; auto-detected when stdout is not a TTY",
     )
     parser.add_argument(
         "--no-summary",
         action="store_true",
-        help="Force verbose stderr output even when stdout is piped",
+        help="Force verbose output even when stdout is piped",
     )
 
     parser.set_defaults(func=run)
@@ -159,17 +153,15 @@ def run(args: argparse.Namespace) -> int:
     """Execute a curl request.  Returns exit code (0 success, 1 error)."""
     summary = resolve_summary(args)
     method = args.method
-    compact = not args.pretty
-
     # 1. Conflict: --raw + --pretty (check before costly from_env())
     if args.raw and args.pretty:
         print("\u274c Cannot combine --raw with --pretty", file=sys.stderr)
         return 1
 
     # 1b. Conflict: --pick with exclusive transforms (also before from_env)
-    if args.pick and (args.count or args.keys or args.filter or args.raw):
+    if args.pick and (args.count or args.keys or args.raw):
         print(
-            "\u274c Cannot combine --pick with --count/--keys/--filter/--raw",
+            "\u274c Cannot combine --pick with --count/--keys/--raw",
             file=sys.stderr,
         )
         return 1
@@ -185,9 +177,9 @@ def run(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        if args.count or args.keys or args.filter or args.raw:
+        if args.count or args.keys or args.raw:
             print(
-                "\u274c Cannot combine --entity with --count/--keys/--filter/--raw",
+                "\u274c Cannot combine --entity with --count/--keys/--raw",
                 file=sys.stderr,
             )
             return 1
@@ -207,9 +199,9 @@ def run(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        if args.count or args.keys or args.filter or args.raw:
+        if args.count or args.keys or args.raw:
             print(
-                "\u274c Cannot combine --domain with --count/--keys/--filter/--raw",
+                "\u274c Cannot combine --domain with --count/--keys/--raw",
                 file=sys.stderr,
             )
             return 1
@@ -302,17 +294,9 @@ def run(args: argparse.Namespace) -> int:
         return count_result
 
     # 8. Validate output flag against JSON-ness
-    requires_json = (
-        args.filter or args.keys or (args.first is not None) or bool(args.pick)
-    )
+    requires_json = args.keys or (args.first is not None) or bool(args.pick)
     if requires_json and data is None and not is_json:
-        flag = (
-            "filter"
-            if args.filter
-            else (
-                "keys" if args.keys else ("first" if args.first is not None else "pick")
-            )
-        )
+        flag = "keys" if args.keys else ("first" if args.first is not None else "pick")
         print(
             f"\u274c Cannot use --{flag} on non-JSON response "
             f"(Content-Type: {content_type or 'unknown'})",
@@ -320,26 +304,14 @@ def run(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # 8. Pretty-warning for --filter and --keys
-    if args.pretty and not summary:
-        if args.filter:
-            print(
-                "\u26a0\ufe0f  --pretty has no effect with --filter",
-                file=sys.stderr,
-            )
-        elif args.keys:
-            print(
-                "\u26a0\ufe0f  --pretty has no effect with --keys",
-                file=sys.stderr,
-            )
-
-    # 10. Dispatch by output flag (early-exit handlers)
-    if args.filter:
+    # 9. Pretty-warning for --keys
+    if args.pretty and not summary and args.keys:
         print(
-            "\u26a0\ufe0f  --filter is deprecated; use --pick or --keys instead",
+            "\u26a0\ufe0f  --pretty has no effect with --keys",
             file=sys.stderr,
         )
-        return _handle_filter(args.filter, data, content_type, compact)
+
+    # 10. Dispatch by output flag (early-exit handlers)
     if args.count:
         return _handle_count(data, raw_text, is_json)
     if args.keys:
@@ -384,10 +356,7 @@ def run(args: argparse.Namespace) -> int:
 
     # 16. Dump JSON
     if data is not None:
-        if compact:
-            print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
-        else:
-            print(json.dumps(data, indent=2, ensure_ascii=False))
+        print_json(data, pretty=args.pretty)
     else:
         print(raw_text, end="")
 
@@ -397,50 +366,6 @@ def run(args: argparse.Namespace) -> int:
 # ====================================================================
 # Output helper functions
 # ====================================================================
-
-
-def _handle_filter(
-    filter_expr: str, data, content_type: str, compact: bool = True
-) -> int:
-    """Apply a jq filter to parsed JSON data."""
-    if data is None:
-        print(
-            f"\u274c --filter: response body is empty or could not be parsed as JSON "
-            f"(Content-Type: {content_type or 'unknown'})",
-            file=sys.stderr,
-        )
-        return 1
-
-    if not shutil.which("jq"):
-        print(
-            "\u26a0\ufe0f  jq not installed; printing raw JSON",
-            file=sys.stderr,
-        )
-        if compact:
-            print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
-        else:
-            print(json.dumps(data, indent=2, ensure_ascii=False))
-        return 0
-
-    text = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
-    try:
-        result = subprocess.run(
-            ["jq", "--raw-output", filter_expr],
-            input=text,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (FileNotFoundError, OSError) as e:
-        print(f"\u274c jq failed: {e}", file=sys.stderr)
-        return 1
-
-    if result.returncode != 0:
-        print(f"\u274c jq: {result.stderr.strip()}", file=sys.stderr)
-        return 1
-
-    print(result.stdout, end="")
-    return 0
 
 
 def _handle_count(data, raw_text: str, is_json: bool) -> int:

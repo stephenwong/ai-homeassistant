@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Home Assistant Entity Registry Explorer.
 
@@ -21,14 +20,14 @@ def load_entity_registry(config_path: Path) -> dict | None:
     registry_path = config_path / ".storage" / "core.entity_registry"
 
     if not registry_path.exists():
-        print(f"Error: Entity registry not found at {registry_path}", file=sys.stderr)
+        print(f"❌ Entity registry not found at {registry_path}", file=sys.stderr)
         return None
 
     try:
         with open(registry_path, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
-        print(f"Error reading entity registry: {e}", file=sys.stderr)
+        print(f"❌ Error reading entity registry: {e}", file=sys.stderr)
         return None
 
 
@@ -44,7 +43,7 @@ def load_area_registry(config_path: Path) -> dict[str, str]:
                 for area in area_data.get("data", {}).get("areas", []):
                     area_names[area["id"]] = area["name"]
         except (OSError, json.JSONDecodeError, KeyError, AttributeError) as e:
-            print(f"Warning: Could not load area names: {e}", file=sys.stderr)
+            print(f"⚠️ Could not load area names: {e}", file=sys.stderr)
 
     return area_names
 
@@ -264,50 +263,16 @@ def search_entities(categorized: dict, query: str):
         print(f"   {entity['entity_id']}{device_class_str}{unit_str}{area_str}")
 
 
-def main(argv: list[str] | None = None):
-    """Run main function. If argv is None, falls back to sys.argv[1:] for CLI use."""
-    parser = argparse.ArgumentParser(
-        description="Explore Home Assistant Entity Registry"
-    )
-    parser.add_argument(
-        "--config", "-c", default="config", help="Path to HA config directory"
-    )
-    parser.add_argument(
-        "--domain", "-d", help="Show only entities from specific domain"
-    )
-    parser.add_argument("--area", "-a", help="Show only entities from specific area")
-    parser.add_argument(
-        "--search", "-s", help="Search entities by name/id/device_class"
-    )
-    parser.add_argument(
-        "--full", "-f", action="store_true", help="Show full detailed output"
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Emit compact JSON output (machine-readable, no banners/emojis)",
-    )
-    parser.add_argument(
-        "--summary",
-        action="store_true",
-        help="Compact output; auto-detected when stdout is not a TTY",
-    )
-    parser.add_argument(
-        "--no-summary",
-        action="store_true",
-        help="Force verbose output even when stdout is piped",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Bypass cache and recompute output",
-    )
+def run(args: argparse.Namespace) -> int:
+    """Run the entity registry explorer with parsed args.
 
-    args = parser.parse_args(argv)
-
+    Args:
+        args: Namespace with ``config``, ``domain``, ``area``, ``search``,
+              ``full``, ``json``, ``summary``, ``no_summary``, ``force``.
+    """
     config_path = Path(args.config)
     if not config_path.exists():
-        print(f"Error: Config directory not found: {config_path}", file=sys.stderr)
+        print(f"❌ Config directory not found: {config_path}", file=sys.stderr)
         return 1
 
     # Load data
@@ -365,7 +330,7 @@ def main(argv: list[str] | None = None):
     categorized = categorize_entities(entities, area_names)
 
     # Capture output for caching.
-    # SAFE: entity_explorer is CLI-only (not called from threaded validators),
+    # SAFE: entity_registry is CLI-only (not called from threaded validators),
     # so contextlib.redirect_stdout is acceptable here despite not being
     # thread-safe.
     import contextlib
@@ -440,7 +405,3 @@ def _emit_json(categorized: dict, args: argparse.Namespace) -> None:
         compact.append(row)
 
     print(json.dumps(compact, separators=(",", ":")))
-
-
-if __name__ == "__main__":
-    sys.exit(main())

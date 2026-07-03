@@ -1,18 +1,19 @@
-"""Tests for tools/entity_explorer.py - entity registry explorer."""
+"""Tests for tools/entity_registry.py - entity registry explorer."""
 
 import json
+from argparse import Namespace
 
 import pytest
 
-from tools.entity_explorer import (
+from tools.entity_registry import (
     categorize_entities,
     get_entity_display_name,
     load_area_registry,
     load_entity_registry,
-    main,
     print_by_area,
     print_detailed_by_domain,
     print_summary,
+    run,
     search_entities,
 )
 
@@ -356,7 +357,7 @@ class TestPrintSummaryAndMore:
     """Cover line 167: 'and X more' printing for domains with >3 entities."""
 
     def test_and_more_message(self, tmp_path, capsys):
-        from tools.entity_explorer import print_summary
+        from tools.entity_registry import print_summary
 
         storage = tmp_path / ".storage"
         storage.mkdir()
@@ -442,16 +443,32 @@ class TestJsonMode:
         return tmp_path
 
     def _run_main(self, tmp_path, *extra_args):
-        """Helper: set up config and run entity_explorer.main with argv."""
+        """Helper: set up config and call run(args) with parsed extra_args."""
         config = self._setup_config(tmp_path)
-        from tools import entity_explorer
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "sys.argv",
-                ["entity_explorer", "--config", str(config), *extra_args],
-            )
-            return entity_explorer.main()
+        args = Namespace(
+            config=str(config),
+            domain=None,
+            area=None,
+            search=None,
+            full=False,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=False,
+        )
+        it = iter(extra_args)
+        for arg in it:
+            if arg == "--json":
+                args.json = True
+            elif arg == "--full":
+                args.full = True
+            elif arg == "--domain":
+                args.domain = next(it, None)
+            elif arg == "--area":
+                args.area = next(it, None)
+            elif arg == "--search":
+                args.search = next(it, None)
+        return run(args)
 
     def test_json_default_outputs_automation_relevant(self, tmp_path, capsys):
         """--json with no selector emits automation-relevant entities."""
@@ -661,101 +678,153 @@ class TestMain:
         (storage / "core.entity_registry").write_text(json.dumps(entity_data))
         return tmp_path
 
-    def test_missing_config_dir(self, capsys, monkeypatch):
-        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", "/nonexistent"])
-        result = main()
+    def test_missing_config_dir(self, capsys):
+        args = Namespace(
+            config="/nonexistent",
+            domain=None,
+            area=None,
+            search=None,
+            full=False,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=False,
+        )
+        result = run(args)
         assert result == 1
 
-    def test_missing_entity_registry(self, tmp_path, capsys, monkeypatch):
-        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", str(tmp_path)])
-        result = main()
+    def test_missing_entity_registry(self, tmp_path, capsys):
+        args = Namespace(
+            config=str(tmp_path),
+            domain=None,
+            area=None,
+            search=None,
+            full=False,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=False,
+        )
+        result = run(args)
         assert result == 1
 
-    def test_empty_entities(self, tmp_path, capsys, monkeypatch):
+    def test_empty_entities(self, tmp_path, capsys):
         storage = tmp_path / ".storage"
         storage.mkdir()
         (storage / "core.entity_registry").write_text(
             json.dumps({"data": {"entities": []}})
         )
-        monkeypatch.setattr("sys.argv", ["entity_explorer", "--config", str(tmp_path)])
-        result = main()
+        args = Namespace(
+            config=str(tmp_path),
+            domain=None,
+            area=None,
+            search=None,
+            full=False,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=False,
+        )
+        result = run(args)
         assert result == 1
 
-    def test_summary_output(self, config_with_entity, capsys, monkeypatch):
-        monkeypatch.setattr(
-            "sys.argv",
-            ["entity_explorer", "--config", str(config_with_entity)],
+    def test_summary_output(self, config_with_entity, capsys):
+        args = Namespace(
+            config=str(config_with_entity),
+            domain=None,
+            area=None,
+            search=None,
+            full=False,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=False,
         )
-        result = main()
+        result = run(args)
         assert result == 0
 
-    def test_search_mode(self, config_with_entity, capsys, monkeypatch):
-        monkeypatch.setattr(
-            "sys.argv",
-            [
-                "entity_explorer",
-                "--config",
-                str(config_with_entity),
-                "--search",
-                "test",
-            ],
+    def test_search_mode(self, config_with_entity, capsys):
+        args = Namespace(
+            config=str(config_with_entity),
+            domain=None,
+            area=None,
+            search="test",
+            full=False,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=False,
         )
-        result = main()
+        result = run(args)
         assert result == 0
 
-    def test_domain_filter(self, config_with_entity, capsys, monkeypatch):
-        monkeypatch.setattr(
-            "sys.argv",
-            [
-                "entity_explorer",
-                "--config",
-                str(config_with_entity),
-                "--domain",
-                "light",
-            ],
+    def test_domain_filter(self, config_with_entity, capsys):
+        args = Namespace(
+            config=str(config_with_entity),
+            domain="light",
+            area=None,
+            search=None,
+            full=False,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=False,
         )
-        result = main()
+        result = run(args)
         assert result == 0
 
-    def test_area_filter(self, config_with_entity, capsys, monkeypatch):
-        monkeypatch.setattr(
-            "sys.argv",
-            [
-                "entity_explorer",
-                "--config",
-                str(config_with_entity),
-                "--area",
-                "No Area",
-            ],
+    def test_area_filter(self, config_with_entity, capsys):
+        args = Namespace(
+            config=str(config_with_entity),
+            domain=None,
+            area="No Area",
+            search=None,
+            full=False,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=False,
         )
-        result = main()
+        result = run(args)
         assert result == 0
 
-    def test_full_output(self, config_with_entity, capsys, monkeypatch):
-        monkeypatch.setattr(
-            "sys.argv",
-            ["entity_explorer", "--config", str(config_with_entity), "--full"],
+    def test_full_output(self, config_with_entity, capsys):
+        args = Namespace(
+            config=str(config_with_entity),
+            domain=None,
+            area=None,
+            search=None,
+            full=True,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=False,
         )
-        result = main()
+        result = run(args)
         assert result == 0
 
-    def test_cache_written_on_first_run(self, config_with_entity, capsys, monkeypatch):
+    def test_cache_written_on_first_run(self, config_with_entity, capsys):
         """First run (no cache) should write a cache file."""
         cache_dir = config_with_entity / ".cache" / "entities"
         assert not cache_dir.exists()
-        monkeypatch.setattr(
-            "sys.argv",
-            ["entity_explorer", "--config", str(config_with_entity), "--json"],
+        args = Namespace(
+            config=str(config_with_entity),
+            domain=None,
+            area=None,
+            search=None,
+            full=False,
+            json=True,
+            summary=False,
+            no_summary=False,
+            force=False,
         )
-        result = main()
+        result = run(args)
         assert result == 0
         cache_files = list(cache_dir.glob("*.json"))
         assert len(cache_files) >= 1
         assert cache_files[0].stat().st_size > 10
 
-    def test_cache_replayed_on_second_run(
-        self, config_with_entity, capsys, monkeypatch
-    ):
+    def test_cache_replayed_on_second_run(self, config_with_entity, capsys):
         """Second run (cache present) should replay cached output."""
         from unittest.mock import patch
 
@@ -766,17 +835,24 @@ class TestMain:
         cache_dir.mkdir(parents=True)
         save_blob(config_with_entity, "known-key", {"output": "cached result\n"})
 
-        with patch("tools.entity_explorer._blob_hash", return_value="known-key"):
-            monkeypatch.setattr(
-                "sys.argv",
-                ["entity_explorer", "--config", str(config_with_entity)],
+        with patch("tools.entity_registry._blob_hash", return_value="known-key"):
+            args = Namespace(
+                config=str(config_with_entity),
+                domain=None,
+                area=None,
+                search=None,
+                full=False,
+                json=False,
+                summary=False,
+                no_summary=False,
+                force=False,
             )
-            result = main()
+            result = run(args)
         assert result == 0
         out = capsys.readouterr().out
         assert "cached result" in out
 
-    def test_force_bypasses_cache(self, config_with_entity, capsys, monkeypatch):
+    def test_force_bypasses_cache(self, config_with_entity, capsys):
         """--force should recompute even when a cache file exists."""
         from tools.cache import save_blob
 
@@ -784,11 +860,18 @@ class TestMain:
         cache_dir.mkdir(parents=True)
         save_blob(config_with_entity, "some_hash", {"output": "stale output\n"})
 
-        monkeypatch.setattr(
-            "sys.argv",
-            ["entity_explorer", "--config", str(config_with_entity), "--force"],
+        args = Namespace(
+            config=str(config_with_entity),
+            domain=None,
+            area=None,
+            search=None,
+            full=False,
+            json=False,
+            summary=False,
+            no_summary=False,
+            force=True,
         )
-        result = main()
+        result = run(args)
         assert result == 0
         out = capsys.readouterr().out
         assert "stale output" not in out

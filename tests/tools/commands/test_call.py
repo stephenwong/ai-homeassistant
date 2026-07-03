@@ -16,6 +16,7 @@ def make_args(**overrides):
     defaults = dict(
         service="light.turn_on",
         data=None,
+        first=None,
         pretty=False,
         summary=False,
         no_summary=True,

@@ -85,9 +85,7 @@ def _resolve_target(config_dir: Path, file_basename: str) -> Path:
     try:
         target.relative_to(config_dir.resolve())
     except ValueError:
-        raise SystemExit(
-            f"Error: '{file_basename}' must be inside config directory"
-        ) from None
+        raise ValueError(f"'{file_basename}' must be inside config directory") from None
     return target
 
 
@@ -113,21 +111,21 @@ def run(args: argparse.Namespace) -> int:
     config_dir = Path(args.config)
     try:
         target_file = _resolve_target(config_dir, args.file)
-    except SystemExit as e:
-        print(str(e), file=sys.stderr)
+    except ValueError as e:
+        print(f"❌ {e}", file=sys.stderr)
         return 1
 
     error = _check_exclusive(args)
     if error:
-        print(f"Error: {error}", file=sys.stderr)
+        print(f"❌ {error}", file=sys.stderr)
         return 1
 
     if args.alias is None and (args.set or args.remove):
-        print("Error: alias required for --set or --remove", file=sys.stderr)
+        print("❌ alias required for --set or --remove", file=sys.stderr)
         return 1
 
     if not target_file.exists() and not args.add:
-        print(f"Error: file not found: {target_file}", file=sys.stderr)
+        print(f"❌ file not found: {target_file}", file=sys.stderr)
         return 1
 
     editor = YAMLEditor(target_file)
@@ -151,7 +149,7 @@ def run(args: argparse.Namespace) -> int:
         return 1  # pragma: no cover  # unreachable; satisfies type checker
 
     except FileNotFoundError as e:  # pragma: no cover
-        print(f"Error: file not found: {e.filename}", file=sys.stderr)
+        print(f"❌ file not found: {e.filename}", file=sys.stderr)
         return 1
 
 
@@ -171,7 +169,7 @@ def _run_show(editor: YAMLEditor, alias: str | None) -> int:
         if alias is not None:
             idx = editor.find_automation(alias)
             if idx is None:
-                print(f"Error: automation '{alias}' not found", file=sys.stderr)
+                print(f"❌ automation '{alias}' not found", file=sys.stderr)
                 return 1
             editor.dump_to(data[idx], sys.stdout)
         else:
@@ -183,7 +181,7 @@ def _run_show(editor: YAMLEditor, alias: str | None) -> int:
             if alias in data:
                 editor.dump_to({alias: data[alias]}, sys.stdout)
             else:
-                print(f"Error: script '{alias}' not found", file=sys.stderr)
+                print(f"❌ script '{alias}' not found", file=sys.stderr)
                 return 1
         else:
             for key in data:
@@ -195,10 +193,10 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
     try:
         entry = json.loads(json_str)
     except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON: {e}", file=sys.stderr)
+        print(f"❌ invalid JSON: {e}", file=sys.stderr)
         return 1
     if not isinstance(entry, dict):
-        print("Error: --add value must be a JSON object", file=sys.stderr)
+        print("❌ --add value must be a JSON object", file=sys.stderr)
         return 1
 
     if editor.path.exists():
@@ -211,7 +209,7 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
             key = str(entry.get("id") or entry.get("alias") or "")
             if not key:
                 print(
-                    "Error: --add requires 'id' or 'alias' key for script files",
+                    "❌ --add requires 'id' or 'alias' key for script files",
                     file=sys.stderr,
                 )
                 return 1
@@ -224,10 +222,10 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
             else:  # pragma: no cover
                 label = "(no alias)"
     except TypeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"❌ {e}", file=sys.stderr)
         return 1
     except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"❌ {e}", file=sys.stderr)
         return 1
 
     editor.save()
@@ -241,7 +239,7 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str]) -> int:
     for kv in kvs:
         if "=" not in kv:
             print(
-                f"Error: --set value must be KEY=VALUE, got '{kv}'",
+                f"❌ --set value must be KEY=VALUE, got '{kv}'",
                 file=sys.stderr,
             )
             return 1
@@ -255,10 +253,10 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str]) -> int:
         else:
             editor.update_automation(alias, updates)
     except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"❌ {e}", file=sys.stderr)
         return 1
     except TypeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"❌ {e}", file=sys.stderr)
         return 1
 
     editor.save()
@@ -274,10 +272,10 @@ def _run_remove(editor: YAMLEditor, alias: str, quiet: bool) -> int:
         else:
             editor.remove_automation(alias)
     except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"❌ {e}", file=sys.stderr)
         return 1
     except TypeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"❌ {e}", file=sys.stderr)
         return 1
 
     editor.save()

@@ -72,42 +72,25 @@ class TestAddParser:
 
 
 class TestRun:
-    def test_passes_flags_as_argv(self):
-        """run() passes correct argv list to entity_explorer.main()."""
-        with patch("tools.commands.entities.entity_explorer.main", return_value=0) as m:
-            args = Namespace(
-                config="config",
-                domain=None,
-                area=None,
-                search="temp",
-                full=False,
-                json=False,
-            )
-            assert entities_cmd.run(args) == 0
-            m.assert_called_once()
-            passed_argv = m.call_args.args[0]
-            assert isinstance(passed_argv, list)
-            assert "--search" in passed_argv
-            assert "temp" in passed_argv
-
-    def test_passes_json_flag(self):
-        """--json should appear in the argv passed to entity_explorer.main()."""
-        with patch("tools.commands.entities.entity_explorer.main", return_value=0) as m:
-            args = Namespace(
-                config="config",
-                domain=None,
+    def test_forwards_args_to_entity_registry(self):
+        """run() passes the Namespace directly to entity_registry.run()."""
+        with patch("tools.commands.entities.entity_registry.run", return_value=0) as m:
+            flags = Namespace(
+                config="my_config",
+                domain="light",
                 area=None,
                 search=None,
                 full=False,
-                json=True,
+                json=False,
+                summary=False,
+                no_summary=False,
+                force=False,
             )
-            entities_cmd.run(args)
-            m.assert_called_once()
-            passed_argv = m.call_args.args[0]
-            assert "--json" in passed_argv
+            assert entities_cmd.run(flags) == 0
+            m.assert_called_once_with(flags)
 
-    def test_propagates_nonzero_exit_code(self):
-        with patch("tools.commands.entities.entity_explorer.main", return_value=1):
+    def test_propagates_exit_code(self):
+        with patch("tools.commands.entities.entity_registry.run", return_value=1):
             args = Namespace(
                 config="config",
                 domain=None,
@@ -115,11 +98,14 @@ class TestRun:
                 search=None,
                 full=False,
                 json=False,
+                summary=False,
+                no_summary=False,
+                force=False,
             )
             assert entities_cmd.run(args) == 1
 
     def test_non_int_return_coerced_to_zero(self):
-        with patch("tools.commands.entities.entity_explorer.main", return_value=None):
+        with patch("tools.commands.entities.entity_registry.run", return_value=None):
             args = Namespace(
                 config="config",
                 domain=None,
@@ -127,57 +113,8 @@ class TestRun:
                 search=None,
                 full=False,
                 json=False,
+                summary=False,
+                no_summary=False,
+                force=False,
             )
             assert entities_cmd.run(args) == 0
-
-    def test_forwards_summary_flag(self):
-        """--summary should appear in argv when summary=True."""
-        with patch("tools.commands.entities.entity_explorer.main", return_value=0) as m:
-            args = Namespace(
-                config="config",
-                domain=None,
-                area=None,
-                search=None,
-                full=False,
-                json=False,
-            )
-            args.summary = True
-            args.no_summary = False
-            entities_cmd.run(args)
-            passed_argv = m.call_args.args[0]
-            assert "--summary" in passed_argv
-
-    def test_forwards_no_summary_flag(self):
-        """--no-summary should appear in argv when no_summary=True."""
-        with patch("tools.commands.entities.entity_explorer.main", return_value=0) as m:
-            args = Namespace(
-                config="config",
-                domain=None,
-                area=None,
-                search=None,
-                full=False,
-                json=False,
-            )
-            args.summary = False
-            args.no_summary = True
-            entities_cmd.run(args)
-            passed_argv = m.call_args.args[0]
-            assert "--no-summary" in passed_argv
-
-    def test_forwards_force_flag(self):
-        """--force should appear in argv when force=True."""
-        with patch("tools.commands.entities.entity_explorer.main", return_value=0) as m:
-            args = Namespace(
-                config="config",
-                domain=None,
-                area=None,
-                search=None,
-                full=False,
-                json=False,
-            )
-            args.summary = False
-            args.no_summary = False
-            args.force = True
-            entities_cmd.run(args)
-            passed_argv = m.call_args.args[0]
-            assert "--force" in passed_argv

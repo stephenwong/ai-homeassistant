@@ -136,7 +136,7 @@ dev-init-tests:
 		touch $(TEST_DIR)/__init__.py; \
 		touch $(TEST_DIR)/test_yaml_validator.py; \
 		touch $(TEST_DIR)/test_reference_validator.py; \
-		touch $(TEST_DIR)/test_entity_explorer.py; \
+		touch $(TEST_DIR)/test_entity_registry.py; \
 		echo "$(GREEN)Test directory structure created!$(NC)"; \
 	fi
 

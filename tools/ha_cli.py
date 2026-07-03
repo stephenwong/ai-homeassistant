@@ -6,11 +6,16 @@ Usage::
     uv run python tools/ha_cli.py <command> [args]
 
 Subcommands:
-    validate    Run all configuration validators in-process.
-    reload      Reload HA configuration via API.
-    entities    Browse the entity registry.
-    curl        Call HA REST API via HAClient (pure Python).
-    edit        Edit automations/scripts with safe round-trip YAML.
+    validate        Run all configuration validators in-process.
+    reload          Reload HA configuration via API.
+    entities        Browse the entity registry.
+    curl            Call HA REST API via HAClient (pure Python).
+    call            Call a Home Assistant service.
+    history         Fetch entity state history.
+    logs            Fetch HA system log.
+    trace           Fetch automation traces.
+    edit            Edit automations/scripts with safe round-trip YAML.
+    stale-sensors   Detect stale sensors in the entity registry.
 
 """
 

@@ -1,7 +1,6 @@
 """``history`` subcommand: fetch entity state history from Home Assistant."""
 
 import argparse
-import json
 import re
 import sys
 import urllib.parse
@@ -10,21 +9,14 @@ from datetime import UTC, datetime, timedelta
 from tools.common import (
     HARequestError,
     add_output_shape_args,
+    positive_float,
     resolve_max_chars,
     resolve_summary,
 )
 from tools.ha.client import HAClient
-from tools.output_shape import apply_output_shape
+from tools.output_shape import apply_output_shape, print_json
 
 _ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
-
-
-def _positive_float(value: str) -> float:
-    """Argparse type: reject values <= 0."""
-    f = float(value)
-    if f <= 0:
-        raise argparse.ArgumentTypeError("must be > 0")
-    return f
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -52,7 +44,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     parser.add_argument(
         "--hours",
-        type=_positive_float,
+        type=positive_float,
         help="Time window in hours (default: 6 in summary, 24 in verbose)",
     )
     parser.add_argument(
@@ -60,12 +52,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Omit attributes and context from the response",
     )
+    add_output_shape_args(parser)
     parser.add_argument(
         "--pretty",
         action="store_true",
         help="Pretty-print JSON output with indent=2 (default: compact)",
     )
-    add_output_shape_args(parser)
     parser.add_argument(
         "--summary",
         action="store_true",
@@ -146,9 +138,6 @@ def run(args: argparse.Namespace) -> int:
         max_chars=resolve_max_chars(args, summary),
     )
 
-    if args.pretty:
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-    else:
-        print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
+    print_json(data, pretty=args.pretty)
 
     return 0

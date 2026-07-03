@@ -1,7 +1,6 @@
 """``logs`` subcommand: fetch Home Assistant system log via WebSocket."""
 
 import argparse
-import json
 import sys
 
 from tools.common import (
@@ -11,7 +10,7 @@ from tools.common import (
     resolve_summary,
 )
 from tools.ha.client import HAWSClient
-from tools.output_shape import apply_output_shape
+from tools.output_shape import apply_output_shape, print_json
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -92,10 +91,7 @@ def run(args: argparse.Namespace) -> int:
         max_chars=resolve_max_chars(args, summary),
     )
 
-    if args.pretty:
-        print(json.dumps(entries, indent=2, ensure_ascii=False))
-    else:
-        print(json.dumps(entries, separators=(",", ":"), ensure_ascii=False))
+    print_json(entries, pretty=args.pretty)
 
     return 0
 

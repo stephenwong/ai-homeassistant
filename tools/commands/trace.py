@@ -12,7 +12,7 @@ from tools.common import (
     resolve_summary,
 )
 from tools.ha.client import HAWSClient
-from tools.output_shape import apply_output_shape
+from tools.output_shape import apply_output_shape, print_json
 
 _ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 
@@ -177,10 +177,7 @@ def run(args: argparse.Namespace) -> int:
         # Single-entity dict: only --pick applies (--max-chars handled above).
         data = apply_output_shape(data, pick=args.pick)
 
-    if args.pretty:
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-    else:
-        print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
+    print_json(data, pretty=args.pretty)
 
     return 0
 

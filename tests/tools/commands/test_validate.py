@@ -336,7 +336,7 @@ class TestRun:
     def _args(
         self, config_dir=None, quiet=False, force=False, summary=None, no_summary=None
     ):
-        d = {"config_dir": config_dir or "config", "quiet": quiet, "force": force}
+        d = {"config": config_dir or "config", "quiet": quiet, "force": force}
         if summary is not None:
             d["summary"] = summary
         if no_summary is not None:

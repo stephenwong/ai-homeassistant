@@ -88,7 +88,6 @@ def _has_transform_flags(args: argparse.Namespace) -> bool:
         args.count
         or args.keys
         or args.first is not None
-        or args.filter
         or args.raw
         or bool(args.pick)
         or bool(args.entity)
@@ -111,6 +110,14 @@ def non_negative_int(value: str) -> int:
     if n < 0:
         raise argparse.ArgumentTypeError("value must be >= 0")
     return n
+
+
+def positive_float(value: str) -> float:
+    """Argparse type: reject values <= 0."""
+    f = float(value)
+    if f <= 0:
+        raise argparse.ArgumentTypeError("value must be > 0")
+    return f
 
 
 def resolve_summary(args: argparse.Namespace) -> bool:

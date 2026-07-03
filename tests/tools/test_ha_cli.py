@@ -39,10 +39,15 @@ class TestBuildParser:
         assert args.endpoint == "/api/"
         assert callable(args.func)
 
-    def test_validate_accepts_config_dir(self):
+    def test_validate_accepts_config_flag(self):
         parser = build_parser()
-        args = parser.parse_args(["validate", "/tmp/config"])
-        assert args.config_dir == "/tmp/config"
+        args = parser.parse_args(["validate", "--config", "/tmp/config"])
+        assert args.config == "/tmp/config"
+
+    def test_validate_accepts_config_short_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(["validate", "-c", "/tmp/config"])
+        assert args.config == "/tmp/config"
 
     def test_validate_accepts_quiet_flag(self):
         parser = build_parser()

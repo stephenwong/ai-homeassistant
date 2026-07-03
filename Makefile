@@ -144,7 +144,7 @@ entities: check-setup
 	@echo "  make entities ARGS='--search temp'     - Search for temperature entities"
 	@echo "  make entities ARGS='--full'            - Show complete detailed output"
 	@echo ""
-	@$(UV_RUN) python $(TOOLS_PATH)/entity_explorer.py $(ARGS)
+	@$(UV_RUN) python $(TOOLS_PATH)/ha_cli.py entities $(ARGS)
 
 # Reload Home Assistant configuration via API
 reload: check-setup
