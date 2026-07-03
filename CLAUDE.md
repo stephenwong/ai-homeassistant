@@ -266,6 +266,8 @@ Zone tuning: increase `inertia`/`loitering_time` for false alerts. After changes
 
 **Zigbee Stale Sensors:** Battery sensors can drop offline while reporting 100% battery. On restart: `unavailable` → `unknown` → stale state. Check `last_updated`/`last_changed`. Tuya mmWave: `select.*_temp_and_humidity_sampling` set to `off` freezes readings; change to `medium`/`high`.
 
+**HA 2026.7 triggers:** Purpose-specific triggers/conditions are the new default (graduated from Labs). Old Labs keys are dead — `battery.low`→`battery.became_low`, `vacuum.docked`→`vacuum.returned_to_dock`, `schedule.turned_on`→`schedule.block_started`, `timer.time_remaining`→`timer.remaining_time_reached`, `update.update_became_available`→`update.became_available`, `climate.target_temperature`→`climate.is_target_temperature` (full list: automation skill). Person entities now expose `in_zones`; a person can count in multiple zones simultaneously.
+
 ## Troubleshooting
 
 1. Validation fails → check YAML syntax, then entity refs

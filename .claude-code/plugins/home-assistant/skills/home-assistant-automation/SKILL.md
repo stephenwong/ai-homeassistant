@@ -138,6 +138,32 @@ Choose `mode:` based on behavior needs (default is `single`):
 
 **`for:` duration on triggers:** The entity must remain in the target state for the entire duration. If state flickers, the timer resets. Useful for "door open for 5 minutes" alerts, not for instant triggers.
 
+### Purpose-specific Triggers & Conditions (HA 2026.7+)
+
+As of HA 2026.7, **purpose-specific triggers and conditions are the new default** (graduated from Labs, introduced 2025.12). Describe *what* you want to react to, not *which entity/state*. Integrations can now ship their own triggers/conditions (e.g. a washing-machine integration offering "laundry is done" directly).
+
+**Prefer these over raw `state`/`numeric_state` triggers for new automations** when a purpose-specific one exists. They:
+- Handle `unknown`/`unavailable` states automatically (no manual guards).
+- Avoid the event-entity "state didn't change the second time" trap.
+- Support **area targets** — "motion in the living room" instead of one sensor entity, so swapping/adding sensors later doesn't break the automation.
+
+**Renamed keys (HA 2026.7 — old Labs-era keys are DEAD):** Replace the old key with the new one when migrating.
+
+| Domain | Old key (Labs) | New key (2026.7) |
+|--------|----------------|-----------------|
+| battery | `battery.low` | `battery.became_low` |
+| battery | `battery.not_low` | `battery.no_longer_low` |
+| lawn_mower | `lawn_mower.docked` | `lawn_mower.returned_to_dock` |
+| schedule | `schedule.turned_off` | `schedule.block_ended` |
+| schedule | `schedule.turned_on` | `schedule.block_started` |
+| timer | `timer.time_remaining` | `timer.remaining_time_reached` |
+| update | `update.update_became_available` | `update.became_available` |
+| vacuum | `vacuum.docked` | `vacuum.returned_to_dock` |
+| climate (condition) | `climate.target_humidity` | `climate.is_target_humidity` |
+| climate (condition) | `climate.target_temperature` | `climate.is_target_temperature` |
+
+**Existing automations keep working** — generic `state`/`numeric_state`/`template` triggers and all YAML are untouched. This is the better *starting point* for new automations, not a migration tax.
+
 ### Common Patterns
 
 **Motion-activated with timer:**
@@ -292,6 +318,7 @@ make push
 | Using `from:` on motion triggers | Omit `from:` so post-restart transitions aren't missed |
 | Mismatched script parameter names | Compare automation `data:` keys with script `fields:` keys exactly |
 | Rapid-fire Zigbee commands to same device | Add 250ms `delay` between each command (see CLAUDE.md → Zigbee Command Timing) |
+| Using raw `state`/`numeric_state` trigger where a purpose-specific one exists (2026.7+) | Prefer `battery.became_low`, area motion, etc. — handles unavailable + supports area targets |
 
 ## Red Flags - You're Doing It Wrong
 

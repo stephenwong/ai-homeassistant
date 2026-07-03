@@ -193,6 +193,7 @@ Grep "automation_name_or_keyword" config/automations.yaml
 - Traces show each step: trigger matched, conditions evaluated, actions executed
 - If no traces exist, the trigger never fired
 - If traces show condition failure, read the condition values at that timestamp
+- **(HA 2026.7+)** Traces now *always* include template errors, so a clean trace means templates didn't error — not that templates weren't evaluated.
 
 **Common automation issues:**
 - `for:` duration prevents quick triggers
