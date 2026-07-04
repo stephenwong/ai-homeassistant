@@ -405,3 +405,11 @@ def _emit_json(categorized: dict, args: argparse.Namespace) -> None:
         compact.append(row)
 
     print(json.dumps(compact, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    print(
+        "Run via: uv run python tools/ha_cli.py entities [options]",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)

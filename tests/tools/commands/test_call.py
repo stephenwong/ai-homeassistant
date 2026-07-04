@@ -89,6 +89,24 @@ class TestAddParser:
         args = parser.parse_args(["call", "x.y", "--summary"])
         assert args.summary is True
 
+    def test_first_flag(self):
+        parser, subparsers = make_parser()
+        call_cmd.add_parser(subparsers)
+        args = parser.parse_args(["call", "light.turn_on", "--first", "5"])
+        assert args.first == 5
+
+    def test_first_zero_invalid(self):
+        parser, subparsers = make_parser()
+        call_cmd.add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["call", "light.turn_on", "--first", "0"])
+
+    def test_first_negative_invalid(self):
+        parser, subparsers = make_parser()
+        call_cmd.add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["call", "light.turn_on", "--first", "-1"])
+
 
 class TestRun:
     def test_invalid_service_format_returns_1(self, capsys):
@@ -215,3 +233,23 @@ class TestMaxChars:
         assert call_cmd.run(args) == 0
         result = __import__("json").loads(capsys.readouterr().out)
         assert result[-1].get("_truncated") is True
+
+
+class TestFirst:
+    def test_first_n(self, mock_client, capsys):
+        data = [{"id": i} for i in range(10)]
+        mock_client.post.return_value = json_resp(data)
+        args = make_args(first=3)
+        assert call_cmd.run(args) == 0
+        parsed = json.loads(capsys.readouterr().out)
+        assert len(parsed) == 3
+        assert parsed == [{"id": 0}, {"id": 1}, {"id": 2}]
+
+    def test_first_with_pretty(self, mock_client, capsys):
+        data = [{"id": i} for i in range(3)]
+        mock_client.post.return_value = json_resp(data)
+        args = make_args(first=3, pretty=True)
+        assert call_cmd.run(args) == 0
+        out = capsys.readouterr().out
+        assert "    " in out
+        assert '"id": 0' in out

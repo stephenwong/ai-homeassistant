@@ -357,8 +357,6 @@ class TestPrintSummaryAndMore:
     """Cover line 167: 'and X more' printing for domains with >3 entities."""
 
     def test_and_more_message(self, tmp_path, capsys):
-        from tools.entity_registry import print_summary
-
         storage = tmp_path / ".storage"
         storage.mkdir()
         # Create 5 sensor entities

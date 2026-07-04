@@ -81,8 +81,8 @@ def _has_transform_flags(args: argparse.Namespace) -> bool:
     explicitly requested transformed output.  Returning True means the
     guardrail should not fire.
 
-    Flags checked: count, keys, first, filter, raw, pick, entity,
-    domain, max_chars.
+    Flags checked: count, keys, first, raw, pick, entity, domain,
+    max_chars.
     """
     return bool(
         args.count
