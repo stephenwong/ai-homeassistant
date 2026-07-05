@@ -14,12 +14,12 @@ This repository manages Home Assistant configuration files with automated valida
 - `config/automations.yaml` — **Primary file for automation work** (use `ha_cli edit automations` or MCP tools)
 - `config/scripts.yaml`, `config/scenes.yaml`, `config/configuration.yaml`
 - `config/blueprints/` — HA blueprints (automation/, script/, template/)
-- `config/.storage/core.entity_registry` — **1.7MB JSON, never read directly.** Use `ha_search` MCP tool, `ha_cli entities --json`, or `grep` for known exact IDs.
+- `config/.storage/core.entity_registry` — **1.7MB JSON, never read directly.** Use `ha_search` MCP tool or `grep` for known exact IDs.
 - `frigate/config.yml` — Frigate NVR (addon: `ccab4aaf_frigate-fa-beta`)
 
 ### Tools Package (`tools/`)
 - `tools/ha_cli.py` — **Single CLI entry point**
-- `tools/commands/` — Subcommands: call, curl, edit, entities, history, logs, reload, stale_sensors, trace, validate
+- `tools/commands/` — Subcommands: curl, edit, reload, stale-sensors, trace, validate
 - `tools/ha/client.py` — `HAClient` (importable REST API client)
 - `tools/ha/yaml_editor.py` — `YAMLEditor` (importable round-trip YAML)
 - `tools/validators/` — Validators: `base.py`, `duplicate_ids.py`, `entity_definitions.py`, `ha_official.py`, `references.py`, `services.py`, `stale_sensors.py`, `templates.py`, `yaml.py`
@@ -40,23 +40,36 @@ make push           Push config (with validation)
 make backup         Timestamped backup (auto-changelog)
 make validate       Run all validators
 make reload         Reload HA config via API
-make status         Config status + entity summary
-make entities [ARGS='--search TERM']   Explore/search entities
+make status         Config status + validation summary
 make lint / lint-fix    Ruff format + check
 make test-ssh       Test SSH connection
 make clean          Remove temp/cache
 ```
 
-CLI: `uv run python tools/ha_cli.py {validate|reload|entities|curl|edit|stale_sensors|call|history|logs|trace}`
+CLI: `uv run python tools/ha_cli.py {validate|reload|curl|edit|stale-sensors|trace}`
 Flags: `--summary` (compact output, auto for agents/pipes), `--no-summary` (force verbose), `--force` (bypass cache)
 
-### HA API Access — Three Tiers
+### HA API Access — Pick ONE per task (don't double-call)
 
-| Need | Tool |
-|------|------|
-| Live HA interaction | MCP tools (ha-mcp) — natural language |
-| Scripted API calls | `ha_cli curl /api/states` |
-| Programmatic | `from tools.ha.client import HAClient` |
+`ha_cli` and `ha-mcp` overlap on a few functions. Calling both for the same task
+doubles latency (~200ms Python-startup per `ha_cli` call) and tokens.
+
+| Task | Use | One-line reason |
+|------|-----|-----------------|
+| Discover entities **and/or** existing automation/script/scene/helper configs | **MCP `ha_search`** | One call covers registry + config bodies. |
+| Read one/many entity states | **MCP `ha_get_state`** | Leanest payload, bulk up to 100, no Python startup. |
+| Arbitrary `/api/...` REST endpoint | **`ha_cli curl`** | Escape hatch — MCP has no raw-REST tool. |
+| Call a service | **MCP `ha_call_service`** | No startup overhead. |
+| Entity history (raw) | **MCP `ha_get_history`** | Also offers `source="statistics"` for long-term data. |
+| System/logbook/addon/supervisor logs | **MCP `ha_get_logs`** | 6 sources + filtering. |
+| Trace a **specific** automation | **MCP `ha_get_automation_traces`** or `ha_cli trace <id>` | Either works.
+| List traces across **all** automations | **`ha_cli trace`** (no arg) | MCP requires an `automation_id`. |
+| **Edit automations/scripts** (git source of truth) | **`ha_cli edit`** | Writes local YAML → `make push`. MCP `ha_config_set_automation` writes **live HA, bypasses git** — next `make pull` overwrites it. |
+| Live/hotfix automation edit | MCP `ha_config_set_automation` | Then back-sync to YAML. |
+| Validate / stale-sensors / reload | **`ha_cli` / `make`** | No MCP equivalent — these are local-file/Makefile operations. |
+
+**Golden rule:** discovery + state reads → **MCP**; edits + validation + deploy
+→ **`ha_cli`**. Programmatic access: `from tools.ha.client import HAClient`.
 
 ### ha_cli curl
 ```bash
@@ -73,32 +86,6 @@ uv run python tools/ha_cli.py curl /api/states --no-guard            # disable g
 uv run python tools/ha_cli.py curl --post /api/services/light/turn_on -d '{"entity_id":"light.kitchen"}'
 ```
 
-### ha_cli call
-```bash
-uv run python tools/ha_cli.py call light.turn_on -d '{"entity_id":"light.kitchen"}'  # call a service
-uv run python tools/ha_cli.py call light.turn_on --pretty                             # pretty-print response
-uv run python tools/ha_cli.py call automation.reload                                  # reload automations (no data)
-```
-
-### ha_cli logs
-```bash
-uv run python tools/ha_cli.py logs              # fetch HA system log (structured JSON, WebSocket)
-uv run python tools/ha_cli.py logs --level ERROR  # filter by severity
-```
-Summary mode includes `count` (occurrence count, null for rare entries) and `first_occurred` (when count > 1).
-
-### ha_cli history
-```bash
-uv run python tools/ha_cli.py history sensor.temp                     # last 24h of state history
-uv run python tools/ha_cli.py history sensor.temp --since 2026-07-01T00:00:00Z  # since timestamp
-uv run python tools/ha_cli.py history sensor.temp --end 2026-07-02T00:00:00Z    # until timestamp
-uv run python tools/ha_cli.py history sensor.temp --minimal           # omit attributes/context
-uv run python tools/ha_cli.py history sensor.temp --first 20          # first 20 state records only
-uv run python tools/ha_cli.py history sensor.temp --pick state        # keep only specified keys (projection)
-uv run python tools/ha_cli.py history sensor.temp --max-chars 2000    # truncate serialized output to ~2KB
-```
-Empty results emit a stderr hint with the time window and entity_id (agents: don't mute both streams).
-
 ### ha_cli trace
 ```bash
 uv run python tools/ha_cli.py trace                                   # list all automation traces (WebSocket)
@@ -112,7 +99,6 @@ Summary mode dedupes by item_id (keeps most-recent run), adds `runs` field when 
 
 Auto-detected when stdout is not a TTY (agents, pipes). `--summary` forces on, `--no-summary` forces off.
 Curl summary mode: suppresses informational stderr warnings (data-ignored, pretty-no-effect, overcount notes).
-Entities summary mode: auto-uses compact JSON output (like `--json`).
 
 ```
 PASS YAML Syntax Validation C                                  RELOADED 4/4 (core, automations, scripts, scenes) 2.3s
@@ -159,6 +145,8 @@ from tools.validators.entity_definitions import EntityDefinitionExtractor
 88+ MCP tools for natural-language HA control. `home-assistant-best-practices` skill triggers on automation/script/dashboard work.
 
 **Setup:** Install addon from `https://github.com/homeassistant-ai/ha-mcp`, copy MCP URL from logs (`http://<ip>:9583/private_<token>`), set `HA_MCP_URL` in `.env`.
+
+**Tool selection:** see the decision matrix above. MCP wins for discovery/state-reads/traces; `ha_cli` wins for edits/validation/deploy/raw-REST.
 
 **Token tuning:** Disable unused directly-exposed tools per session via settings UI (URL from `ha_get_overview` → `settings_url`). Remaining tools discoverable via `ha_search_tools` + `ha_call_*` proxies.
 
@@ -265,6 +253,8 @@ Zone tuning: increase `inertia`/`loitering_time` for false alerts. After changes
 **HACS cards:** Check `installed: True` in `.storage/hacs.repositories`. advanced-camera-card: no trailing slash on go2rtc URL, no `modes:` array.
 
 **Zigbee Stale Sensors:** Battery sensors can drop offline while reporting 100% battery. On restart: `unavailable` → `unknown` → stale state. Check `last_updated`/`last_changed`. Tuya mmWave: `select.*_temp_and_humidity_sampling` set to `off` freezes readings; change to `medium`/`high`.
+
+**Post-restart Zigbee actuator desync:** After HA restart, a light/switch can be physically ON while HA records OFF — Z2M doesn't always resync actuator state, and `core.restore_state` only restores HA's last *recorded* state, not the bulb's physical state. Recorder `history`/`last_changed` reflects HA's **belief**, not physical truth. So when a user reports "X was on all day" but the recorder shows off, suspect desync rather than dismissing it. Defensive fix: a startup-reconciliation automation (`trigger: homeassistant` `event: start`, ~2 min delay for Z2M rejoin, then force a known-safe state gated by a condition — e.g. force-off outside lights only when sun is above horizon). See `automation.startup_outside_downlights_off_daytime_reconciliation`.
 
 **HA 2026.7 triggers:** Purpose-specific triggers/conditions are the new default (graduated from Labs). Old Labs keys are dead — `battery.low`→`battery.became_low`, `vacuum.docked`→`vacuum.returned_to_dock`, `schedule.turned_on`→`schedule.block_started`, `timer.time_remaining`→`timer.remaining_time_reached`, `update.update_became_available`→`update.became_available`, `climate.target_temperature`→`climate.is_target_temperature` (full list: automation skill). Person entities now expose `in_zones`; a person can count in multiple zones simultaneously.
 

@@ -2,7 +2,7 @@
 
 Provides ``apply_output_shape()`` — a single transform applying (in order)
 first-slice → pick (field projection) → max-chars (byte-length truncation).
-Used by curl, history, and other JSON-emitting subcommands to cap token
+Used by curl and other JSON-emitting subcommands to cap token
 output for agent consumption.
 """
 

@@ -11,7 +11,7 @@ from tools.common import (
     resolve_max_chars,
     resolve_summary,
 )
-from tools.ha.client import HAWSClient
+from tools.ha.client import HAClient, HAWSClient
 from tools.output_shape import apply_output_shape, print_json
 
 _ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
@@ -80,10 +80,20 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         if args.entity_id:
-            # Two-step lookup: list traces to find run_id, then get detail.
-            # Opens two WebSocket connections (~200ms overhead).
-            traces = client.command("trace/list", domain="automation")
-            item_id = args.entity_id.split(".", 1)[1]
+            # Resolve entity_id → automation id via state attributes.
+            # Falls back to slug-strip if the REST endpoint is unreachable
+            # (unconfigured, offline, etc.).
+            try:
+                rest_client = HAClient.from_env()
+                state = rest_client.get_json(f"/api/states/{args.entity_id}")
+                item_id = (state.get("attributes") or {}).get(
+                    "id"
+                ) or args.entity_id.split(".", 1)[1]
+            except HARequestError:
+                item_id = args.entity_id.split(".", 1)[1]
+            traces = client.command("trace/list", domain="automation", item_id=item_id)
+            # Defensive client-side filter in case the server doesn't
+            # support item_id-based filtering (or the mock doesn't).
             matching = [t for t in traces if t.get("item_id") == item_id]
             if not matching:
                 print(

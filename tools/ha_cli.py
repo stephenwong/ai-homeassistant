@@ -8,11 +8,7 @@ Usage::
 Subcommands:
     validate        Run all configuration validators in-process.
     reload          Reload HA configuration via API.
-    entities        Browse the entity registry.
     curl            Call HA REST API via HAClient (pure Python).
-    call            Call a Home Assistant service.
-    history         Fetch entity state history.
-    logs            Fetch HA system log.
     trace           Fetch automation traces.
     edit            Edit automations/scripts with safe round-trip YAML.
     stale-sensors   Detect stale sensors in the entity registry.
@@ -23,12 +19,8 @@ import argparse
 import sys
 
 from tools.commands import (
-    call,
     curl,
     edit,
-    entities,
-    history,
-    logs,
     reload,
     stale_sensors,
     trace,
@@ -50,12 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate.add_parser(subparsers)
     reload.add_parser(subparsers)
-    entities.add_parser(subparsers)
-    history.add_parser(subparsers)
-    call.add_parser(subparsers)
     curl.add_parser(subparsers)
     edit.add_parser(subparsers)
-    logs.add_parser(subparsers)
     stale_sensors.add_parser(subparsers)
     trace.add_parser(subparsers)
 

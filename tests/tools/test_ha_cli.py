@@ -20,11 +20,11 @@ class TestBuildParser:
         assert args.command == "reload"
         assert callable(args.func)
 
-    def test_has_entities_subcommand(self):
+    def test_entities_removed(self):
+        """entities subcommand was removed — verify argparse rejects it."""
         parser = build_parser()
-        args = parser.parse_args(["entities"])
-        assert args.command == "entities"
-        assert callable(args.func)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["entities"])
 
     def test_has_stale_sensors_subcommand(self):
         parser = build_parser()

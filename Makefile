@@ -24,7 +24,7 @@ YELLOW = \033[1;33m
 RED = \033[0;31m
 NC = \033[0m # No Color
 
-.PHONY: help pull push validate backup backup-search changelog changelog-all clean setup test status entities reload format-yaml lint check-env
+.PHONY: help pull push validate backup backup-search changelog changelog-all clean setup test status reload format-yaml lint check-env
 
 # Default target
 help:
@@ -37,8 +37,7 @@ help:
 	@echo "  $(YELLOW)backup$(NC)   - Create timestamped backup of current config"
 	@echo "  $(YELLOW)setup$(NC)    - Set up Python environment and dependencies"
 	@echo "  $(YELLOW)test$(NC)     - Run validation tests (alias for validate)"
-	@echo "  $(YELLOW)status$(NC)   - Show configuration status and entity counts"
-	@echo "  $(YELLOW)entities$(NC) - Explore available entities (usage: make entities [ARGS='options'])"
+	@echo "  $(YELLOW)status$(NC)   - Show configuration status and validation summary"
 	@echo "  $(YELLOW)reload$(NC)   - Reload Home Assistant configuration (without pushing)"
 	@echo "  $(YELLOW)format-yaml$(NC) - Format YAML files (usage: make format-yaml [FILES='file1.yaml file2.yaml'])"
 	@echo "  $(YELLOW)check-env$(NC) - Validate environment configuration (.env file)"
@@ -133,18 +132,6 @@ status: check-setup
 	@echo ""
 	@echo "$(YELLOW)Entity Summary:$(NC)"
 	@$(UV_RUN) python -m tools.validators.references --no-summary 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
-
-# Explore available Home Assistant entities
-entities: check-setup
-	@echo "$(GREEN)Home Assistant Entity Explorer$(NC)"
-	@echo "Usage examples:"
-	@echo "  make entities                    - Show summary of all entities"
-	@echo "  make entities ARGS='--domain climate'  - Show only climate entities"
-	@echo "  make entities ARGS='--area kitchen'    - Show only kitchen entities"
-	@echo "  make entities ARGS='--search temp'     - Search for temperature entities"
-	@echo "  make entities ARGS='--full'            - Show complete detailed output"
-	@echo ""
-	@$(UV_RUN) python $(TOOLS_PATH)/ha_cli.py entities $(ARGS)
 
 # Reload Home Assistant configuration via API
 reload: check-setup

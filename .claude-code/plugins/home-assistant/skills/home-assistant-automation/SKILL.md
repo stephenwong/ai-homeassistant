@@ -14,12 +14,18 @@ Structured workflow for creating and modifying Home Assistant automations and sc
 **NEVER read these files directly:**
 - `config/.storage/core.entity_registry` (1.7MB JSON)
 - `config/.storage/core.device_registry` (96KB JSON)
-- `config/automations.yaml` (48KB / 1,756 lines — targeted grep only)
+- `config/automations.yaml` (59KB / 1,815 lines — targeted grep only)
 
-**Entity lookup — pick ONE primary path, don't double-query:**
-- **Live (HA running):** `ha_search` MCP tool — one call searches the entity registry AND automation/script/scene/helper configs.
-- **Offline (no HA):** `uv run python tools/ha_cli.py entities --search "keyword" --json` (compact short-key output).
-- **Known exact entity_id only:** `grep "exact.id" config/.storage/core.entity_registry` as a last-resort fallback.
+### Common mistakes
+
+**Anti-pattern:** running `ha_search` and `ha_cli curl /api/states/<id>` for the same
+entity — MCP already returns state. If MCP misses, use `grep` against the registry
+directly.
+
+**Entity lookup fallback ladder (live HA):**
+1. **`ha_search` MCP** — one call searches entity registry AND automation/script/scene/helper configs.
+2. **`grep "exact.id" config/.storage/core.entity_registry`** — known exact ID only, last resort.
+3. **`ha_get_state("<id>")`** — verify current state by known entity_id.
 
 ## When to Use
 
@@ -52,7 +58,7 @@ Structured workflow for creating and modifying Home Assistant automations and sc
 
 | Phase | Tools/Commands | Purpose |
 |-------|----------------|---------|
-| Discovery | `ha_search` MCP, `uv run python tools/ha_cli.py entities` | Find entities, existing automations/scripts |
+| Discovery | `ha_search` MCP, `grep` registry | Find entities, existing automations/scripts |
 | Clarify | `question` | Resolve ambiguity, confirm intent |
 | Design | `Read configuration.yaml` | Check helpers (small file, safe to read) |
 | Implement | `ha_cli edit`, `Edit` | Modify YAML files |
@@ -65,26 +71,22 @@ Structured workflow for creating and modifying Home Assistant automations and sc
 
 **Always** use `home-assistant-backup` skill first (pull, backup, prune) — even for small changes. No exceptions.
 
-```bash
-# 1. Find similar automations/scripts by keyword
-Grep "motion" config/automations.yaml
-Grep "motion" config/scripts.yaml
-Grep "- id:" config/automations.yaml   # List all automation IDs
+**Don't double-search:** MCP `ha_search` and `grep` hit different indexes. Use MCP first, then `grep` the registry if MCP misses.
 
-# 2. Read a specific existing automation (find it, then read with offset)
-Grep -n "id: doorbell_notification" config/automations.yaml  # Get line number
-Read config/automations.yaml offset=<line> limit=50          # Read just that automation
+1. **Find entities + existing automations/scripts/scenes/helpers by keyword:**
+   `ha_search("motion")` — one call searches entity registry AND config bodies
 
-# 3. Use entity explorer for entity lookups (preferred method)
-uv run python tools/ha_cli.py entities --search "bathroom"
-uv run python tools/ha_cli.py entities --domain light
+2. **List all automations:**
+   `ha_search(domain_filter="automation")`
 
-# 4. For device IDs (device triggers), search by device name
-Grep "Bathroom Button" config/.storage/core.device_registry
+3. **Find a specific automation by name or keyword:**
+   `ha_search("doorbell")`
 
-# 5. Validate specific entity exists
-Grep "bathroom_motion" config/.storage/core.entity_registry
-```
+4. **Find entities by area or room:**
+   `ha_search("bathroom", domain_filter="binary_sensor")`
+
+5. **Verify a specific entity exists:**
+   `ha_search("bathroom_motion")`
 
 **Safe to read directly:**
 - `config/configuration.yaml` — Small, contains helpers/integrations
@@ -293,10 +295,11 @@ make push
 - Duplicate automation IDs
 - Service reference validity (warns on unknown, errors on malformed)
 - Jinja2 template rendering (errors on syntax, warns on runtime context)
+- Stale sensor detection (warns by default; `HA_STALE_FAIL=1` or `--fail-on-stale` to fail)
 - Official HA configuration validation
 
 **Post-deploy verification:**
-- Check `last_triggered` timestamp updated after testing
+- Check `last_triggered` timestamp via `ha_get_state("automation.X", fields=["attributes.last_triggered"])` after testing
 - Confirm expected behavior with user
 - For time-based triggers, verify next scheduled run
 
@@ -304,9 +307,9 @@ make push
 
 | Mistake | Fix |
 |---------|-----|
-| Reading entire entity_registry (90k lines) | Use `ha_search` MCP, `ha_cli entities`, or `Grep` |
+| Reading entire entity_registry (1.7MB JSON) | Use `ha_search` MCP or `Grep` |
 | Reading entire automations.yaml | Use `Grep` or `ha_cli edit automations` to find specific sections |
-| Using entity without verifying existence | Use `ha_search` MCP or `ha_cli entities` to validate |
+| Using entity without verifying existence | Use `ha_search` MCP to validate |
 | Assuming which sensor to use | Ask user when multiple options |
 | Large wholesale file rewrites | Use targeted Edit calls |
 | Skipping validation | Always run `make validate` |
@@ -319,6 +322,9 @@ make push
 | Mismatched script parameter names | Compare automation `data:` keys with script `fields:` keys exactly |
 | Rapid-fire Zigbee commands to same device | Add 250ms `delay` between each command (see CLAUDE.md → Zigbee Command Timing) |
 | Using raw `state`/`numeric_state` trigger where a purpose-specific one exists (2026.7+) | Prefer `battery.became_low`, area motion, etc. — handles unavailable + supports area targets |
+| `ha_cli edit --add` writes JSON strings as bare YAML (`to: on` parsed as bool, `to: null` as None) | After `--add`, re-read with `ha_cli edit automations "Name"` and quote YAML 1.1 booleans/nulls (`on`/`off`/`yes`/`no`/`true`/`false`/`null`), then `make validate` |
+| `camera.snapshot` to file + `allowlist_external_dirs` fails local validator (no `/config` on dev box) | Use mobile-app notification `data.entity_id: camera.xxx` for auto-snapshot; no file management needed |
+| `Edit` tool fails on indentation mismatch | Always `Read` exact lines immediately before `Edit` — don't reuse a stale view |
 
 ## Red Flags - You're Doing It Wrong
 

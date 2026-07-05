@@ -1,6 +1,6 @@
 # AI Home Assistant Config Manager
 
-A toolkit for managing Home Assistant configurations — automated validation, safe deployment, round-trip YAML editing, and entity discovery. Designed to work alongside AI coding assistants, but fully usable standalone.
+A toolkit for managing Home Assistant configurations — automated validation, safe deployment, round-trip YAML editing. Designed to work alongside AI coding assistants, but fully usable standalone.
 
 ## ✨ Features
 
@@ -8,7 +8,6 @@ A toolkit for managing Home Assistant configurations — automated validation, s
 - ✏️ **Safe YAML Editing** — `ha_cli edit` preserves comments, formatting, and key ordering (ruamel.yaml round-trip)
 - ⚡ **Validator Caching** — SHA256-based caching skips re-validation when files haven't changed
 - 🚀 **Safe Deployments** — `make push` validates first, blocks invalid configs from reaching HA
-- 🔍 **Entity Discovery** — Search and explore entities by name, domain, area, or state
 - 🤖 **AI Assistant Ready** — MCP server integration, instruction files, and pre-built skills for AI coding assistants
 - 🪶 **Token-Efficient Output** — Compact summary mode (auto-detected for pipes/agents), field projection (`--pick`), result limiting (`--first`, `--max-chars`), and guardrails to prevent AI context overload
 - 📦 **Importable Python Modules** — `HAClient`, `YAMLEditor`, and validators for scripts and tests
@@ -28,7 +27,7 @@ flowchart LR
 
     subgraph Dev["💻 Dev Machine"]
         local_config["config/"]
-        validators["6-layer validation"]
+        validators["7-layer validation"]
         backups["backups/"]
         editor["AI-assisted editing"]
     end
@@ -69,7 +68,7 @@ flowchart TB
     subgraph Dev["💻 Dev Machine"]
         local_config["config/"]
         backups["backups/"]
-        validators["6-layer validation"]
+        validators["7-layer validation"]
     end
 
     %% Investigation loop
@@ -77,7 +76,7 @@ flowchart TB
     local_config -->|"make backup-search"| backups
     backups -.->|"extract & diff versions"| local_config
     ha_logs -->|"ha core logs --follow"| Dev
-    ha_api -->|"state, history, template render"| Dev
+    ha_api -->|"state, template render"| Dev
     mcp -->|"entity lookup, automation trace"| Dev
     Dev -->|"trace root cause"| local_config
 
@@ -212,13 +211,12 @@ make push  # Validates then uploads to HA
 ```
 ├── tools/                       # Validation and management scripts
 │   ├── ha_cli.py                # Single CLI entry point
-│   ├── commands/                # CLI subcommands (call, curl, edit, entities, history, logs, reload, stale_sensors, trace, validate)
+│   ├── commands/                # CLI subcommands (curl, edit, reload, stale-sensors, trace, validate)
 │   ├── ha/                      # Shared modules
 │   │   ├── client.py            # HAClient — REST API client
 │   │   └── yaml_editor.py       # YAMLEditor — round-trip YAML editing
 │   ├── validators/              # Validators (base.py, duplicate_ids.py, entity_definitions.py, ha_official.py, ...)
 │   ├── reload_config.py         # HA config reload via API
-│   ├── entity_registry.py       # Entity registry explorer (local-file based)
 │   ├── cache.py                 # SHA256 file-hash caching
 │   ├── common.py                # Shared utilities (re-exports from validators/, argparse types)
 │   ├── output_shape.py          # Shared JSON output-shaping (--first/--pick/--max-chars)
@@ -260,13 +258,6 @@ uv run python tools/ha_cli.py edit automations --add '{"alias":"...","trigger":[
 uv run python tools/ha_cli.py edit automations "Name" --set mode=single icon=mdi:shield
 uv run python tools/ha_cli.py edit automations "Name" --remove
 
-# Entity Discovery
-uv run python tools/ha_cli.py entities                        # Entity summary (auto-JSON when piped)
-uv run python tools/ha_cli.py entities --json                 # Compact JSON output
-uv run python tools/ha_cli.py entities --domain light
-uv run python tools/ha_cli.py entities --search motion
-uv run python tools/ha_cli.py entities --force                # Bypass entity cache
-
 # API Calls
 uv run python tools/ha_cli.py curl /api/states                # Guardrail: count+hint when piped
 uv run python tools/ha_cli.py curl /api/states --pick state,entity_id
@@ -275,24 +266,6 @@ uv run python tools/ha_cli.py curl /api/states --domain light --first 5
 uv run python tools/ha_cli.py curl /api/states --max-chars 500
 uv run python tools/ha_cli.py curl /api/states --no-guard          # bypass guardrail AND max-chars cap
 uv run python tools/ha_cli.py curl /api/services/light/turn_on --post --data '{"entity_id":"light.kitchen"}'
-
-# Service Call (dedicated)
-uv run python tools/ha_cli.py call light.turn_on -d '{"entity_id":"light.kitchen"}'  # call a service
-uv run python tools/ha_cli.py call automation.reload                                   # reload with no data
-
-# Error Logs
-uv run python tools/ha_cli.py logs                              # fetch HA system log (structured JSON)
-# Summary mode includes count (occurrence count) and first_occurred (when count>1)
-
-# State History
-uv run python tools/ha_cli.py history sensor.temp              # last 24 hours
-uv run python tools/ha_cli.py history sensor.temp --since 2026-07-01T00:00:00Z   # since timestamp
-uv run python tools/ha_cli.py history sensor.temp --end 2026-07-02T00:00:00Z     # until timestamp
-uv run python tools/ha_cli.py history sensor.temp --minimal    # omit attributes/context
-uv run python tools/ha_cli.py history sensor.temp --first 20   # first 20 state records only
-uv run python tools/ha_cli.py history sensor.temp --pick state # keep only specified keys (projection)
-uv run python tools/ha_cli.py history sensor.temp --max-chars 2000  # truncate output to ~2KB
-# Empty results emit stderr hint with time window and entity_id
 
 # Automation Traces
 uv run python tools/ha_cli.py trace                             # list all automation traces
@@ -307,9 +280,8 @@ uv run python tools/ha_cli.py trace --first 5                   # first 5 traces
 uv run python tools/ha_cli.py trace --summary
 
 # Stale Sensor Detection
-uv run python tools/ha_cli.py stale_sensors                     # Find stale sensors (summary mode auto)
-uv run python tools/ha_cli.py stale_sensors --no-summary        # Verbose mode
-uv run python tools/ha_cli.py stale_sensors --force             # Bypass cache
+uv run python tools/ha_cli.py stale-sensors                     # Find stale sensors (summary mode auto)
+uv run python tools/ha_cli.py stale-sensors --no-summary        # Verbose mode
 
 # Reload
 uv run python tools/ha_cli.py reload
@@ -324,9 +296,9 @@ uv run python tools/ha_cli.py reload
 | `make validate` | Run all validation tests |
 | `make backup` | Create timestamped backup (with auto-changelog) |
 | `make setup` | Install Python dependencies via uv |
-| `make status` | Show config status and entity counts |
+| `make status` | Show config status and validation summary |
 | `make reload` | Reload HA config via API (no push) |
-| `make entities` | Explore entities (pass `ARGS='--search TERM'`) |
+
 | `make lint` | Run ruff format check + lint |
 | `make lint-fix` | Auto-fix ruff format and lint issues |
 | `make backup-search PATTERN='text'` | Search all backups for a pattern |
@@ -382,7 +354,7 @@ Checks every `service:`/`action:` target in automations and scripts. Malformed s
 Renders every template string (`{{ }}` / `{% %}`) against HA's `/api/template` endpoint. Syntax errors and unknown filters fail; runtime-context variables yield warnings. Degrades to brace-balance check when offline.
 
 ### ⏳ 6. Stale Sensor Validation
-Queries the Home Assistant API for sensors stuck in stale states — common with battery-powered Zigbee devices that drop offline while reporting their last-known value. Detects staleness by comparing `last_updated`/`last_changed` timestamps against the current time with a configurable threshold. Default (`HA_STALE_FAIL=0`): passes with warnings. Set `HA_STALE_FAIL=1` or pass `--force` to fail on stale sensors. Automatically skipped in CI.
+Queries the Home Assistant API for sensors stuck in stale states — common with battery-powered Zigbee devices that drop offline while reporting their last-known value. Detects staleness by comparing `last_updated`/`last_changed` timestamps against the current time with a configurable threshold. Default (`HA_STALE_FAIL=0`): passes with warnings. Set `HA_STALE_FAIL=1` or pass `--fail-on-stale` to fail on stale sensors. Automatically skipped in CI.
 
 ### 🏛️ 7. Official HA Validation
 Uses Home Assistant's own `check_config`. **"Successful config (partial)"** is the normal local result — some integration packages can't install locally due to version pin differences, but this is expected and doesn't indicate a real config problem.
