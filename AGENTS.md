@@ -71,6 +71,27 @@ doubles latency (~200ms Python-startup per `ha_cli` call) and tokens.
 **Golden rule:** discovery + state reads → **MCP**; edits + validation + deploy
 → **`ha_cli`**. Programmatic access: `from tools.ha.client import HAClient`.
 
+```mermaid
+flowchart TD
+    start{"What do you<br/>need to do?"}
+
+    start -->|"read"| read{"Read what?"}
+    start -->|"edit"| edit{"Edit how?"}
+    start -->|"operate"| ops{"Which?"}
+
+    read -->|"entities + configs"| mcp1["🔍 MCP ha_search"]
+    read -->|"entity states"| mcp2["📊 MCP ha_get_state"]
+    read -->|"history / logs"| mcp3["📈 MCP ha_get_history / ha_get_logs"]
+
+    edit -->|"git source of truth"| cli1["✏️ ha_cli edit → YAML → make push"]
+    edit -->|"live hotfix"| mcp4["⚡ MCP ha_config_set_automation → back-sync"]
+
+    ops -->|"call service"| mcp5["🔧 MCP ha_call_service"]
+    ops -->|"raw /api endpoint"| cli2["🌐 ha_cli curl"]
+    ops -->|"trace automation"| cli3["🔬 ha_cli trace"]
+    ops -->|"validate / reload"| cli4["✅ ha_cli / make"]
+```
+
 ### ha_cli curl
 ```bash
 uv run python tools/ha_cli.py curl /api/states              # compact JSON (guardrail: count+hint in pipe)

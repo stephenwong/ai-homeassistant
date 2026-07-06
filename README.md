@@ -38,13 +38,15 @@ flowchart LR
 
     %% Edit & Validate
     backups -.->|"restore if needed"| local_config
-    local_config --> validators
     mcp -->|"entity lookup, state read"| editor
+    editor -->|"writes changes"| local_config
+    local_config --> validators
     ha_api -->|"service catalog, template render"| validators
-    validators -->|"pass?"| local_config
+    validators --> valid{"✓ valid?"}
+    valid -->|"no — fix"| editor
 
     %% Push flow
-    local_config -->|"make push (validate + rsync)"| ha_config
+    valid -->|"yes — make push (validate + rsync)"| ha_config
     ha_api -->|"make reload"| ha_config
 ```
 
@@ -73,7 +75,7 @@ flowchart TB
 
     %% Investigation loop
     ha_config -->|"make pull (rsync)"| local_config
-    local_config -->|"make backup-search"| backups
+    backups -.->|"make backup-search"| Dev
     backups -.->|"extract & diff versions"| local_config
     ha_logs -->|"ha core logs --follow"| Dev
     ha_api -->|"state, template render"| Dev
@@ -82,8 +84,9 @@ flowchart TB
 
     %% Fix & deploy (converge with normal flow)
     local_config --> validators
-    validators -->|"pass?"| local_config
-    local_config -->|"make push (validate + rsync)"| ha_config
+    validators --> valid{"✓ valid?"}
+    valid -->|"no — fix"| local_config
+    valid -->|"yes — make push (validate + rsync)"| ha_config
     ha_api -->|"make reload"| ha_config
 ```
 
@@ -106,6 +109,41 @@ The toolkit communicates with Home Assistant through four distinct channels, eac
 | **SSH shell** | SSH | `HA_HOST` | `ha core logs`, addon restart, Lovelace edits | Server-side commands that the REST API can't do. Log viewing (`ha core logs --follow`), addon management (`ha apps restart` for Frigate/Z2M), and direct `.storage/` file edits for Lovelace (which returns 404 from the REST API in storage mode). |
 
 > **One host, four channels.** `HA_HOST` powers both rsync and SSH shell via the same [Advanced SSH & Web Terminal](https://github.com/hassio-addons/addon-ssh) add-on. `HA_URL` and `HA_MCP_URL` are separate HTTP endpoints on the same HA instance.
+
+#### 🔄 Rsync Directionality (Push vs Pull)
+
+Push and pull use **asymmetric exclude files** — the most important safety property of the toolkit:
+
+```mermaid
+flowchart TB
+    subgraph HA["🏠 Home Assistant /config/"]
+        direction LR
+        ha_storage[".storage/<br/>runtime state"]
+        ha_z2m["zigbee2mqtt/"]
+        ha_yaml["*.yaml"]
+    end
+
+    subgraph local["💻 Local config/ (git-tracked)"]
+        direction LR
+        loc_storage[".storage/<br/>read-only snapshot"]
+        loc_z2m["zigbee2mqtt/"]
+        loc_yaml["*.yaml"]
+    end
+
+    %% Pull — permissive (thick arrows, everything comes down)
+    ha_storage ==>|"make pull"| loc_storage
+    ha_z2m ==>|"make pull"| loc_z2m
+    ha_yaml ==>|"make pull"| loc_yaml
+
+    %% Push — restrictive (only YAML + z2m config go up)
+    loc_yaml -->|"make push"| ha_yaml
+    loc_z2m -->|"make push<br/>(config only)"| ha_z2m
+
+    %% .storage/ NEVER pushed
+    loc_storage -.->|"⛔ blocked"| ha_storage
+```
+
+> **Asymmetric by design.** Pull is permissive — it snapshots `.storage/` registries (minus auth/secrets) for local reference so the entity-reference validator can check entity existence offline. Push is restrictive — it **never** touches `.storage/` (HA-managed runtime state: integration configs, entity/device registries, UI dashboards, auth). Pushing `.storage/` would overwrite HA's live state with a stale snapshot. Zigbee2MQTT pulls config + coordinator backup but pushes only `configuration.yaml`.
 
 ## 🚀 Quick Start
 
@@ -337,6 +375,41 @@ editor.add_automation({"alias": "...", "trigger": [...], "action": [...]})
 ## 🛡️ Validation System
 
 Seven layers run on every `make validate` (and before every `make push`):
+
+```mermaid
+flowchart TB
+    config["📁 config/ — YAML files + .storage/ registries"]
+
+    config --> pool
+
+    subgraph pool["⚡ Parallel — ThreadPoolExecutor (all 7 run concurrently)"]
+        direction TB
+
+        subgraph cached["🔒 Offline · cached by SHA256"]
+            direction LR
+            V1["1. YAML Syntax"]
+            V2["2. Entity References<br/>reads local .storage/"]
+            V3["3. Duplicate IDs"]
+        end
+
+        subgraph live["🌐 Online · degrades if HA unreachable"]
+            direction LR
+            V4["4. Service Refs<br/>GET /api/services"]
+            V5["5. Templates<br/>POST /api/template"]
+            V6["6. Stale Sensors<br/>GET /api/states"]
+        end
+
+        V7["7. Official HA check_config<br/>local subprocess"]
+    end
+
+    cached --> gate{"all 7 pass?"}
+    live --> gate
+    V7 --> gate
+    gate -->|"yes"| ok["✅ push proceeds"]
+    gate -->|"no"| block["🛑 push blocked — fix & re-validate"]
+```
+
+> **Offline degradation:** When HA is unreachable, online validators degrade instead of failing — Service Refs falls back to a format-only regex check, Templates falls back to brace-balance checking, and Stale Sensors is skipped entirely (also auto-skipped in CI). Cached validators return instantly on cache hits; failures are never cached and always re-run.
 
 ### 📝 1. YAML Syntax
 Validates YAML syntax with HA-specific tags (`!include`, `!secret`, `!input`), file encoding, and basic HA file structures.
