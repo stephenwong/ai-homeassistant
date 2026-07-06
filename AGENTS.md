@@ -2,7 +2,7 @@
 
 This repository manages Home Assistant configuration files with automated validation, testing, and deployment.
 
-> **Note:** `AGENTS.md` and `GEMINI.md` are gitignored symlinks to `CLAUDE.md` so other AI tools read the same context.
+> **Note:** `AGENTS.md` is the harness-agnostic source of truth, read by opencode, Cursor, Aider, and other tools.
 
 ## User Preferences
 
@@ -156,7 +156,7 @@ from tools.validators.entity_definitions import EntityDefinitionExtractor
 - **Automations:** `home-assistant-automation` skill; scripts/scenes: `home-assistant-best-practices` skill
 - **Debugging:** `home-assistant-debugging` skill
 - **Python changes:** **Always TDD** — write tests first, confirm red, then implement.
-- **After tests pass:** update `README.md`, this context file (`CLAUDE.md`), and relevant skills to reflect any behavior, entity, or workflow changes.
+- **After tests pass:** update `README.md`, this context file (`AGENTS.md`), and relevant skills to reflect any behavior, entity, or workflow changes.
 - **Before committing:** `make lint` (or `make lint-fix`)
 - **After concurrency/parallel/error-handling changes:** `code-review:code-review` as "State Machine Auditor"
 - **Rubber duck review:** invoke the `rubber-duck-review` skill when wanted (explicit, not automatic).

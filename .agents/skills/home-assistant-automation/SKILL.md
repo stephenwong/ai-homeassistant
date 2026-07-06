@@ -314,13 +314,13 @@ make push
 | Large wholesale file rewrites | Use targeted Edit calls |
 | Skipping validation | Always run `make validate` |
 | Not checking for needed helpers | Review if timers/toggles needed |
-| Using `camera.play_stream` for Frigate | Use `media_player.play_media` with go2rtc (see CLAUDE.md) |
+| Using `camera.play_stream` for Frigate | Use `media_player.play_media` with go2rtc (see AGENTS.md) |
 | Multi-line Jinja for URLs/IDs | Use single-line templates to avoid whitespace |
 | Using `media_player.media_stop` for Cast | Use `turn_off` to return to ambient mode |
 | Wrong `mode:` for motion timers | Use `restart` so re-triggers extend the timer |
 | Using `from:` on motion triggers | Omit `from:` so post-restart transitions aren't missed |
 | Mismatched script parameter names | Compare automation `data:` keys with script `fields:` keys exactly |
-| Rapid-fire Zigbee commands to same device | Add 250ms `delay` between each command (see CLAUDE.md → Zigbee Command Timing) |
+| Rapid-fire Zigbee commands to same device | Add 250ms `delay` between each command (see AGENTS.md → Zigbee Command Timing) |
 | Using raw `state`/`numeric_state` trigger where a purpose-specific one exists (2026.7+) | Prefer `battery.became_low`, area motion, etc. — handles unavailable + supports area targets |
 | `ha_cli edit --add` writes JSON strings as bare YAML (`to: on` parsed as bool, `to: null` as None) | After `--add`, re-read with `ha_cli edit automations "Name"` and quote YAML 1.1 booleans/nulls (`on`/`off`/`yes`/`no`/`true`/`false`/`null`), then `make validate` |
 | `camera.snapshot` to file + `allowlist_external_dirs` fails local validator (no `/config` on dev box) | Use mobile-app notification `data.entity_id: camera.xxx` for auto-snapshot; no file management needed |

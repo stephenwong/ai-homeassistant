@@ -225,9 +225,9 @@ make push  # Validates then uploads to HA
 │   └── prune_backups.py         # Smart backup retention pruning
 ├── tests/                       # Unit tests (pytest)
 ├── .github/                     # CI/CD workflows (lint, test, CodeQL)
-├── .claude-code/                # Claude Code plugin (skills, hooks)
+├── .agents/skills/              # Harness-agnostic AI skill workflows
 ├── .pre-commit-config.yaml      # Pre-commit hooks (ruff, yamllint, mypy, codespell)
-├── CLAUDE.md                    # AI assistant instructions
+├── AGENTS.md                    # AI assistant instructions (harness-agnostic)
 ├── README-DEV.md                # Development environment setup
 ├── opencode.json                # MCP server configuration for opencode
 ├── .env.example                 # Environment configuration template
@@ -406,7 +406,7 @@ Compatible with any AI coding assistant that supports MCP (opencode, Claude Code
 
 ### 📋 Instruction Files
 
-`CLAUDE.md` provides comprehensive project context to AI assistants — entity naming conventions, critical gotchas, hardware details, integration info, and troubleshooting tips. `AGENTS.md` and `GEMINI.md` are symlinks so other AI tools read the same instructions.
+`AGENTS.md` provides comprehensive project context to AI assistants (opencode, Cursor, Aider, etc.) — entity naming conventions, critical gotchas, hardware details, integration info, and troubleshooting tips.
 
 ### 🧩 Skills
 

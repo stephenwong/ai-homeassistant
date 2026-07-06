@@ -1,6 +1,6 @@
 ---
 name: reflect
-description: Use before finishing work (committing, creating PRs) and after completing any task, fixing bugs, debugging, or when something unexpected happened — captures learnings into CLAUDE.md, MEMORY.md, or skills to prevent recurrence
+description: Use before finishing work (committing, creating PRs) and after completing any task, fixing bugs, debugging, or when something unexpected happened — captures learnings into AGENTS.md, MEMORY.md, or skills to prevent recurrence
 ---
 
 # Reflect
@@ -41,8 +41,8 @@ Before documenting, check these locations — slot into the right place:
 
 | Learning Type | Location | Examples |
 |--------------|----------|----------|
-| HA platform gotchas | `CLAUDE.md` → Critical Gotchas | Template whitespace, required_zones format, shell_command subprocess |
-| Camera/streaming patterns | `CLAUDE.md` → Streaming/Frigate sections | go2rtc config, play_stream vs play_media |
+| HA platform gotchas | `AGENTS.md` → Critical Gotchas | Template whitespace, required_zones format, shell_command subprocess |
+| Camera/streaming patterns | `AGENTS.md` → Streaming/Frigate sections | go2rtc config, play_stream vs play_media |
 | Session-to-session context | `MEMORY.md` | Entity refs, historical decisions, transition notes |
 | Automation workflow pitfalls | `home-assistant-automation` skill → Common Mistakes | Entity discovery, validation, deployment |
 | Debugging patterns | `home-assistant-debugging` skill → Common Mistakes/Failure Patterns | Template issues, restart behavior |

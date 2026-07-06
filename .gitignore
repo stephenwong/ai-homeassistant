@@ -68,13 +68,11 @@ tmp/
 node_modules/
 
 # Agent tooling (local/personal multi-tool wiring; sources already tracked)
-.agents/
+.agents/*
+!.agents/skills/
 .gemini/
 .antigravitycli/
 package.json
-# Symlinks to CLAUDE.md for other AI tools (content already tracked)
-AGENTS.md
-GEMINI.md
 
 # SSH keys (if accidentally placed here)
 *.pem

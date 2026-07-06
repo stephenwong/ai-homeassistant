@@ -140,9 +140,9 @@ cat backups/ha_config_YYYYMMDD_HHMMSS.changelog
 | Automation not triggering | Trigger condition never met | `automations.yaml` triggers |
 | Entity always "on" | Template logic flaw | `configuration.yaml` template |
 | "unavailable" persists | Source entity offline | Check source entity status |
-| Sensor value frozen (plausible reading, never updates; battery reports healthy) | Stale Zigbee/mesh sensor — dropped offline while reporting a value (common after restart) | `ha_get_state("<id>", fields=["state","last_changed","last_updated"])`; if `last_changed == last_updated` and old, it's frozen. Re-interview/re-pair in Z2M (see CLAUDE.md → Zigbee Stale Sensors) |
+| Sensor value frozen (plausible reading, never updates; battery reports healthy) | Stale Zigbee/mesh sensor — dropped offline while reporting a value (common after restart) | `ha_get_state("<id>", fields=["state","last_changed","last_updated"])`; if `last_changed == last_updated` and old, it's frozen. Re-interview/re-pair in Z2M (see AGENTS.md → Zigbee Stale Sensors) |
 | State flip-flops | Missing debounce/delay_off | Template or automation |
-| User says "X on all day" but recorder shows off | Post-restart Zigbee actuator desync (bulb on, HA off — Z2M didn't resync) | Physical light; `core.restore_state`; add startup reconciliation automation (see CLAUDE.md → Post-restart Zigbee actuator desync) |
+| User says "X on all day" but recorder shows off | Post-restart Zigbee actuator desync (bulb on, HA off — Z2M didn't resync) | Physical light; `core.restore_state`; add startup reconciliation automation (see AGENTS.md → Post-restart Zigbee actuator desync) |
 
 ### Template Sensor Debugging
 
