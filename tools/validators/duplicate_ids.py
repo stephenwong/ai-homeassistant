@@ -31,7 +31,7 @@ class DuplicateIDValidator(ValidatorBase):
             warnings and do not change the return value.
         """
         all_valid = True
-        seen: dict[str, int] = collections.Counter()
+        seen: collections.Counter[str] = collections.Counter()
         missing = 0
 
         for i, automation in enumerate(automations):

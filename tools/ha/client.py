@@ -21,6 +21,27 @@ from tools.common import (
 )
 
 
+def _validate_connection(url: str, token: str) -> str:
+    """Validate URL format and token presence; return stripped URL."""
+    error = validate_ha_url(url)
+    if error:
+        raise HARequestError(error)
+    if not token:
+        raise HARequestError("HA_TOKEN not found. Set it in .env or the environment.")
+    return url.rstrip("/")
+
+
+def _env_config() -> tuple[str, str, int]:
+    """Load .env once; return (url, token, timeout) from env or defaults."""
+    load_env_file()
+    url = os.getenv("HA_URL", DEFAULT_HA_URL)
+    token = os.getenv("HA_TOKEN", "")
+    timeout, warning = get_env_int("HA_REQUEST_TIMEOUT", 10)
+    if warning:
+        print(f"\u26a0\ufe0f  {warning}", file=sys.stderr)
+    return url, token, timeout
+
+
 class HAClient:
     """Thin wrapper around the Home Assistant REST API."""
 
@@ -40,14 +61,7 @@ class HAClient:
             timeout: Per-request timeout in seconds.
             session: Optional pre-configured requests.Session for testing.
         """
-        error = validate_ha_url(url)
-        if error:
-            raise HARequestError(error)
-        if not token:
-            raise HARequestError(
-                "HA_TOKEN not found. Set it in .env or the environment."
-            )
-        self.url = url.rstrip("/")
+        self.url = _validate_connection(url, token)
         self.token = token
         self.timeout = timeout
         self._session = session or requests.Session()
@@ -69,14 +83,7 @@ class HAClient:
         only sets env vars that are present in the file, so calling it again
         later is safe.
         """
-        load_env_file()
-        url = os.getenv("HA_URL", DEFAULT_HA_URL)
-        token = os.getenv("HA_TOKEN", "")
-        timeout, warning = get_env_int("HA_REQUEST_TIMEOUT", 10)
-        if warning:
-            # Surface as a printed warning rather than raising — a bad timeout
-            # value shouldn't block API access entirely.
-            print(f"\u26a0\ufe0f  {warning}", file=sys.stderr)
+        url, token, timeout = _env_config()
         return cls(url, token, timeout=timeout)
 
     def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
@@ -152,14 +159,7 @@ class HAWSClient:
         timeout: int = 10,
         session_factory=None,
     ):
-        error = validate_ha_url(url)
-        if error:
-            raise HARequestError(error)
-        if not token:
-            raise HARequestError(
-                "HA_TOKEN not found. Set it in .env or the environment."
-            )
-        self.url = url.rstrip("/")
+        self.url = _validate_connection(url, token)
         self.token = token
         self.timeout = timeout
         self._session_factory = session_factory
@@ -168,12 +168,7 @@ class HAWSClient:
     @classmethod
     def from_env(cls) -> HAWSClient:
         """Construct a client from HA_URL/HA_TOKEN/HA_REQUEST_TIMEOUT."""
-        load_env_file()
-        url = os.getenv("HA_URL", DEFAULT_HA_URL)
-        token = os.getenv("HA_TOKEN", "")
-        timeout, warning = get_env_int("HA_REQUEST_TIMEOUT", 10)
-        if warning:
-            print(f"\u26a0\ufe0f  {warning}", file=sys.stderr)
+        url, token, timeout = _env_config()
         return cls(url, token, timeout=timeout)
 
     @property

@@ -33,75 +33,53 @@ class YAMLValidator(ValidatorBase):
         if file_path.name != "configuration.yaml":
             return True
 
-        try:
-            config = data
-
-            if not isinstance(config, dict):
-                self.errors.append(f"{file_path}: Configuration must be a dictionary")
-                return False
-
-            # Check for common configuration issues
-            if "homeassistant" not in config:
-                self.warnings.append(f"{file_path}: Missing 'homeassistant' section")
-            elif not isinstance(config.get("homeassistant"), dict):
-                self.warnings.append(
-                    f"{file_path}: 'homeassistant' section should be a dictionary"
-                )
-
-            # Check for deprecated keys
-            deprecated_keys = ["discovery", "introduction"]
-            for key in deprecated_keys:
-                if key in config:
-                    self.warnings.append(f"{file_path}: '{key}' is deprecated")
-
-            return True
-        except (TypeError, KeyError, ValueError) as e:  # pragma: no cover
-            self.errors.append(f"{file_path}: Failed to validate structure - {e}")
+        if not isinstance(data, dict):
+            self.errors.append(f"{file_path}: Configuration must be a dictionary")
             return False
+
+        # Check for common configuration issues
+        if "homeassistant" not in data:
+            self.warnings.append(f"{file_path}: Missing 'homeassistant' section")
+        elif not isinstance(data.get("homeassistant"), dict):
+            self.warnings.append(
+                f"{file_path}: 'homeassistant' section should be a dictionary"
+            )
+
+        # Check for deprecated keys
+        deprecated_keys = ["discovery", "introduction"]
+        for key in deprecated_keys:
+            if key in data:
+                self.warnings.append(f"{file_path}: '{key}' is deprecated")
+
+        return True
 
     def validate_automations_structure(self, file_path: Path, data: Any) -> bool:
         """Validate automations.yaml structure."""
         if file_path.name != "automations.yaml":
             return True
 
-        try:
-            automations = data
+        if data is None:
+            return True  # Empty file is valid
 
-            if automations is None:
-                return True  # Empty file is valid
-
-            if not isinstance(automations, list):
-                self.errors.append(f"{file_path}: Automations must be a list")
-                return False
-
-            return self.check_automations_structure(automations, str(file_path))
-        except (TypeError, KeyError, ValueError) as e:  # pragma: no cover
-            self.errors.append(
-                f"{file_path}: Failed to validate automations structure - {e}"
-            )
+        if not isinstance(data, list):
+            self.errors.append(f"{file_path}: Automations must be a list")
             return False
+
+        return self.check_automations_structure(data, str(file_path))
 
     def validate_scripts_structure(self, file_path: Path, data: Any) -> bool:
         """Validate scripts.yaml structure."""
         if file_path.name != "scripts.yaml":
             return True
 
-        try:
-            scripts = data
+        if data is None:
+            return True  # Empty file is valid
 
-            if scripts is None:
-                return True  # Empty file is valid
-
-            if not isinstance(scripts, dict):
-                self.errors.append(f"{file_path}: Scripts must be a dictionary")
-                return False
-
-            return self.check_scripts_structure(scripts, str(file_path))
-        except (TypeError, KeyError, ValueError) as e:  # pragma: no cover
-            self.errors.append(
-                f"{file_path}: Failed to validate scripts structure - {e}"
-            )
+        if not isinstance(data, dict):
+            self.errors.append(f"{file_path}: Scripts must be a dictionary")
             return False
+
+        return self.check_scripts_structure(data, str(file_path))
 
     def _validate(self) -> bool:
         """Validate all YAML files in the config directory."""

@@ -87,95 +87,90 @@ class ReferenceValidator(ValidatorBase):
         """
         return self._definitions.get_config_defined_entities()
 
+    def _load_registry(
+        self,
+        filename: str,
+        list_key: str,
+        key_field: str,
+        cache_attr: str,
+        missing_bucket: str,
+        label: str,
+    ) -> dict[str, Any]:
+        """Load and cache a HA registry JSON file.
+
+        Args:
+            filename: Relative path under storage_dir (e.g. 'core.entity_registry').
+            list_key: Key in ``data.data[list_key]`` holding the items.
+            key_field: Item field to use as the result-dict key.
+            cache_attr: Instance attribute name for caching (e.g. '_entities').
+            missing_bucket: 'errors' or 'warnings' — which bucket to use for
+                missing/parse-failure messages.
+            label: Human-readable label for error messages (e.g. 'Entity registry').
+        """
+        cached = getattr(self, cache_attr)
+        if cached is not None:
+            return cached
+        registry_file = self.storage_dir / filename
+        bucket = getattr(self, missing_bucket)
+
+        if not registry_file.exists():
+            bucket.append(f"{label} not found: {registry_file}")
+            setattr(self, cache_attr, {})
+            return {}
+
+        try:
+            with open(registry_file, encoding="utf-8") as f:
+                data = json.load(f)
+            result = {
+                item[key_field]: item for item in data.get("data", {}).get(list_key, [])
+            }
+        except (
+            OSError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+            AttributeError,
+        ) as e:
+            bucket.append(f"Failed to load {label.lower()}: {e}")
+            setattr(self, cache_attr, {})
+            return {}
+
+        setattr(self, cache_attr, result)
+        return result
+
     def load_entity_registry(self) -> dict[str, Any]:
         """Load and cache entity registry."""
-        if self._entities is None:
-            registry_file = self.storage_dir / "core.entity_registry"
-            if not registry_file.exists():
-                self.errors.append(f"Entity registry not found: {registry_file}")
-                self._entities = {}
-                return {}
-
-            try:
-                with open(registry_file, encoding="utf-8") as f:
-                    data = json.load(f)
-                    self._entities = {
-                        entity["entity_id"]: entity
-                        for entity in data.get("data", {}).get("entities", [])
-                    }
-            except (
-                OSError,
-                json.JSONDecodeError,
-                KeyError,
-                TypeError,
-                ValueError,
-                AttributeError,
-            ) as e:
-                self.errors.append(f"Failed to load entity registry: {e}")
-                self._entities = {}
-                return {}
-
-        return self._entities
+        return self._load_registry(
+            "core.entity_registry",
+            "entities",
+            "entity_id",
+            "_entities",
+            "errors",
+            "Entity registry",
+        )
 
     def load_device_registry(self) -> dict[str, Any]:
         """Load and cache device registry."""
-        if self._devices is None:
-            registry_file = self.storage_dir / "core.device_registry"
-            if not registry_file.exists():
-                self.errors.append(f"Device registry not found: {registry_file}")
-                self._devices = {}
-                return {}
-
-            try:
-                with open(registry_file, encoding="utf-8") as f:
-                    data = json.load(f)
-                    self._devices = {
-                        device["id"]: device
-                        for device in data.get("data", {}).get("devices", [])
-                    }
-            except (
-                OSError,
-                json.JSONDecodeError,
-                KeyError,
-                TypeError,
-                ValueError,
-                AttributeError,
-            ) as e:
-                self.errors.append(f"Failed to load device registry: {e}")
-                self._devices = {}
-                return {}
-
-        return self._devices
+        return self._load_registry(
+            "core.device_registry",
+            "devices",
+            "id",
+            "_devices",
+            "errors",
+            "Device registry",
+        )
 
     def load_area_registry(self) -> dict[str, Any]:
         """Load and cache area registry."""
-        if self._areas is None:
-            registry_file = self.storage_dir / "core.area_registry"
-            if not registry_file.exists():
-                self.warnings.append(f"Area registry not found: {registry_file}")
-                self._areas = {}
-                return {}
-
-            try:
-                with open(registry_file, encoding="utf-8") as f:
-                    data = json.load(f)
-                    self._areas = {
-                        area["id"]: area
-                        for area in data.get("data", {}).get("areas", [])
-                    }
-            except (
-                OSError,
-                json.JSONDecodeError,
-                KeyError,
-                TypeError,
-                ValueError,
-                AttributeError,
-            ) as e:
-                self.warnings.append(f"Failed to load area registry: {e}")
-                self._areas = {}
-                return {}
-
-        return self._areas
+        return self._load_registry(
+            "core.area_registry",
+            "areas",
+            "id",
+            "_areas",
+            "warnings",
+            "Area registry",
+        )
 
     def is_uuid_format(self, value: str) -> bool:
         """Check if a string matches UUID format (32 hex characters)."""
@@ -196,14 +191,12 @@ class ReferenceValidator(ValidatorBase):
             or value in self.SPECIAL_KEYWORDS  # Special keywords like "all", "none"
         )
 
-    def extract_entity_references(self, data: Any, path: str = "") -> set[str]:
+    def extract_entity_references(self, data: Any) -> set[str]:
         """Extract entity references from configuration data."""
         entities = set()
 
         if isinstance(data, dict):
             for key, value in data.items():
-                current_path = f"{path}.{key}" if path else key
-
                 # Common entity reference keys
                 if key in ["entity_id", "entity_ids", "entities"]:
                     if isinstance(value, str):
@@ -216,19 +209,13 @@ class ReferenceValidator(ValidatorBase):
                             ) and not self.should_skip_entity_validation(entity):
                                 entities.add(entity)
 
-                # Device-related keys
-                elif key in ["device_id", "device_ids"]:
-                    # Device IDs are handled separately
-                    pass
-
-                # Area-related keys
-                elif key in ["area_id", "area_ids"]:
-                    # Area IDs are handled separately
+                # Device/area IDs — handled by separate extractors
+                elif key in ["device_id", "device_ids", "area_id", "area_ids"]:
                     pass
 
                 # Service data might contain entity references
                 elif key == "data" and isinstance(value, dict):
-                    entities.update(self.extract_entity_references(value, current_path))
+                    entities.update(self.extract_entity_references(value))
 
                 # Templates might contain entity references
                 elif isinstance(value, str) and any(
@@ -238,12 +225,11 @@ class ReferenceValidator(ValidatorBase):
 
                 # Recursive search
                 else:
-                    entities.update(self.extract_entity_references(value, current_path))
+                    entities.update(self.extract_entity_references(value))
 
         elif isinstance(data, list):
-            for i, item in enumerate(data):
-                current_path = f"{path}[{i}]" if path else f"[{i}]"
-                entities.update(self.extract_entity_references(item, current_path))
+            for item in data:
+                entities.update(self.extract_entity_references(item))
 
         return entities
 
@@ -258,61 +244,37 @@ class ReferenceValidator(ValidatorBase):
 
         return entities
 
-    def extract_device_references(self, data: Any) -> set[str]:
-        """Extract device references from configuration data."""
-        devices = set()
-
+    def _extract_id_references(self, data: Any, keys: set[str]) -> set[str]:
+        """Extract references for any of *keys* (e.g. {'device_id', 'device_ids'})."""
+        refs: set[str] = set()
         if isinstance(data, dict):
             for key, value in data.items():
-                if key in ["device_id", "device_ids"]:
+                if key in keys:
                     if isinstance(value, str):
-                        # Skip blueprint inputs and other HA tags
                         if not value.startswith("!") and not self.is_template(value):
-                            devices.add(value)
+                            refs.add(value)
                     elif isinstance(value, list):
-                        for device in value:
+                        for item in value:
                             if (
-                                isinstance(device, str)
-                                and not device.startswith("!")
-                                and not self.is_template(device)
+                                isinstance(item, str)
+                                and not item.startswith("!")
+                                and not self.is_template(item)
                             ):
-                                devices.add(device)
+                                refs.add(item)
                 else:
-                    devices.update(self.extract_device_references(value))
-
+                    refs.update(self._extract_id_references(value, keys))
         elif isinstance(data, list):
             for item in data:
-                devices.update(self.extract_device_references(item))
+                refs.update(self._extract_id_references(item, keys))
+        return refs
 
-        return devices
+    def extract_device_references(self, data: Any) -> set[str]:
+        """Extract device references from configuration data."""
+        return self._extract_id_references(data, {"device_id", "device_ids"})
 
     def extract_area_references(self, data: Any) -> set[str]:
         """Extract area references from configuration data."""
-        areas = set()
-
-        if isinstance(data, dict):
-            for key, value in data.items():
-                if key in ["area_id", "area_ids"]:
-                    if isinstance(value, str):
-                        # Skip blueprint inputs and other HA tags
-                        if not value.startswith("!") and not self.is_template(value):
-                            areas.add(value)
-                    elif isinstance(value, list):
-                        for area in value:
-                            if (
-                                isinstance(area, str)
-                                and not area.startswith("!")
-                                and not self.is_template(area)
-                            ):
-                                areas.add(area)
-                else:
-                    areas.update(self.extract_area_references(value))
-
-        elif isinstance(data, list):
-            for item in data:
-                areas.update(self.extract_area_references(item))
-
-        return areas
+        return self._extract_id_references(data, {"area_id", "area_ids"})
 
     def extract_entity_registry_ids(self, data: Any) -> set[str]:
         """Extract entity registry UUID references from configuration data."""

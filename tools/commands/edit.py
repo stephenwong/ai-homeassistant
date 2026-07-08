@@ -221,10 +221,7 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
                 label = entry.get("alias") or entry.get("id") or "(no alias)"
             else:  # pragma: no cover
                 label = "(no alias)"
-    except TypeError as e:
-        print(f"❌ {e}", file=sys.stderr)
-        return 1
-    except ValueError as e:
+    except (TypeError, ValueError) as e:
         print(f"❌ {e}", file=sys.stderr)
         return 1
 
@@ -252,10 +249,7 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str]) -> int:
             editor.update_script(alias, updates)
         else:
             editor.update_automation(alias, updates)
-    except ValueError as e:
-        print(f"❌ {e}", file=sys.stderr)
-        return 1
-    except TypeError as e:
+    except (ValueError, TypeError) as e:
         print(f"❌ {e}", file=sys.stderr)
         return 1
 
@@ -271,10 +265,7 @@ def _run_remove(editor: YAMLEditor, alias: str, quiet: bool) -> int:
             editor.remove_script(alias)
         else:
             editor.remove_automation(alias)
-    except ValueError as e:
-        print(f"❌ {e}", file=sys.stderr)
-        return 1
-    except TypeError as e:
+    except (ValueError, TypeError) as e:
         print(f"❌ {e}", file=sys.stderr)
         return 1
 
