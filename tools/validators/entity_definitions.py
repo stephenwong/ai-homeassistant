@@ -164,7 +164,7 @@ class EntityDefinitionExtractor:
         self._config_defined_entities = entities
         return self._config_defined_entities
 
-    def _resolve_include(self, tag_value: str):
+    def _resolve_include(self, tag_value: object):
         """Resolve a ``!include* <path>`` string to merged YAML data, or None.
 
         Supports the patterns HA users actually split with:
@@ -208,7 +208,7 @@ class EntityDefinitionExtractor:
                     merged[f.stem] = loaded
                 return merged
             if tag == "!include_dir_merge_named":
-                merged: dict = {}
+                merged = {}
                 for f in sorted(target.glob("*.yaml")):
                     with open(f, encoding="utf-8") as fh:
                         loaded = yaml.load(fh, Loader=HAYamlLoader)
