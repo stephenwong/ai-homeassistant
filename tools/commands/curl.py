@@ -312,10 +312,15 @@ def run(args: argparse.Namespace) -> int:
         )
 
     # 10. Dispatch by output flag (early-exit handlers)
+    effective_max_chars = (
+        None
+        if args.no_guard and args.max_chars is None
+        else resolve_max_chars(args, summary)
+    )
     if args.count:
         return _handle_count(data, raw_text, is_json)
     if args.keys:
-        return _handle_keys(data, summary=summary)
+        return _handle_keys(data, summary=summary, max_chars=effective_max_chars)
     if args.raw:
         print(raw_text, end="")
         return 0
@@ -342,11 +347,6 @@ def run(args: argparse.Namespace) -> int:
         _warn_first_overcount(data, args.first)
 
     # 13-15. Apply shared output shaping (first → pick → max_chars)
-    effective_max_chars = (
-        None
-        if args.no_guard and args.max_chars is None
-        else resolve_max_chars(args, summary)
-    )
     data = apply_output_shape(
         data,
         first=args.first,
@@ -377,7 +377,7 @@ def _handle_count(data, raw_text: str, is_json: bool) -> int:
     return 0
 
 
-def _handle_keys(data, summary: bool = False) -> int:
+def _handle_keys(data, summary: bool = False, max_chars: int | None = None) -> int:
     """Print unique JSON key names (metadata to stderr, keys to stdout)."""
     if isinstance(data, list):
         count = len(data)
@@ -398,6 +398,7 @@ def _handle_keys(data, summary: bool = False) -> int:
                         f"# {count} items, {len(keys)} unique keys: {', '.join(keys)}",
                         file=sys.stderr,
                     )
+                keys = apply_output_shape(keys, max_chars=max_chars)
                 print(json.dumps(keys, separators=(",", ":")))
             else:
                 print(f"# {count} items (non-dict, no keys available)", file=sys.stderr)
@@ -405,6 +406,7 @@ def _handle_keys(data, summary: bool = False) -> int:
     elif isinstance(data, dict):
         keys = list(data.keys())
         print(f"# {len(keys)} keys", file=sys.stderr)
+        keys = apply_output_shape(keys, max_chars=max_chars)
         print(json.dumps(keys, separators=(",", ":")))
     else:
         print("# not a JSON object or list", file=sys.stderr)

@@ -1063,6 +1063,15 @@ class TestMaxChars:
         assert result[-1].get("_truncated") is True
         assert result[-1]["shown"] < 3
 
+    def test_keys_respects_max_chars(self, mock_client, capsys):
+        """--keys with --max-chars truncates the printed key list, not unbounded."""
+        data = [{f"k{i}": i for i in range(500)}]
+        mock_client.get.return_value = json_resp(data)
+        args = make_args(endpoint="/api/states", keys=True, max_chars=120)
+        assert curl_cmd.run(args) == 0
+        out = capsys.readouterr().out
+        assert len(out) <= 200
+
 
 class TestDefaultCap:
     def _big(self, n=200):

@@ -148,8 +148,8 @@ def run(args: argparse.Namespace) -> int:
 
         return 1  # pragma: no cover  # unreachable; satisfies type checker
 
-    except FileNotFoundError as e:  # pragma: no cover
-        print(f"❌ file not found: {e.filename}", file=sys.stderr)
+    except (FileNotFoundError, YAMLError) as e:
+        print(f"❌ could not parse {target_file}: {e}", file=sys.stderr)
         return 1
 
 
@@ -241,7 +241,15 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str]) -> int:
             )
             return 1
         key, _, value = kv.partition("=")
-        updates[key.strip()] = _parse_value(value.strip())
+        key = key.strip()
+        if "." in key:
+            print(
+                f"❌ --set does not support nested paths; got '{key}' "
+                "(set a flat top-level key)",
+                file=sys.stderr,
+            )
+            return 1
+        updates[key] = _parse_value(value.strip())
 
     ftype = _detect_file_type(editor)
     try:

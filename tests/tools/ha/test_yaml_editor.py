@@ -283,6 +283,19 @@ class TestAddAutomation:
         assert len(reloaded) == 1
         assert reloaded[0]["alias"] == "Solo"
 
+    def test_add_duplicate_alias_raises(self, tmp_path):
+        import pytest
+
+        from tools.ha.yaml_editor import YAMLEditor
+
+        path = tmp_path / "automations.yaml"
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
+        editor = YAMLEditor(path)
+        with pytest.raises(ValueError, match="already exists"):
+            editor.add_automation(
+                {"alias": "Morning Routine", "triggers": [], "actions": []}
+            )
+
 
 class TestUpdateAutomation:
     def test_update_by_alias(self, tmp_path):
@@ -502,6 +515,32 @@ class TestAtomicSave:
 
         reloaded = YAMLEditor(path).load()
         assert len(reloaded) == 4
+
+    def test_save_without_validator_keeps_original_on_dump_crash(
+        self, tmp_path, monkeypatch
+    ):
+        """save() with no validator must not corrupt the original if dump raises
+        mid-write."""
+        import pytest
+
+        from tools.ha.yaml_editor import YAMLEditor
+
+        path = tmp_path / "automations.yaml"
+        original = "- alias: A\n  triggers: []\n  actions: []\n"
+        path.write_text(original)
+        editor = YAMLEditor(path)
+        editor.load()
+        editor.add_automation({"alias": "B", "triggers": [], "actions": []})
+
+        def boom(self, data, target):
+            target.write_text("")
+            raise RuntimeError("disk full mid-write")
+
+        monkeypatch.setattr(YAMLEditor, "dump", boom)
+
+        with pytest.raises(RuntimeError):
+            editor.save()
+        assert path.read_text() == original  # original must survive the crash
 
     def test_save_with_validation_on_empty_data_noop(self, tmp_path):
         from tools.ha.yaml_editor import YAMLEditor

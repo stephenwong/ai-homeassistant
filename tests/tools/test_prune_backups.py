@@ -502,3 +502,31 @@ class TestMain:
                 assert "Error deleting" in captured.err
             finally:
                 os.chmod(backup_dir, orig_mode)
+
+
+def test_missing_file_during_display_does_not_crash(tmp_path, monkeypatch):
+    """A file vanishing between get_backups() and stat() display must not crash."""
+    import pathlib
+
+    from tools import prune_backups as pb
+
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    monkeypatch.setattr(pb, "BACKUP_DIR", backup_dir)
+
+    vanished = "ha_config_20250101_000000.tar.gz"
+    (backup_dir / vanished).write_bytes(b"x" * 1024)
+    # Force the retention window to make it an old backup (marked for deletion).
+    # Since it's the only backup and > 30 days old in name, it shows in to_delete.
+
+    real_stat = pathlib.Path.stat
+
+    def fake_stat(self, *a, **k):
+        if self.name == vanished:
+            raise FileNotFoundError(vanished)
+        return real_stat(self, *a, **k)
+
+    monkeypatch.setattr(pathlib.Path, "stat", fake_stat)
+
+    rc = pb.main(["--dry-run"])
+    assert rc == 0  # must not crash; degrades size to 0

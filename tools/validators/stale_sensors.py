@@ -50,6 +50,7 @@ class StaleSensorValidator(ValidatorBase):
         self.threshold_hours = threshold_hours
         self.only_domains = only_domains if only_domains is not None else {"sensor"}
         self.fail_on_stale = fail_on_stale
+        self.stale_entities: list[str] = []
 
         default_exclude_platforms = {
             "template",
@@ -274,15 +275,16 @@ class StaleSensorValidator(ValidatorBase):
             elapsed_hours = delta.total_seconds() / 3600.0
 
             if elapsed_hours > self.threshold_hours:
+                self.stale_entities.append(entity_id)
                 self.warnings.append(
                     f"{entity_id}: Stale state detected. Last update was "
                     f"{elapsed_hours:.1f} hours ago (limit: {self.threshold_hours}h)."
                 )
 
-        if self.fail_on_stale and self.warnings:
+        if self.fail_on_stale and self.stale_entities:
             self.errors.append(
                 f"Stale sensor check failed: "
-                f"{len(self.warnings)} warning(s) detected (see warnings)"
+                f"{len(self.stale_entities)} stale sensor(s) detected (see warnings)"
             )
             return False
 

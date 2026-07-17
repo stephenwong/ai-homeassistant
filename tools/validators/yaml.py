@@ -102,9 +102,9 @@ class YAMLValidator(ValidatorBase):
                 continue
 
             # Structure validation for specific files (data already parsed)
-            self.validate_configuration_structure(file_path, data)
-            self.validate_automations_structure(file_path, data)
-            self.validate_scripts_structure(file_path, data)
+            all_valid &= self.validate_configuration_structure(file_path, data)
+            all_valid &= self.validate_automations_structure(file_path, data)
+            all_valid &= self.validate_scripts_structure(file_path, data)
 
         return all_valid
 

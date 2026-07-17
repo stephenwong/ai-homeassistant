@@ -140,6 +140,22 @@ class TestExtractEntityRegistryIds:
         registry_ids = validator.extract_entity_registry_ids(data)
         assert registry_ids == {"aabbccddeeff00112233445566778899"}
 
+    def test_extracts_uuids_from_entity_ids_list(self, validator):
+        data = {
+            "entity_ids": [
+                "aabbccddeeff00112233445566778899",
+                "00000000000000000000000000000000",
+            ]
+        }
+        refs = validator.extract_entity_registry_ids(data)
+        assert "aabbccddeeff00112233445566778899" in refs
+        assert "00000000000000000000000000000000" in refs
+
+    def test_extracts_uuids_from_list_valued_entity_id(self, validator):
+        data = {"entity_id": ["aabbccddeeff00112233445566778899"]}
+        refs = validator.extract_entity_registry_ids(data)
+        assert "aabbccddeeff00112233445566778899" in refs
+
 
 class TestGetEntityRegistryIdMapping:
     def test_mapping(self, validator):
@@ -755,6 +771,19 @@ class TestExtractEntityReferences:
         }
         refs = v.extract_entity_references(data)
         assert "sensor.temperature" in refs
+
+    def test_extracts_scene_entities_dict_keys(self, setup_config):
+        """Scene entities dict keys are entity references (H4 fix)."""
+        v = ReferenceValidator(str(setup_config))
+        data = {
+            "entities": {
+                "light.kitchen": {"state": "on"},
+                "light.unknown": {"state": "off"},
+            }
+        }
+        refs = v.extract_entity_references(data)
+        assert "light.kitchen" in refs
+        assert "light.unknown" in refs
 
 
 class TestGetConfigDefinedEntitiesEdgeCases:

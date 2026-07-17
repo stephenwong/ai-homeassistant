@@ -48,20 +48,16 @@ class YAMLEditor:
                 self.load()
 
     def save(self, validator: Callable[[Path], bool] | None = None) -> None:
-        """Save in-memory state to the original file.
+        """Save in-memory state to the original file, atomically.
 
-        If *validator* is provided, the data is first written to a temporary
-        file and the validator is called on it.  On success the temp file is
-        atomically renamed over the target; on failure a ``ValidationError``
-        is raised and the original file is untouched.
+        Always writes via temp-file + ``os.replace`` so a crash mid-write never
+        truncates the source file. If *validator* is provided it runs on the
+        temp file first; failure raises ``ValidationError`` and the original
+        is untouched.
         """
         if self._data is None:
             return
-
-        if validator is not None:
-            self._atomic_save(validator)
-        else:
-            self.dump(self._data, self.path)
+        self._atomic_save(validator or (lambda _p: True))
 
     def _atomic_save(self, validator: Callable[[Path], bool]) -> None:
         """Write to a temp file, validate, then atomically rename."""
@@ -127,12 +123,16 @@ class YAMLEditor:
         """Append an automation dict to the list. Does NOT save.
 
         Raises TypeError if the loaded data is not a list.
+        Raises ValueError if an automation with the same alias already exists.
         """
         self._ensure_loaded()
         if self._data is None:
             self._data = []
         self._require_list("add automation")
         assert isinstance(self._data, list)
+        alias = automation.get("alias") if isinstance(automation, dict) else None
+        if alias is not None and self.find_automation(alias) is not None:
+            raise ValueError(f"Automation with alias '{alias}' already exists")
         self._data.append(automation)
 
     def add_script(self, key: str, script: dict) -> None:

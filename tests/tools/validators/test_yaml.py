@@ -186,6 +186,23 @@ class TestValidateAll:
         (config_dir / "bad.yaml").write_text("key: value\n  bad: indent\n")
         assert validator.validate_all() is False
 
+    def test_automations_not_list_via_validate_all(self, config_dir, validator):
+        (config_dir / "automations.yaml").write_text("not_a_list: true\n")
+        (config_dir / "configuration.yaml").write_text("homeassistant:\n")
+        assert validator.validate_all() is False
+        assert any("Automations must be a list" in e for e in validator.errors)
+
+    def test_scripts_not_dict_via_validate_all(self, config_dir, validator):
+        (config_dir / "scripts.yaml").write_text("- item\n")
+        (config_dir / "configuration.yaml").write_text("homeassistant:\n")
+        assert validator.validate_all() is False
+        assert any("Scripts must be a dictionary" in e for e in validator.errors)
+
+    def test_configuration_not_dict_via_validate_all(self, config_dir, validator):
+        (config_dir / "configuration.yaml").write_text("- item\n")
+        assert validator.validate_all() is False
+        assert any("Configuration must be a dictionary" in e for e in validator.errors)
+
 
 class TestYAMLValidatorMain:
     """Cover lines 149-164: main() function."""

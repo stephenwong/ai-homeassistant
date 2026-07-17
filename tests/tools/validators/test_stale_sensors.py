@@ -795,3 +795,63 @@ def test_binary_sensor_without_heartbeat_skipped(config_dir):
     ):
         v = StaleSensorValidator(str(config_dir), only_domains={"binary_sensor"})
         assert v.validate_all() is True
+
+
+def test_fail_on_stale_ignores_non_staleness_warnings(config_dir):
+    """A registry-read failure (warning) with fresh sensors must NOT trip fail mode."""
+    (config_dir / ".storage" / "core.entity_registry").write_text("{ not valid json")
+    fresh = [
+        {
+            "entity_id": "sensor.ok",
+            "state": "1",
+            "last_updated": "2026-07-17T00:00:00+00:00",
+            "attributes": {},
+        }
+    ]
+    mock_client = _mock_states(fresh)
+    with (
+        patch("tools.validators.stale_sensors.HAClient", return_value=mock_client),
+        patch.object(
+            StaleSensorValidator,
+            "_get_current_time",
+            return_value=datetime(2026, 7, 17, 0, 0, 10, tzinfo=UTC),
+        ),
+    ):
+        v = StaleSensorValidator(
+            str(config_dir), fail_on_stale=True, threshold_hours=24
+        )
+        assert v.validate_all() is True
+    assert len(v.warnings) >= 1
+    assert len(v.errors) == 0
+
+
+def test_fail_on_stale_trips_on_real_stale_sensor(config_dir):
+    """A genuinely stale sensor with fail_on_stale=True must fail (return False)."""
+    _write_entity_registry(
+        config_dir,
+        [
+            {"entity_id": "sensor.stale", "platform": "zha", "disabled_by": None},
+        ],
+    )
+    stale = [
+        {
+            "entity_id": "sensor.stale",
+            "state": "1",
+            "last_updated": "2026-07-15T00:00:00+00:00",
+            "attributes": {},
+        }
+    ]
+    mock_client = _mock_states(stale)
+    with (
+        patch("tools.validators.stale_sensors.HAClient", return_value=mock_client),
+        patch.object(
+            StaleSensorValidator,
+            "_get_current_time",
+            return_value=datetime(2026, 7, 17, 0, 0, 0, tzinfo=UTC),
+        ),
+    ):
+        v = StaleSensorValidator(
+            str(config_dir), fail_on_stale=True, threshold_hours=24
+        )
+        assert v.validate_all() is False
+    assert any("Stale sensor check failed" in e for e in v.errors)

@@ -71,71 +71,82 @@ def _run_one(
     while validation runs).
     """
     start = time.time()
-    instance = cls(config_dir, quiet=quiet, summary=summary)
-    name = cls.__name__
-
-    # Compute hash once — reuse for both cache check and cache save.
-    # Skip caching entirely if the validator declares no file dependencies
-    # (e.g. HAOfficialValidator, whose result depends on the HA environment).
-    file_deps = instance.file_deps()
-    fhash: str | None = None
-    if file_deps:
-        with contextlib.suppress(OSError):
-            fhash = compute_hash(instance.config_dir, file_deps)
-
-    # --- cache check (skip when --force or when file_deps is empty) ---
-    if not force and fhash is not None:
-        try:
-            cached = load_cache(instance.config_dir, name)
-            if cached and cached["hash"] == fhash:
-                return ValidatorResult(
-                    description=description,
-                    passed=bool(cached["passed"]),
-                    stdout="",
-                    stderr="",
-                    duration=cached.get("duration", 0.0),
-                    cached=True,
-                )
-        except OSError, json.JSONDecodeError, ValueError:
-            pass  # cache failures are non-fatal; fall through to real run
-
-    # --- cache miss or forced — actually run the validator ---
     try:
-        passed = bool(instance.validate_all())
-        detail_lines: list[str] = []
-        for err in getattr(instance, "errors", []):
-            detail_lines.append(f"ERROR: {err}")
-        for warn in getattr(instance, "warnings", []):
-            detail_lines.append(f"WARN: {warn}")
-        for info in getattr(instance, "info", []):
-            detail_lines.append(f"INFO: {info}")
-        stderr = "\n".join(detail_lines)
-    except SystemExit as e:
-        passed = e.code in (0, None)
-        stderr = f"Validator raised SystemExit({e.code!r})"
+        instance = cls(config_dir, quiet=quiet, summary=summary)
+        name = cls.__name__
+
+        # Compute hash once — reuse for both cache check and cache save.
+        # Skip caching entirely if the validator declares no file dependencies
+        # (e.g. HAOfficialValidator, whose result depends on the HA environment).
+        file_deps = instance.file_deps()
+        fhash: str | None = None
+        if file_deps:
+            with contextlib.suppress(OSError):
+                fhash = compute_hash(instance.config_dir, file_deps)
+
+        # --- cache check (skip when --force or when file_deps is empty) ---
+        if not force and fhash is not None:
+            try:
+                cached = load_cache(instance.config_dir, name)
+                if cached and cached["hash"] == fhash:
+                    return ValidatorResult(
+                        description=description,
+                        passed=bool(cached["passed"]),
+                        stdout="",
+                        stderr="",
+                        duration=cached.get("duration", 0.0),
+                        cached=True,
+                    )
+            except OSError, json.JSONDecodeError, ValueError:
+                pass  # cache failures are non-fatal; fall through to real run
+
+        # --- cache miss or forced — actually run the validator ---
+        try:
+            passed = bool(instance.validate_all())
+            detail_lines: list[str] = []
+            for err in getattr(instance, "errors", []):
+                detail_lines.append(f"ERROR: {err}")
+            for warn in getattr(instance, "warnings", []):
+                detail_lines.append(f"WARN: {warn}")
+            for info in getattr(instance, "info", []):
+                detail_lines.append(f"INFO: {info}")
+            stderr = "\n".join(detail_lines)
+        except SystemExit as e:
+            passed = e.code in (0, None)
+            stderr = f"Validator raised SystemExit({e.code!r})"
+        except Exception as e:
+            return ValidatorResult(
+                description=description,
+                passed=False,
+                stdout="",
+                stderr=f"Failed to run validator: {e}",
+                duration=time.time() - start,
+            )
+
+        duration = time.time() - start
+
+        # --- save to cache (only on success; failures always re-run) ---
+        if passed and fhash is not None:
+            with contextlib.suppress(OSError, TypeError, ValueError):
+                save_cache(
+                    instance.config_dir, name, description, fhash, True, duration
+                )
+
+        return ValidatorResult(
+            description=description,
+            passed=passed,
+            stdout="",
+            stderr=stderr,
+            duration=duration,
+        )
     except Exception as e:
         return ValidatorResult(
             description=description,
             passed=False,
             stdout="",
-            stderr=f"Failed to run validator: {e}",
+            stderr=f"Validator orchestration failed: {e}",
             duration=time.time() - start,
         )
-
-    duration = time.time() - start
-
-    # --- save to cache (only on success; failures always re-run) ---
-    if passed and fhash is not None:
-        with contextlib.suppress(OSError, TypeError, ValueError):
-            save_cache(instance.config_dir, name, description, fhash, True, duration)
-
-    return ValidatorResult(
-        description=description,
-        passed=passed,
-        stdout="",
-        stderr=stderr,
-        duration=duration,
-    )
 
 
 def run_validators(

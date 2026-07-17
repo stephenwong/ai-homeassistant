@@ -173,7 +173,10 @@ def main(argv: list[str] | None = None) -> int:
         print("\nBackups to delete:", file=sys.stderr)
         total_size = 0
         for backup in sorted(to_delete, key=lambda x: x["timestamp"]):
-            size = backup["path"].stat().st_size
+            try:
+                size = backup["path"].stat().st_size
+            except OSError:
+                size = 0
             total_size += size
             age_days = (now - backup["timestamp"]).days
             print(
@@ -212,7 +215,10 @@ def main(argv: list[str] | None = None) -> int:
         print("\nRetained backups:", file=sys.stderr)
         for backup in sorted(to_keep, key=lambda x: x["timestamp"], reverse=True):
             age_days = (now - backup["timestamp"]).days
-            size = backup["path"].stat().st_size
+            try:
+                size = backup["path"].stat().st_size
+            except OSError:
+                size = 0
             if age_days == 0:
                 age_str = "today"
             elif age_days == 1:

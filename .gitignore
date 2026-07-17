@@ -90,6 +90,12 @@ id_rsa*
 .coverage
 htmlcov/
 
+# graphify (generated knowledge graph - regenerable via /graphify)
+graphify-out/
+
+# Working docs (local planning/notes, not committed)
+working_docs/
+
 # Documentation builds
 docs/_build/
 

@@ -3,8 +3,6 @@
 from argparse import Namespace
 from unittest.mock import patch
 
-import pytest
-
 from tests.helpers import make_parser
 from tools.commands import validate
 from tools.commands.validate import ValidatorResult, _run_one, run, run_validators
@@ -199,7 +197,9 @@ class TestRunOne:
         assert result.passed is False
         mock_save.assert_not_called()
 
-    def test_compute_hash_non_oserror_propagates(self, monkeypatch, tmp_path):
+    def test_compute_hash_non_oserror_returns_failed_result(
+        self, monkeypatch, tmp_path
+    ):
         import tools.commands.validate as mod
         from tools.validators.yaml import YAMLValidator
 
@@ -209,10 +209,13 @@ class TestRunOne:
             "compute_hash",
             lambda *a, **k: (_ for _ in ()).throw(ValueError("bug")),
         )
-        with pytest.raises(ValueError):
-            mod._run_one(YAMLValidator, "YAML", str(tmp_path), True, True)
+        result = mod._run_one(YAMLValidator, "YAML", str(tmp_path), True, True)
+        assert result.passed is False
+        assert "bug" in result.stderr
 
-    def test_save_cache_unexpected_error_propagates(self, monkeypatch, tmp_path):
+    def test_save_cache_unexpected_error_returns_failed_result(
+        self, monkeypatch, tmp_path
+    ):
         import tools.commands.validate as mod
         from tools.validators.yaml import YAMLValidator
 
@@ -224,8 +227,22 @@ class TestRunOne:
             "save_cache",
             lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
         )
-        with pytest.raises(RuntimeError):
-            mod._run_one(YAMLValidator, "YAML", str(tmp_path), True, False)
+        result = mod._run_one(YAMLValidator, "YAML", str(tmp_path), True, False)
+        assert result.passed is False
+        assert "boom" in result.stderr
+
+    def test_validator_init_exception_returns_failed_result(self, tmp_path):
+        """A validator __init__ that raises must yield a failed result."""
+        import tools.commands.validate as mod
+        from tools.validators.yaml import YAMLValidator
+
+        class BoomValidator(YAMLValidator):
+            def __init__(self, *a, **k):
+                raise RuntimeError("init blew up")
+
+        result = mod._run_one(BoomValidator, "Boom", str(tmp_path), True, True)
+        assert result.passed is False
+        assert "init blew up" in result.stderr
 
     def test_save_cache_failure_does_not_crash(self, config_dir):
         """If saving cache throws, validation result is still returned."""

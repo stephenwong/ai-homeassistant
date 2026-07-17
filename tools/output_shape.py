@@ -78,17 +78,26 @@ def print_json(data, *, pretty: bool = False) -> None:
 
 
 def _truncate_by_chars(data, max_chars: int):
-    """Drop trailing list items until compact JSON fits within *max_chars*.
+    """Drop trailing list items (or largest dict keys) until compact JSON fits.
 
-    Appends a ``{"_truncated": True, "shown": N, "total": M}`` marker.
-    Non-list data is passed through unchanged.
+    Appends a ``{"_truncated": True, ...}`` marker describing what was dropped.
+    Scalars that still exceed *max_chars* are passed through unchanged.
+    If even the empty-marker exceeds *max_chars* (tiny limit), the marker is
+    returned anyway (same degradation as the list path — preferable to silently
+    dropping the whole response).
     """
     serialized = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
     if len(serialized) <= max_chars:
         return data
-    if not isinstance(data, list):
-        return data
+    if isinstance(data, list):
+        return _truncate_list(data, max_chars)
+    if isinstance(data, dict):
+        return _cap_dict(data, max_chars)
+    return data
 
+
+def _truncate_list(data: list, max_chars: int):
+    """Drop trailing list items until the (compact) serialization fits."""
     original_len = len(data)
     for n in range(original_len, 0, -1):
         candidate = data[:n]
@@ -97,6 +106,36 @@ def _truncate_by_chars(data, max_chars: int):
         serialized = json.dumps(trial, separators=(",", ":"), ensure_ascii=False)
         if len(serialized) <= max_chars:
             return trial
-
     marker = {"_truncated": True, "shown": 0, "total": original_len}
     return [marker]
+
+
+def _cap_dict(data: dict, max_chars: int):
+    """Drop largest-value keys until the compact serialization fits.
+
+    Mirrors ``trace._cap_trace_dict``: rank keys by serialized value length,
+    drop the largest first, attach a marker describing what was removed.
+    """
+    keys_by_size = sorted(
+        data.keys(),
+        key=lambda k: len(
+            json.dumps(data[k], separators=(",", ":"), ensure_ascii=False)
+        ),
+        reverse=True,
+    )
+    remaining = dict(data)
+    dropped: list[str] = []
+    for k in keys_by_size:
+        dropped.append(k)
+        del remaining[k]
+        candidate = {
+            **remaining,
+            "_truncated": True,
+            "dropped_keys": dropped,
+            "kept_keys": list(remaining.keys()),
+        }
+        serialized = json.dumps(candidate, separators=(",", ":"), ensure_ascii=False)
+        if len(serialized) <= max_chars:
+            return candidate
+    marker = {"_truncated": True, "dropped_keys": dropped, "kept_keys": []}
+    return marker

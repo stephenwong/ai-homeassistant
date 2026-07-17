@@ -67,8 +67,14 @@ class HAOfficialValidator(ValidatorBase):
             # Parse the output
             self.parse_check_config_output(result.stdout, result.stderr)
 
-            # Return success if exit code is 0
-            return result.returncode == 0
+            # Return success if exit code is 0. HA's "Successful config (partial)"
+            # exits 0; on exit 0 demote any parsed errors to warnings so they stay
+            # visible without failing CI (per AGENTS.md "exit 0 partial = pass").
+            passed = result.returncode == 0
+            if passed and self.errors:
+                self.warnings.extend(self.errors)
+                self.errors.clear()
+            return passed
 
         except subprocess.TimeoutExpired:
             self.errors.append(

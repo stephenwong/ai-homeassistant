@@ -107,9 +107,37 @@ class TestMaxChars:
 
     def test_non_list_passes_through(self):
         data = {"big": "x" * 1000}
-        # dict is not truncated structurally
+        # Oversized dict is now truncated (H14); a dict that fits passes through.
         result = apply_output_shape(data, max_chars=10)
-        assert result == data
+        assert result != data
+        assert isinstance(result, dict)
+        assert result.get("_truncated") is True
+
+    def test_max_chars_truncates_dict(self):
+        import json
+
+        data = {"small": "x", "big1": "v" * 500, "big2": "w" * 500}
+        out = apply_output_shape(data, max_chars=80)
+        serialized = json.dumps(out, separators=(",", ":"), ensure_ascii=False)
+        assert len(serialized) <= 80
+        assert isinstance(out, dict)
+
+    def test_max_chars_dict_adds_marker(self):
+        data = {"big1": "v" * 500}
+        out = apply_output_shape(data, max_chars=60)
+        assert out.get("_truncated") is True
+
+    def test_cap_dict_marker_consistent(self):
+        """Dropped keys must NOT appear in the result data."""
+        data = {"small": "x", "big1": "v" * 500, "big2": "w" * 500}
+        out = apply_output_shape(data, max_chars=80)
+        assert isinstance(out, dict)
+        dropped = out.get("dropped_keys", [])
+        for k in dropped:
+            assert k not in out, f"dropped key {k} still in result"
+        kept = out.get("kept_keys", [])
+        actual_keys = set(out.keys()) - {"_truncated", "dropped_keys", "kept_keys"}
+        assert set(kept) == actual_keys
 
     def test_output_fits_under_limit(self):
         data = [{"data": "x" * 100} for _ in range(10)]

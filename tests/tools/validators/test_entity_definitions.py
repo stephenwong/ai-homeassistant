@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from tools.validators.entity_definitions import EntityDefinitionExtractor
 
 
@@ -273,3 +275,70 @@ def test_shared_info_append(tmp_path):
     ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
     ext.get_config_defined_entities()
     assert any("Config-defined entities:" in msg for msg in i)
+
+
+@pytest.mark.parametrize("domain", ["cover", "fan", "lock", "vacuum", "weather"])
+def test_extracts_additional_template_domains(tmp_path, domain):
+    """Template integration supports more domains than sensor/binary_sensor (H6)."""
+    (tmp_path / ".storage").mkdir(exist_ok=True)
+    (tmp_path / "configuration.yaml").write_text(
+        f"template:\n  - {domain}:\n      - name: My Device\n        state: open\n"
+    )
+    w, i = [], []
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
+    entities = ext.get_config_defined_entities()
+    assert f"{domain}.my_device" in entities
+
+
+def test_extracts_entities_from_packages(tmp_path):
+    """packages: block must be recursed into (H7)."""
+    (tmp_path / ".storage").mkdir(exist_ok=True)
+    (tmp_path / "configuration.yaml").write_text(
+        "packages:\n"
+        "  my_pkg:\n"
+        "    input_boolean:\n"
+        "      guest_mode:\n        name: Guest Mode\n"
+        "    template:\n"
+        "      - sensor:\n"
+        "          - name: Pkg Temp\n            state: '21'\n"
+    )
+    w, i = [], []
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
+    entities = ext.get_config_defined_entities()
+    assert "input_boolean.guest_mode" in entities
+    assert "sensor.pkg_temp" in entities
+
+
+def test_resolves_include_dir_list_for_automation(tmp_path):
+    """configuration.yaml using !include_dir_list for automation must resolve (H8)."""
+    auto_dir = tmp_path / "automations_pkg"
+    auto_dir.mkdir()
+    # !include_dir_list: each file is a single item (dict).
+    (auto_dir / "a.yaml").write_text(
+        "alias: Included Auto\ntriggers: []\nactions: []\n"
+    )
+    (tmp_path / ".storage").mkdir(exist_ok=True)
+    (tmp_path / "configuration.yaml").write_text(
+        "automation: !include_dir_list automations_pkg/\n"
+    )
+    w, i = [], []
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
+    entities = ext.get_config_defined_entities()
+    assert "automation.included_auto" in entities
+
+
+def test_resolves_include_dir_merge_list_for_automation(tmp_path):
+    """!include_dir_merge_list: each file is a list, merged into automation."""
+    auto_dir = tmp_path / "auto_pkg"
+    auto_dir.mkdir()
+    (auto_dir / "a.yaml").write_text("- alias: From A\n  triggers: []\n  actions: []\n")
+    (auto_dir / "b.yaml").write_text("- alias: From B\n  triggers: []\n  actions: []\n")
+    (tmp_path / ".storage").mkdir(exist_ok=True)
+    (tmp_path / "configuration.yaml").write_text(
+        "automation: !include_dir_merge_list auto_pkg/\n"
+    )
+    w, i = [], []
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
+    entities = ext.get_config_defined_entities()
+    assert "automation.from_a" in entities
+    assert "automation.from_b" in entities

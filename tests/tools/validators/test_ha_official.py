@@ -199,8 +199,33 @@ class TestRunHACheckConfig:
         ):
             validator.run_ha_check_config()
 
+    def test_exit0_demotes_parsed_errors_to_warnings(self, validator):
+        """HA exits 0 but stdout has an ERROR line not in the ignore list →
+        demote to warnings, return passed=True (CI green)."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "INFO: Successful config (partial)\nERROR: real error\n"
+        mock_result.stderr = ""
+        with patch(
+            "tools.validators.ha_official.subprocess.run",
+            return_value=mock_result,
+        ):
+            assert validator.run_ha_check_config() is True
+        assert len(validator.errors) == 0
+        assert len(validator.warnings) >= 1
 
-class TestValidateAll:
+    def test_nonzero_exit_treats_parsed_errors_as_authoritative(self, validator):
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = "ERROR: bad config\n"
+        mock_result.stderr = ""
+        with patch(
+            "tools.validators.ha_official.subprocess.run",
+            return_value=mock_result,
+        ):
+            assert validator.run_ha_check_config() is False
+        assert any("bad config" in e for e in validator.errors)
+
     def test_nonexistent_config_dir(self):
         v = HAOfficialValidator("/nonexistent/path")
         assert v.validate_all() is False

@@ -133,9 +133,9 @@ class EntityDefinitionExtractor:
         # Run all five file reads concurrently (each targets a different file).
         with concurrent.futures.ThreadPoolExecutor() as executor:
             f_config = executor.submit(self._extract_from_configuration, config_data)
-            f_auto = executor.submit(self._extract_automation_entities)
-            f_script = executor.submit(self._extract_script_entities)
-            f_scene = executor.submit(self._extract_scene_entities)
+            f_auto = executor.submit(self._extract_automation_entities, config_data)
+            f_script = executor.submit(self._extract_script_entities, config_data)
+            f_scene = executor.submit(self._extract_scene_entities, config_data)
             f_zone = executor.submit(self._extract_zone_entities, config_data)
 
         config_entities = f_config.result()
@@ -163,6 +163,62 @@ class EntityDefinitionExtractor:
 
         self._config_defined_entities = entities
         return self._config_defined_entities
+
+    def _resolve_include(self, tag_value: str):
+        """Resolve a ``!include* <path>`` string to merged YAML data, or None.
+
+        Supports the patterns HA users actually split with:
+        ``!include``, ``!include_dir_list``, ``!include_dir_merge_list``,
+        ``!include_dir_named``, ``!include_dir_merge_named``.
+        Returns None if the string is not an include tag or the path is missing.
+        """
+        if not isinstance(tag_value, str) or not tag_value.startswith("!include"):
+            return None
+        parts = tag_value.split(maxsplit=1)
+        if len(parts) != 2:
+            return None
+        tag, raw = parts[0], parts[1].strip().rstrip("/")
+        target = (self.config_dir / raw).resolve()
+        try:
+            if tag in ("!include",):
+                if target.is_file():
+                    with open(target, encoding="utf-8") as f:
+                        return yaml.load(f, Loader=HAYamlLoader)
+                return None
+            if tag == "!include_dir_list":
+                items = []
+                for f in sorted(target.glob("*.yaml")):
+                    with open(f, encoding="utf-8") as fh:
+                        loaded = yaml.load(fh, Loader=HAYamlLoader)
+                    items.append(loaded)
+                return items
+            if tag == "!include_dir_merge_list":
+                items = []
+                for f in sorted(target.glob("*.yaml")):
+                    with open(f, encoding="utf-8") as fh:
+                        loaded = yaml.load(fh, Loader=HAYamlLoader)
+                    if isinstance(loaded, list):
+                        items.extend(loaded)
+                return items
+            if tag == "!include_dir_named":
+                merged: dict = {}
+                for f in sorted(target.glob("*.yaml")):
+                    with open(f, encoding="utf-8") as fh:
+                        loaded = yaml.load(fh, Loader=HAYamlLoader)
+                    merged[f.stem] = loaded
+                return merged
+            if tag == "!include_dir_merge_named":
+                merged: dict = {}
+                for f in sorted(target.glob("*.yaml")):
+                    with open(f, encoding="utf-8") as fh:
+                        loaded = yaml.load(fh, Loader=HAYamlLoader)
+                    if isinstance(loaded, dict):
+                        merged.update(loaded)
+                return merged
+        except (OSError, yaml.YAMLError) as e:
+            self._record_extraction_warning(target, e)
+            return None
+        return None
 
     def _load_config_yaml(self) -> dict | None:
         """Load and parse configuration.yaml once; shared across extraction methods."""
@@ -235,6 +291,12 @@ class EntityDefinitionExtractor:
                                 ):
                                     entities.add(f"{sensor_type}.{name}")
 
+        # HA packages: each value is a full integration config dict.
+        if isinstance(config_data.get("packages"), dict):
+            for pkg in config_data["packages"].values():
+                if isinstance(pkg, dict):
+                    entities.update(self._extract_from_configuration(pkg))
+
         return entities
 
     def _extract_template_entities(self, template_config: Any) -> set[str]:
@@ -258,6 +320,16 @@ class EntityDefinitionExtractor:
             "number",
             "select",
             "button",
+            "alarm_control_panel",
+            "cover",
+            "device_tracker",
+            "event",
+            "fan",
+            "image",
+            "lock",
+            "update",
+            "vacuum",
+            "weather",
         ]:
             if entity_type in template_config:
                 type_data = template_config[entity_type]
@@ -280,14 +352,32 @@ class EntityDefinitionExtractor:
 
         return entities
 
-    def _extract_automation_entities(self) -> set[str]:
+    def _extract_automation_entities(self, config_data: dict | None = None) -> set[str]:
         """Extract automation entities from automations.yaml.
 
         Per HA docs: The 'id' field is a unique identifier for UI customization -
         it is NOT the entity_id. Entity_id is derived from alias (friendly name).
         See: https://www.home-assistant.io/docs/automation/yaml/
+
+        When *config_data* contains an ``automation`` key with a ``!include*``
+        tag, resolves the include and extracts entities from the resolved data.
         """
         entities: set[str] = set()
+
+        # New: honour !include* in configuration.yaml for the automation key.
+        if isinstance(config_data, dict):
+            resolved = self._resolve_include(config_data.get("automation"))
+            if resolved is not None:
+                data = resolved if isinstance(resolved, list) else [resolved]
+                for automation in data:
+                    if isinstance(automation, dict):
+                        alias = automation.get("alias", "")
+                        if alias:
+                            object_id = self._slugify_object_id(str(alias))
+                            if object_id:
+                                entities.add(f"automation.{object_id}")
+                return entities
+
         automations_file = self.config_dir / "automations.yaml"
 
         if automations_file.exists():
@@ -313,9 +403,21 @@ class EntityDefinitionExtractor:
 
         return entities
 
-    def _extract_script_entities(self) -> set[str]:
+    def _extract_script_entities(self, config_data: dict | None = None) -> set[str]:
         """Extract script entities from scripts.yaml."""
         entities: set[str] = set()
+
+        if isinstance(config_data, dict):
+            resolved = self._resolve_include(config_data.get("script"))
+            if resolved is not None:
+                data = resolved if isinstance(resolved, dict) else {}
+                for script_name in data:
+                    if isinstance(script_name, str) and self._is_valid_object_id(
+                        script_name
+                    ):
+                        entities.add(f"script.{script_name}")
+                return entities
+
         scripts_file = self.config_dir / "scripts.yaml"
 
         if scripts_file.exists():
@@ -333,13 +435,27 @@ class EntityDefinitionExtractor:
 
         return entities
 
-    def _extract_scene_entities(self) -> set[str]:
+    def _extract_scene_entities(self, config_data: dict | None = None) -> set[str]:
         """Extract scene entities from scenes.yaml.
 
         Like automations, the 'id' field is for UI customization,
         not the entity_id. Entity_id is derived from friendly name.
         """
         entities: set[str] = set()
+
+        if isinstance(config_data, dict):
+            resolved = self._resolve_include(config_data.get("scene"))
+            if resolved is not None:
+                data = resolved if isinstance(resolved, list) else [resolved]
+                for scene in data:
+                    if isinstance(scene, dict):
+                        name = scene.get("name", "")
+                        if name:
+                            object_id = self._slugify_object_id(str(name))
+                            if object_id:
+                                entities.add(f"scene.{object_id}")
+                return entities
+
         scenes_file = self.config_dir / "scenes.yaml"
 
         if scenes_file.exists():

@@ -208,6 +208,12 @@ class ReferenceValidator(ValidatorBase):
                                 entity, str
                             ) and not self.should_skip_entity_validation(entity):
                                 entities.add(entity)
+                    elif isinstance(value, dict):
+                        for entity_id in value:
+                            if isinstance(
+                                entity_id, str
+                            ) and not self.should_skip_entity_validation(entity_id):
+                                entities.add(entity_id)
 
                 # Device/area IDs — handled by separate extractors
                 elif key in ["device_id", "device_ids", "area_id", "area_ids"]:
@@ -282,10 +288,15 @@ class ReferenceValidator(ValidatorBase):
 
         if isinstance(data, dict):
             for key, value in data.items():
-                # Look for entity_id fields containing UUIDs (device-based automations)
-                if key == "entity_id" and isinstance(value, str):
-                    if self.is_uuid_format(value):
-                        entity_registry_ids.add(value)
+                if key in ("entity_id", "entity_ids"):
+                    candidates = (
+                        [value]
+                        if isinstance(value, str)
+                        else (value if isinstance(value, list) else [])
+                    )
+                    for cand in candidates:
+                        if isinstance(cand, str) and self.is_uuid_format(cand):
+                            entity_registry_ids.add(cand)
                 else:
                     entity_registry_ids.update(self.extract_entity_registry_ids(value))
         elif isinstance(data, list):

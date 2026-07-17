@@ -284,10 +284,29 @@ class TestEdgeCases:
         assert result == 1
         assert "conflicting" in capsys.readouterr().err.lower()
 
-    def test_conflicting_add_and_show_rejected(self, capsys):
+    def test_conflicting_add_and_show_rejected(self):
         result = run(self._ns(show=True, add='{"x":1}'))
         assert result == 1
-        assert "conflicting" in capsys.readouterr().err.lower()
+
+    def test_set_rejects_dotted_nested_key(self, tmp_path, capsys):
+        _write_file(
+            tmp_path,
+            "automations",
+            "- alias: A\n  mode: single\n  triggers: []\n  actions: []\n",
+        )
+        args = self._ns(config=str(tmp_path), alias="A", set=["mode.parallel=1"])
+        result = run(args)
+        assert result == 1
+        assert "nested" in capsys.readouterr().err.lower()
+
+    def test_show_corrupt_yaml_reports_error(self, tmp_path, capsys):
+        _write_file(tmp_path, "automations", "{[[[ not valid yaml\n")
+        args = self._ns(config=str(tmp_path), show=True)
+        result = run(args)
+        assert result == 1
+        err = capsys.readouterr().err
+        assert "could not parse" in err.lower() or "yaml" in err.lower()
+        assert "Traceback" not in err
 
     def test_nonexistent_file_errors(self, tmp_path, capsys):
         args = self._ns(config=str(tmp_path), show=True)
