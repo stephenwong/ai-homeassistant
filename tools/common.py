@@ -15,17 +15,28 @@ DEFAULT_HA_URL = "http://homeassistant.local:8123"
 DEFAULT_SUMMARY_MAX_CHARS = 8000
 
 
-def load_env_file():
-    """Load environment variables from .env file."""
-    env_file = Path(__file__).parent.parent / ".env"
-    if env_file.exists():
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, value = line.split("=", 1)
-                    if key.strip():
-                        os.environ[key.strip()] = value.strip().strip('"').strip("'")
+def load_env_file(path: Path | None = None) -> None:
+    """Load environment variables from .env file.
+
+    Does NOT override variables already present in ``os.environ`` (standard
+    python-dotenv convention) — shell-set values win, so a freshly rotated
+    HA_TOKEN isn't silently overwritten by a stale .env entry.
+
+    Args:
+        path: Optional explicit path to the .env file. Defaults to
+            ``<project_root>/.env``.
+    """
+    env_file = path or (Path(__file__).parent.parent / ".env")
+    if not env_file.exists():
+        return
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if key and key not in os.environ:
+                    os.environ[key] = value.strip().strip('"').strip("'")
 
 
 def get_env_int(name: str, default: int, *, minimum: int = 1) -> tuple[int, str | None]:

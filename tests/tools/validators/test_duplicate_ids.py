@@ -14,12 +14,44 @@ def validator(config_dir):
 
 
 class TestFileDeps:
-    def test_file_deps_automations_only(self):
-        """DuplicateIDValidator only reads automations.yaml (cacheable)."""
+    def test_file_deps_automations_and_scripts(self):
+        """DuplicateIDValidator reads automations.yaml and scripts.yaml (M10b)."""
         v = DuplicateIDValidator()
         deps = v.file_deps()
         assert "automations.yaml" in deps
-        assert len(deps) == 1
+        assert "scripts.yaml" in deps
+        assert len(deps) == 2
+
+
+class TestM10bScriptsDuplicateKeys:
+    """M10b: duplicate top-level keys in scripts.yaml must be flagged."""
+
+    def test_duplicate_script_keys_flagged(self, config_dir):
+        """PyYAML safe_load silently dedupes; we need a key-aware loader."""
+        (config_dir / "scripts.yaml").write_text(
+            "good_script:\n"
+            "  alias: First\n"
+            "  sequence: []\n"
+            "good_script:\n"
+            "  alias: Second\n"
+            "  sequence: []\n"
+        )
+        v = DuplicateIDValidator(str(config_dir))
+        is_valid = v.validate_all()
+        assert is_valid is False
+        assert any("good_script" in e and "script" in e.lower() for e in v.errors)
+
+    def test_scripts_without_duplicates_pass(self, config_dir):
+        (config_dir / "scripts.yaml").write_text(
+            "script_one:\n"
+            "  alias: First\n"
+            "  sequence: []\n"
+            "script_two:\n"
+            "  alias: Second\n"
+            "  sequence: []\n"
+        )
+        v = DuplicateIDValidator(str(config_dir))
+        assert v.validate_all() is True
 
 
 class TestNoDuplicates:

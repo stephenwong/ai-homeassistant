@@ -11,6 +11,37 @@ from tools.commands import trace as trace_cmd
 from tools.common import HARequestError
 
 
+def test_cap_trace_dict_includes_markers_in_fit_check():
+    """M14: The truncation markers must be counted toward max_chars.
+
+    Regression guard for _cap_trace_dict overshooting max_chars because
+    the fit-check loop didn't include the _truncated/dropped_steps/kept_steps
+    markers that get appended after the loop.
+    """
+    from tools.commands.trace import _cap_trace_dict
+
+    # Tuned so that a trial with 2 steps (out of 3) fits within max_chars=500,
+    # but adding the ~50-char marker pushes it over 500 — exposing the bug
+    # where the fit check doesn't include markers.
+    step = {"changed_variables": {"x": "y" * 170}}
+    data = {
+        "item_id": "abc",
+        "state": "on",
+        "trace": {f"step/{i}": step for i in range(3)},
+    }
+    max_chars = 500
+    capped = _cap_trace_dict(data, max_chars)
+    assert capped.get("_truncated") is True, (
+        "test data must trigger truncation at max_chars=500; "
+        "adjust 'y' * N or lower max_chars"
+    )
+    serialized = json.dumps(capped, separators=(",", ":"))
+    assert len(serialized) <= max_chars, (
+        f"trace overshoot: {len(serialized)} > {max_chars} "
+        f"(markers not counted in fit check)"
+    )
+
+
 def make_args(**overrides):
     defaults = dict(
         entity_id=None,
@@ -586,7 +617,9 @@ class TestSummaryModeSingle:
         assert trace_cmd.run(args) == 0
         result = json.loads(capsys.readouterr().out)
         serialized = json.dumps(result, separators=(",", ":"))
-        assert len(serialized) <= 2100  # small tolerance for _truncated marker
+        assert (
+            len(serialized) <= 2100
+        )  # small tolerance — 1 step + markers exceeds 2000 for BIG_TRACE
         assert result.get("_truncated") is True
         assert result.get("dropped_steps", 0) >= 1
         assert result.get("kept_steps", 0) >= 1

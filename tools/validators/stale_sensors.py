@@ -245,6 +245,16 @@ class StaleSensorValidator(ValidatorBase):
                     )
                 continue
 
+            # M27: a sensor in unavailable/unknown/None state is not reporting —
+            # surface immediately rather than waiting for threshold_hours.
+            st_value = state.get("state")
+            if st_value in ("unavailable", "unknown", None):
+                self.warnings.append(
+                    f"{entity_id}: State is {st_value!r} — device not reporting."
+                )
+                self.stale_entities.append(entity_id)
+                continue
+
             # Heartbeat check: Z2M or custom attributes represent
             # actual radio communication time.
             # Binary sensors are only validated if a heartbeat attribute

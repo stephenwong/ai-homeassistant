@@ -50,7 +50,7 @@ def should_include(name: str) -> bool:
     return ext in INTERESTING_EXTENSIONS or ext == ""
 
 
-@functools.cache
+@functools.lru_cache(maxsize=2)
 def extract_files(backup_path: Path) -> dict[str, str]:
     """Extract interesting text files from a backup archive. Returns {name: content}."""
     files = {}
@@ -194,7 +194,7 @@ def generate_for_backup(backup: dict, backups_list: list[dict]) -> Path:
 
     changelog_file = changelog_path_for(backup)
     content = generate_changelog(backup, previous)
-    changelog_file.write_text(content)
+    changelog_file.write_text(content, encoding="utf-8")
     return changelog_file
 
 

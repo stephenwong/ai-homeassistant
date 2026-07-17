@@ -104,16 +104,22 @@ def detect_changed_services(
 def reload_service(client: HAClient, service: str) -> tuple[str, bool, str | None]:
     """Call a single HA reload service. Returns (service, success, error_detail).
 
-    Uses the shared HAClient so auth/timeout/JSON handling is consistent
-    with the rest of the codebase. Network errors are caught so one failing
-    service doesn't abort the batch.
+    Uses ``client.post`` directly (rather than ``call_service``) so the HTTP
+    response body is available for error reporting on non-2xx replies.
+    Network errors are caught so one failing service doesn't abort the batch.
     """
     domain, _, action = service.partition("/")
+    path = f"/api/services/{domain}/{action}"
     try:
-        ok = client.call_service(domain, action)
+        response = client.post(path, json={})
+        if 200 <= response.status_code < 300:
+            return (service, True, None)
+        detail = response.text[:200] if response.text else ""
+        return (service, False, f"HTTP {response.status_code}: {detail}")
     except HARequestError as e:
         return (service, False, str(e))
-    return (service, ok, None)
+    except Exception as e:  # isolation: never abort the batch
+        return (service, False, f"{type(e).__name__}: {e}")
 
 
 def reload_config(summary: bool = False) -> bool:
@@ -163,9 +169,14 @@ def reload_config(summary: bool = False) -> bool:
     results = []
 
     if core_service in services:
-        results.append(reload_service(client, core_service))
+        core_result = reload_service(client, core_service)
+        results.append(core_result)
 
-    if domain_services:
+    # M15: if core config failed, skip domain reloads — they depend on helpers
+    # and integrations that core sets up, so they'd just cascade the failure.
+    core_ok = all(ok for _svc, ok, _err in results)
+
+    if domain_services and core_ok:
         with ThreadPoolExecutor() as executor:
             results.extend(
                 executor.map(
@@ -173,6 +184,12 @@ def reload_config(summary: bool = False) -> bool:
                     domain_services,
                 )
             )
+    elif domain_services and not core_ok and not summary:
+        print(
+            "⚠️  Skipping domain reloads because core config failed "
+            "(fix configuration.yaml first)",
+            file=sys.stderr,
+        )
 
     all_ok = True
     for service, ok, error in results:

@@ -97,12 +97,20 @@ class TestRunOne:
         assert captured["kwargs"].get("quiet") is True
 
     def test_cache_hit_returns_cached_result(self, config_dir):
-        """When file hash matches cache, validation is skipped."""
+        """When file hash matches cache, validation is skipped.
+        M1: fhash now includes source hash component — mock it too."""
+        import hashlib
+
         from tools.validators.yaml import YAMLValidator
 
-        hash_val = "abc123"
+        fake_source = "class YAMLValidator:\n    pass"
+        fake_src_hash = hashlib.sha1(fake_source.encode()).hexdigest()
+        hash_val = f"abc123:{fake_src_hash}"
         with (
-            patch("tools.commands.validate.compute_hash", return_value=hash_val),
+            patch("tools.commands.validate.compute_hash", return_value="abc123"),
+            patch(
+                "tools.commands.validate.inspect.getsource", return_value=fake_source
+            ),
             patch(
                 "tools.commands.validate.load_cache",
                 return_value={"hash": hash_val, "passed": True, "duration": 0.42},
@@ -160,23 +168,29 @@ class TestRunOne:
         assert result.cached is False
 
     def test_save_cache_called_on_success(self, config_dir):
-        """On pass, result is cached using the pre-validation hash."""
+        """On pass, result is cached (hash now includes source component)."""
+        import hashlib
+
         from tools.validators.yaml import YAMLValidator
 
-        hash_val = "hash123"
+        fake_source = "class YAMLValidator:\n    pass"
+        fake_src_hash = hashlib.sha1(fake_source.encode()).hexdigest()
+        file_hash = "hash123"
+        combined_hash = f"{file_hash}:{fake_src_hash}"
         with (
-            patch("tools.commands.validate.compute_hash", return_value=hash_val) as mh,
+            patch("tools.commands.validate.compute_hash", return_value=file_hash),
+            patch(
+                "tools.commands.validate.inspect.getsource", return_value=fake_source
+            ),
             patch("tools.commands.validate.load_cache", return_value=None),
             patch("tools.commands.validate.save_cache") as mock_save,
         ):
             result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=True)
         assert result.passed is True
-        # compute_hash called once (no second call for save)
-        assert mh.call_count == 1
         mock_save.assert_called_once()
         args, kwargs = mock_save.call_args
         assert args[2] == "YAML"  # description
-        assert args[3] == hash_val  # file_hash (reused from stash)
+        assert args[3] == combined_hash  # file_hash (now includes source hash)
         assert args[4] is True  # passed
 
     def test_save_cache_not_called_on_failure(self, tmp_path):
@@ -243,6 +257,34 @@ class TestRunOne:
         result = mod._run_one(BoomValidator, "Boom", str(tmp_path), True, True)
         assert result.passed is False
         assert "init blew up" in result.stderr
+
+    def test_validator_source_change_invalidates_cache(self, config_dir, monkeypatch):
+        """M1: editing a validator's source must invalidate its cache."""
+        import tools.commands.validate as vmod
+        from tools.validators.yaml import YAMLValidator
+
+        # First run populates the cache.
+        r1 = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=False)
+        assert r1.passed
+        assert not r1.cached
+
+        # Second run hits the cache (same hash).
+        r2 = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=False)
+        assert r2.cached
+
+        # Now mutate the perceived source of YAMLValidator — cache must miss.
+        original_getsource = vmod.inspect.getsource
+        call_count = {"n": 0}
+
+        def fake_getsource(obj):
+            call_count["n"] += 1
+            return original_getsource(obj) + (
+                f" # edit {call_count['n']}" if call_count["n"] > 0 else ""
+            )
+
+        monkeypatch.setattr(vmod.inspect, "getsource", fake_getsource)
+        r3 = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=False)
+        assert not r3.cached, "validator source change must invalidate cache"
 
     def test_save_cache_failure_does_not_crash(self, config_dir):
         """If saving cache throws, validation result is still returned."""
@@ -347,6 +389,35 @@ class TestRunValidators:
         results3 = run_validators(config_dir, quiet=True, force=False)
         yaml_result3 = [r for r in results3 if "YAML" in r.description][0]
         assert yaml_result3.cached is False
+
+
+class TestM3PassingWarnings:
+    """M3: passing-validator warnings must be shown in verbose mode."""
+
+    def test_passing_validator_warrning_visible_in_verbose(
+        self, config_dir, capsys, monkeypatch
+    ):
+        from tools.validators.yaml import YAMLValidator
+
+        def fake_validate_all(self):
+            self.warnings.append("minor: missing alias somewhere")
+            self.info.append("info: 3 automations processed")
+            return True
+
+        monkeypatch.setattr(YAMLValidator, "validate_all", fake_validate_all)
+        monkeypatch.setattr(YAMLValidator, "file_deps", lambda self: [])
+        from argparse import Namespace
+
+        from tools.commands.validate import run
+
+        args = Namespace(
+            config=config_dir, quiet=False, force=True, summary=False, no_summary=True
+        )
+        run(args)
+        captured = capsys.readouterr()
+        assert "minor: missing alias" in captured.err, (
+            "passing-validator warnings must be visible in verbose mode"
+        )
 
 
 class TestRun:

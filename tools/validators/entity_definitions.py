@@ -260,6 +260,9 @@ class EntityDefinitionExtractor:
             "input_select",
             "input_datetime",
             "input_button",
+            "timer",
+            "counter",
+            "schedule",
         ]:
             if input_type in config_data and isinstance(config_data[input_type], dict):
                 for name in config_data[input_type]:
@@ -284,7 +287,7 @@ class EntityDefinitionExtractor:
                         if isinstance(item, dict) and (
                             "platform" in item and item["platform"] == "template"
                         ):
-                            sensors = item.get("sensors", {})
+                            sensors = item.get("sensors") or {}
                             for name in sensors:
                                 if isinstance(name, str) and self._is_valid_object_id(
                                     name
@@ -334,21 +337,26 @@ class EntityDefinitionExtractor:
             if entity_type in template_config:
                 type_data = template_config[entity_type]
                 if isinstance(type_data, list):
-                    for item in type_data:
-                        if isinstance(item, dict):
-                            default_entity_id = item.get("default_entity_id")
-                            name = item.get("name", "")
-                            if default_entity_id:
-                                default_entity_id = str(default_entity_id)
-                                if "." in default_entity_id:
-                                    if self._is_valid_entity_id(default_entity_id):
-                                        entities.add(default_entity_id)
-                                elif self._is_valid_object_id(default_entity_id):
-                                    entities.add(f"{entity_type}.{default_entity_id}")
-                            elif name:
-                                object_id = self._slugify_object_id(str(name))
-                                if object_id:
-                                    entities.add(f"{entity_type}.{object_id}")
+                    items = type_data
+                elif isinstance(type_data, dict):
+                    items = [type_data]
+                else:
+                    items = []
+                for item in items:
+                    if isinstance(item, dict):
+                        default_entity_id = item.get("default_entity_id")
+                        name = item.get("name", "")
+                        if default_entity_id:
+                            default_entity_id = str(default_entity_id)
+                            if "." in default_entity_id:
+                                if self._is_valid_entity_id(default_entity_id):
+                                    entities.add(default_entity_id)
+                            elif self._is_valid_object_id(default_entity_id):
+                                entities.add(f"{entity_type}.{default_entity_id}")
+                        elif name:
+                            object_id = self._slugify_object_id(str(name))
+                            if object_id:
+                                entities.add(f"{entity_type}.{object_id}")
 
         return entities
 

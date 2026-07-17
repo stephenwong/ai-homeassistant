@@ -123,7 +123,7 @@ def clean_orphaned_changelogs(dry_run: bool = False) -> int:
         return 0
     orphans = []
     for changelog in BACKUP_DIR.glob("*.changelog"):
-        tar_path = BACKUP_DIR / changelog.name.replace(".changelog", ".tar.gz")
+        tar_path = BACKUP_DIR / (changelog.stem + ".tar.gz")
         if not tar_path.exists():
             orphans.append(changelog)
     if orphans:
@@ -140,23 +140,39 @@ def clean_orphaned_changelogs(dry_run: bool = False) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Prune Home Assistant backups")
     parser.add_argument(
+        "--apply",
+        "--execute",
+        dest="apply",
+        action="store_true",
+        help="Actually delete files (default: dry-run — no files are removed).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show what would be deleted without deleting",
+        help="Explicit dry-run (default behaviour; accepted for clarity).",
+    )
+    parser.add_argument(
+        "--min-keep",
+        type=int,
+        default=3,
+        help="Refuse to delete if fewer than N backups would remain (default: 3).",
     )
     args = parser.parse_args(argv)
-    dry_run = args.dry_run
+    apply_deletes = args.apply and not args.dry_run
 
     print("Home Assistant Backup Retention Pruner", file=sys.stderr)
-    if dry_run:
-        print("(DRY RUN - no files will be deleted)", file=sys.stderr)
+    if not apply_deletes:
+        print(
+            "(DRY RUN — no files will be deleted; pass --apply to delete)",
+            file=sys.stderr,
+        )
     print("=" * 50, file=sys.stderr)
 
     backups = get_backups()
 
     if not backups:
         print(f"No backups found in {BACKUP_DIR}", file=sys.stderr)
-        clean_orphaned_changelogs(dry_run=dry_run)
+        clean_orphaned_changelogs(dry_run=not apply_deletes)
         return 0
 
     print(f"\nFound {len(backups)} backup(s)", file=sys.stderr)
@@ -185,12 +201,31 @@ def main(argv: list[str] | None = None) -> int:
 
         print(f"\nTotal space to free: {format_size(total_size)}")
 
-        if not dry_run:
+        # Defense-in-depth: never empty the directory.
+        if apply_deletes and len(to_delete) >= len(backups):
+            print(
+                "❌ Refusing to delete: would remove all backups "
+                f"(len(to_delete)={len(to_delete)} >= len(backups)={len(backups)}). "
+                "Check retention settings.",
+                file=sys.stderr,
+            )
+            return 1
+        if apply_deletes and (len(backups) - len(to_delete)) < args.min_keep:
+            print(
+                f"❌ Refusing to delete: would leave {len(backups) - len(to_delete)} "
+                f"backup(s), below --min-keep {args.min_keep}.",
+                file=sys.stderr,
+            )
+            return 1
+
+        if apply_deletes:
             errors = 0
             for backup in to_delete:
                 try:
                     backup["path"].unlink()
-                    changelog_name = backup["filename"].replace(".tar.gz", ".changelog")
+                    changelog_name = (
+                        backup["filename"].removesuffix(".tar.gz") + ".changelog"
+                    )
                     changelog_path = BACKUP_DIR / changelog_name
                     if changelog_path.exists():
                         changelog_path.unlink()
@@ -204,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
                     f"\n✗ Deleted {len(to_delete) - errors}, failed {errors}",
                     file=sys.stderr,
                 )
-                clean_orphaned_changelogs(dry_run=dry_run)
+                clean_orphaned_changelogs(dry_run=not apply_deletes)
                 return 1
 
             print(f"\n✓ Successfully deleted {len(to_delete)} backup(s)")
@@ -230,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
-    clean_orphaned_changelogs(dry_run=dry_run)
+    clean_orphaned_changelogs(dry_run=not apply_deletes)
     return 0
 
 

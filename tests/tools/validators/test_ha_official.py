@@ -53,11 +53,20 @@ class TestHAOfficialValidatorMain:
         "TurboJPEGSingleton warning",
         "selector']['reorder'] is not valid",
         "Traceback (most recent call last):",
-        "RuntimeError: something",
+        "Unable to install package somepkg",
+        "No solution found when resolving",
+        "requirements are unsatisfiable",
+        "Requirements for xyz",
+        "could not be loaded",
     ],
 )
 def test_ignorable_message(validator, message):
     assert validator.is_ignorable_message(message) is True
+
+
+def test_runtimeerror_not_ignored_by_is_ignorable_message(validator):
+    """M12: RuntimeError is no longer blanket-suppressed by is_ignorable_message."""
+    assert validator.is_ignorable_message("RuntimeError: something") is False
 
 
 def test_normal_error_not_ignorable(validator):
@@ -66,12 +75,23 @@ def test_normal_error_not_ignorable(validator):
 
 
 class TestIsIgnorableTracebackLine:
-    def test_python_file_line(self, validator):
+    def test_python_file_line_benign_context(self, validator):
         assert (
             validator.is_ignorable_traceback_line(
-                '  File "/usr/lib/python3.12/site-packages/test.py", line 42'
+                '  File "/usr/lib/python3.12/site-packages/test.py", line 42',
+                benign_ctx=True,
             )
             is True
+        )
+
+    def test_python_file_line_no_benign_context(self, validator):
+        """Without benign_ctx, traceback lines are NOT suppressed (M12)."""
+        assert (
+            validator.is_ignorable_traceback_line(
+                '  File "/usr/lib/python3.12/site-packages/test.py", line 42',
+                benign_ctx=False,
+            )
+            is False
         )
 
     def test_normal_line(self, validator):
@@ -146,6 +166,57 @@ class TestParseCheckConfigOutput:
         validator.parse_check_config_output("0 errors found at all\n", "")
         assert len(validator.errors) == 0
         assert any("0 errors" in i for i in validator.info)
+
+
+class TestM11StderrNoiseFilter:
+    """M11: benign-substring filters must not swallow real errors."""
+
+    def test_benign_loading_still_suppressed(self, validator):
+        validator.parse_check_config_output("", "INFO: Now loading integrations\n")
+        assert validator.errors == []
+
+    def test_error_during_loading_survives(self, validator):
+        validator.parse_check_config_output(
+            "", "Error loading configuration.yaml: bad key\n"
+        )
+        assert any("Error loading" in e for e in validator.errors)
+
+    def test_failed_initialized_survives(self, validator):
+        validator.parse_check_config_output(
+            "", "Integration foo failed to be initialized\n"
+        )
+        assert any("failed to be initialized" in e for e in validator.errors)
+
+    def test_failed_starting_survives(self, validator):
+        validator.parse_check_config_output(
+            "", "Failed starting integration some_integration\n"
+        )
+        assert any("Failed starting" in e for e in validator.errors)
+
+
+class TestM12RuntimeErrorScoping:
+    """M12: RuntimeError suppression must be scoped to benign-package context."""
+
+    def test_runtimeerror_with_package_marker_suppressed(self, validator):
+        stdout = (
+            "Unable to install package somepkg\n"
+            "Traceback (most recent call last):\n"
+            "  File '/srv/foo.py', line 1, in <module>\n"
+            "raise RuntimeError('boom')\n"
+        )
+        validator.parse_check_config_output(stdout, "")
+        assert not any("RuntimeError" in e for e in validator.errors)
+
+    def test_runtimeerror_without_marker_survives(self, validator):
+        stdout = (
+            "Traceback (most recent call last):\n"
+            "  File '/srv/async_setup.py', line 42\n"
+            "RuntimeError: Platform already configured: sensor\n"
+        )
+        validator.parse_check_config_output(stdout, "")
+        assert any("RuntimeError" in e for e in validator.errors), (
+            "genuine HA RuntimeError must not be blanket-suppressed"
+        )
 
 
 class TestRunHACheckConfig:

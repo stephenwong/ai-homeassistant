@@ -462,3 +462,29 @@ class TestLoadYamlChecked:
         assert ok is False
         assert data is None
         assert any("nonexistent.yaml" in e for e in v.errors)
+
+
+class TestM5LoadEnvFile:
+    """M5: load_env_file must not clobber existing env vars."""
+
+    def test_does_not_clobber_existing_env(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text("HA_TOKEN=FROM_FILE\n")
+        os.environ["HA_TOKEN"] = "FROM_SHELL"
+        try:
+            load_env_file(env_file)
+            assert os.environ["HA_TOKEN"] == "FROM_SHELL", (
+                "real env var must not be clobbered by .env"
+            )
+        finally:
+            del os.environ["HA_TOKEN"]
+
+    def test_sets_missing_vars(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text("HA_URL=http://from-file\n")
+        os.environ.pop("HA_URL", None)
+        try:
+            load_env_file(env_file)
+            assert os.environ["HA_URL"] == "http://from-file"
+        finally:
+            os.environ.pop("HA_URL", None)

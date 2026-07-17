@@ -3,12 +3,40 @@
 
 Checks automations.yaml for duplicate ``id`` values (which silently break
 triggering and UI customization) and missing ``id`` fields.
+Also checks scripts.yaml for duplicate top-level keys (M10b).
 """
 
 import argparse
 import collections
 
+import yaml
+
 from tools.validators.base import ValidatorBase
+
+
+class _DupKeyLoader(yaml.SafeLoader):
+    """SafeLoader that raises on duplicate mapping keys.
+
+    Used to detect duplicate top-level keys in scripts.yaml where PyYAML's
+    ``safe_load`` silently keeps the last entry on collision.
+    """
+
+    def construct_mapping(self, node, deep=False):
+        seen: set = set()
+        for key_node, _ in node.value:
+            try:
+                key = self.construct_object(key_node, deep=deep) if key_node else None
+            except Exception:
+                key = None
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f"duplicate top-level key: {key!r}",
+                    key_node.start_mark,
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
 
 
 class DuplicateIDValidator(ValidatorBase):
@@ -17,7 +45,7 @@ class DuplicateIDValidator(ValidatorBase):
     validator_name = "Duplicate automation IDs"
 
     def file_deps(self) -> list[str]:
-        return ["automations.yaml"]
+        return ["automations.yaml", "scripts.yaml"]
 
     def _check_automations(self, automations: list, source: str) -> bool:
         """Walk a parsed automations list; flag duplicates and missing IDs.
@@ -60,27 +88,46 @@ class DuplicateIDValidator(ValidatorBase):
 
         return all_valid
 
+    def _check_scripts_dup_keys(self) -> bool:
+        """Check scripts.yaml for duplicate top-level keys.
+
+        PyYAML ``safe_load`` silently dedupes, so we use a key-aware loader.
+        """
+        scripts_file = self.config_dir / "scripts.yaml"
+        if not scripts_file.exists():
+            return True
+        try:
+            with open(scripts_file, encoding="utf-8") as f:
+                yaml.load(f, Loader=_DupKeyLoader)
+        except yaml.constructor.ConstructorError as e:
+            self.errors.append(f"{scripts_file}: {e.problem}")
+            return False
+        except (OSError, yaml.YAMLError) as e:
+            self.errors.append(f"{scripts_file}: failed to parse: {e}")
+            return False
+        return True
+
     def _validate(self) -> bool:
-        """Run duplicate-ID detection on automations.yaml."""
+        """Run duplicate-ID detection on automations.yaml and scripts.yaml."""
         automations_file = self.config_dir / "automations.yaml"
-        if not automations_file.exists():
-            return True  # nothing to check
+        ok_auto = True
+        if automations_file.exists():
+            data, ok = self.load_yaml_checked(automations_file)
+            if not ok:
+                ok_auto = False
+            elif data is None:
+                pass  # empty file
+            elif not isinstance(data, list):
+                self.errors.append(
+                    f"{automations_file}: Automations must be a list, "
+                    f"got {type(data).__name__}"
+                )
+                ok_auto = False
+            else:
+                ok_auto = self._check_automations(data, str(automations_file))
 
-        data, ok = self.load_yaml_checked(automations_file)
-        if not ok:
-            return False
-
-        if data is None:
-            return True  # empty file
-
-        if not isinstance(data, list):
-            self.errors.append(
-                f"{automations_file}: Automations must be a list, "
-                f"got {type(data).__name__}"
-            )
-            return False
-
-        return self._check_automations(data, str(automations_file))
+        ok_scripts = self._check_scripts_dup_keys()
+        return ok_auto and ok_scripts
 
 
 def main() -> int:

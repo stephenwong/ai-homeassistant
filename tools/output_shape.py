@@ -1,7 +1,7 @@
 """Shared JSON output-shaping helpers for token-efficient CLI output.
 
 Provides ``apply_output_shape()`` — a single transform applying (in order)
-first-slice → pick (field projection) → max-chars (byte-length truncation).
+first-slice → pick (field projection) → max-chars (character-length truncation).
 Used by curl and other JSON-emitting subcommands to cap token
 output for agent consumption.
 """
@@ -22,11 +22,16 @@ def apply_output_shape(
 
     Args:
         data: Parsed JSON (list, dict, or scalar).
-        first: Keep only first N items.
+        first: Keep only first N items (must be >= 1; raises ValueError otherwise).
         pick: Comma-separated field names to retain (per-item projection).
-        max_chars: Drop trailing list items until compact JSON fits within N chars.
+        max_chars: Drop trailing list items until COMPACT JSON fits within N chars.
+            Note: the print layer may render with --pretty (indent=2), whose size
+            exceeds the compact size — so pretty output can overshoot max_chars.
+            This is intentional (compact is the token-cost proxy).
     """
     if first is not None:
+        if first < 1:
+            raise ValueError(f"first must be >= 1, got {first}")
         data = _first(data, first)
     if pick and pick.strip():
         fields = [f.strip() for f in pick.split(",") if f.strip()]
@@ -97,17 +102,47 @@ def _truncate_by_chars(data, max_chars: int):
 
 
 def _truncate_list(data: list, max_chars: int):
-    """Drop trailing list items until the (compact) serialization fits."""
+    """Drop trailing list items until the (compact) serialization fits.
+
+    Uses a prefix-sum + binary search over per-item serialized lengths so
+    the fit check is O(N log N) rather than O(N²).
+    """
     original_len = len(data)
-    for n in range(original_len, 0, -1):
-        candidate = data[:n]
+    if original_len == 0:
+        return [{"_truncated": True, "shown": 0, "total": 0}]
+
+    sep = (",", ":")
+    # Per-item compact serialized length
+    item_lens = [
+        len(json.dumps(item, separators=sep, ensure_ascii=False)) for item in data
+    ]
+    # prefix[n] = size of JSON array data[:n] (brackets + commas between items).
+    prefix = [2]  # "[" + "]"
+    for i, ln in enumerate(item_lens):
+        prefix.append(prefix[-1] + (1 if i > 0 else 0) + ln)
+
+    # Precompute marker sizes for each possible n.
+    marker_lens = {}
+    for n in range(0, original_len + 1):
         marker = {"_truncated": True, "shown": n, "total": original_len}
-        trial = candidate + [marker]
-        serialized = json.dumps(trial, separators=(",", ":"), ensure_ascii=False)
-        if len(serialized) <= max_chars:
-            return trial
-    marker = {"_truncated": True, "shown": 0, "total": original_len}
-    return [marker]
+        marker_str = json.dumps(marker, separators=sep, ensure_ascii=False)
+        marker_lens[n] = (1 if n > 0 else 0) + len(marker_str)
+
+    # Binary-search: largest n in [0, original_len] such that total fits.
+    lo, hi, best = 0, original_len, 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if prefix[mid] + marker_lens[mid] <= max_chars:
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+
+    if best == 0 and prefix[0] + marker_lens[0] > max_chars:
+        return [{"_truncated": True, "shown": 0, "total": original_len}]
+
+    marker = {"_truncated": True, "shown": best, "total": original_len}
+    return data[:best] + [marker]
 
 
 def _cap_dict(data: dict, max_chars: int):

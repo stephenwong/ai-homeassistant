@@ -17,7 +17,7 @@ import tarfile
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
-from tools.common import get_env_int
+from tools.common import get_env_int, non_negative_int
 from tools.prune_backups import get_backups
 
 
@@ -122,9 +122,9 @@ def main() -> int:
     parser.add_argument(
         "--context",
         "-C",
-        type=int,
+        type=non_negative_int,
         default=0,
-        help="Number of context lines around matches",
+        help="Number of context lines around matches (>= 0)",
     )
     args = parser.parse_args()
 

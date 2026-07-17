@@ -158,6 +158,57 @@ def test_healthy_sensor_ignored(config_dir):
         assert len(v.warnings) == 0
 
 
+def test_unavailable_state_flagged_immediately(config_dir):
+    """M27: a sensor in unavailable/unknown state must surface at once,
+    not wait for threshold_hours to elapse."""
+    _write_entity_registry(
+        config_dir,
+        [
+            {
+                "entity_id": "sensor.dead_battery",
+                "platform": "zha",
+                "disabled_by": None,
+                "hidden_by": None,
+            }
+        ],
+    )
+    fresh_now = datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
+    mock_client = _mock_states(
+        [
+            {
+                "entity_id": "sensor.dead_battery",
+                "state": "unavailable",
+                "last_updated": fresh_now.isoformat(),
+                "attributes": {},
+            }
+        ]
+    )
+    with (
+        patch("tools.validators.stale_sensors.HAClient", return_value=mock_client),
+        patch.object(StaleSensorValidator, "_get_current_time", return_value=fresh_now),
+    ):
+        v = StaleSensorValidator(str(config_dir))
+        v.validate_all()
+    assert any(
+        "unavailable" in w or "unknown" in w or "not reporting" in w for w in v.warnings
+    ), "unavailable state must surface immediately"
+    assert "sensor.dead_battery" in v.stale_entities
+
+
+def test_parse_timestamp_handles_positive_offset_aest():
+    """M27: a +10:00 (AEST) offset must be parsed and normalised to UTC
+    correctly so elapsed-hours math is right."""
+    from datetime import timedelta
+
+    v = StaleSensorValidator()
+    parsed = v.parse_timestamp("2026-07-17T08:00:00+10:00")
+    assert parsed is not None
+    assert parsed.utcoffset() == timedelta(hours=10)
+    now_utc = datetime(2026, 7, 16, 22, 0, 0, tzinfo=UTC)
+    delta_hours = (now_utc - parsed).total_seconds() / 3600.0
+    assert delta_hours == 0.0
+
+
 def test_disabled_or_hidden_sensor_ignored(config_dir):
     """Disabled or hidden entities are excluded from staleness checks."""
     _write_entity_registry(

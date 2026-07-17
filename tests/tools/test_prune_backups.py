@@ -373,7 +373,7 @@ class TestMain:
         with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
-            result = main([])
+            result = main(["--apply", "--min-keep", "1"])
             assert result == 0
             # Should keep the later one (200000) and delete earlier (100000)
             assert (backup_dir / fname2).exists()
@@ -423,7 +423,7 @@ class TestMain:
         with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
-            result = main([])
+            result = main(["--apply", "--min-keep", "1"])
             assert result == 0
             # Wednesday (later) kept, Monday (earlier) deleted
             assert (backup_dir / fname2).exists()
@@ -469,7 +469,7 @@ class TestMain:
         with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
-            main([])
+            main(["--apply", "--min-keep", "1"])
             assert not orphan.exists()
 
     def test_delete_error_returns_nonzero(self, tmp_path, capsys):
@@ -496,7 +496,7 @@ class TestMain:
             orig_mode = backup_dir.stat().st_mode
             try:
                 os.chmod(backup_dir, stat.S_IRUSR | stat.S_IXUSR)
-                result = main([])
+                result = main(["--apply", "--min-keep", "1"])
                 assert result == 1
                 captured = capsys.readouterr()
                 assert "Error deleting" in captured.err

@@ -93,11 +93,12 @@ class TestFileDeps:
         assert ".storage/core.area_registry" in deps
 
     def test_duplicate_id_validator_file_deps(self):
-        """DuplicateIDValidator only reads automations.yaml (cacheable)."""
+        """DuplicateIDValidator reads automations.yaml and scripts.yaml (M10b)."""
         v = DuplicateIDValidator()
         deps = v.file_deps()
         assert "automations.yaml" in deps
-        assert len(deps) == 1
+        assert "scripts.yaml" in deps
+        assert len(deps) == 2
 
     def test_service_validator_file_deps(self):
         """ServiceValidator returns empty deps (depends on live HA)."""

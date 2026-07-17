@@ -170,6 +170,52 @@ def test_verb_raises_on_request_exception(verb, url, exception):
         getattr(c, verb)(url)
 
 
+def test_request_merges_caller_headers_without_typeerror():
+    """M4: passing headers= must merge, not collide with the client's defaults."""
+    session = MagicMock()
+    client = HAClient("http://ha.local", "tok", session=session)
+    client.get("/api/states", headers={"X-Custom": "y"})
+    args, kwargs = session.get.call_args
+    assert kwargs["headers"]["Authorization"] == "Bearer tok"
+    assert kwargs["headers"]["X-Custom"] == "y"
+
+
+def test_request_caller_timeout_overrides_default():
+    """M4: passing timeout= must override the client default cleanly."""
+    session = MagicMock()
+    client = HAClient("http://ha.local", "tok", timeout=10, session=session)
+    client.get("/api/states", timeout=30)
+    _, kwargs = session.get.call_args
+    assert kwargs["timeout"] == 30
+
+
+def test_client_context_manager_closes_session():
+    """M6: `with HAClient(...) as c:` must close the session on exit."""
+    session = MagicMock()
+    client = HAClient("http://ha.local", "tok", session=session)
+    with client as c:
+        assert c is client
+    session.close.assert_called_once()
+
+
+def test_client_close_method_closes_session():
+    """M6: close() method must close the underlying session."""
+    session = MagicMock()
+    client = HAClient("http://ha.local", "tok", session=session)
+    client.close()
+    session.close.assert_called_once()
+
+
+def test_client_close_with_owned_session():
+    """M6: when the client created its own session, close() must still close it."""
+    with patch("tools.ha.client.requests.Session") as mock_session_cls:
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        client = HAClient("http://ha.local", "tok")
+        client.close()
+        mock_session.close.assert_called_once()
+
+
 class TestGetJson:
     def test_parses_json_response(self):
         session = MagicMock()

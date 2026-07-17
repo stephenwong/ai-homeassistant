@@ -7,6 +7,8 @@ spawn) and aggregates results. Replaces the old ValidationTestRunner.
 import argparse
 import concurrent.futures
 import contextlib
+import hashlib
+import inspect
 import json
 import sys
 import time
@@ -81,8 +83,19 @@ def _run_one(
         file_deps = instance.file_deps()
         fhash: str | None = None
         if file_deps:
+            data_hash: str | None = None
             with contextlib.suppress(OSError):
-                fhash = compute_hash(instance.config_dir, file_deps)
+                data_hash = compute_hash(instance.config_dir, file_deps)
+            # M1: fold validator source into the cache key so logic edits
+            # invalidate the cache even when data files are unchanged.
+            if data_hash:
+                try:
+                    src_hash = hashlib.sha1(
+                        inspect.getsource(cls).encode("utf-8")
+                    ).hexdigest()
+                except OSError, TypeError:
+                    src_hash = "no-source"
+                fhash = f"{data_hash}:{src_hash}"
 
         # --- cache check (skip when --force or when file_deps is empty) ---
         if not force and fhash is not None:
@@ -242,6 +255,10 @@ def run(args: argparse.Namespace) -> int:
                 suffix = " (cached)" if r.cached else f" ({r.duration:.2f}s)"
                 if not quiet:
                     print(f"  ✅ {r.description}: PASSED{suffix}", file=sys.stderr)
+                    if r.stderr.strip():
+                        for line in r.stderr.strip().splitlines():
+                            if line:
+                                print(f"      {line}", file=sys.stderr)
         else:
             if summary:
                 print(f"FAIL {r.description} ({r.duration:.2f}s)")

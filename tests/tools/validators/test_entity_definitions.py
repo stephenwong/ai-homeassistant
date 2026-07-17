@@ -16,6 +16,56 @@ def test_extracts_builtin_entities(tmp_path):
     assert "zone.home" in entities
 
 
+def test_template_sensor_with_null_sensors_does_not_crash(tmp_path):
+    """M13: `sensors:` with no value (null) must not crash extraction."""
+    (tmp_path / ".storage").mkdir(exist_ok=True)
+    (tmp_path / "configuration.yaml").write_text(
+        "sensor:\n  - platform: template\n    sensors:\n"
+    )
+    w, i = [], []
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
+    # Must not raise TypeError.
+    entities = ext.get_config_defined_entities()
+    assert isinstance(entities, set)
+
+
+def test_extracts_timer_counter_schedule_helpers(tmp_path):
+    """M26 part 1: timer/counter/schedule input helpers must be extracted."""
+    (tmp_path / ".storage").mkdir(exist_ok=True)
+    (tmp_path / "configuration.yaml").write_text(
+        "timer:\n"
+        "  laundry:\n"
+        "    duration: '00:30:00'\n"
+        "counter:\n"
+        "  coffee_count:\n"
+        "    initial: 0\n"
+        "schedule:\n"
+        "  work_hours:\n"
+        "    monday:\n"
+        "      - from: '09:00'\n"
+        "        to: '17:00'\n"
+    )
+    w, i = [], []
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
+    entities = ext.get_config_defined_entities()
+    assert "timer.laundry" in entities
+    assert "counter.coffee_count" in entities
+    assert "schedule.work_hours" in entities
+
+
+def test_extracts_single_dict_template_form(tmp_path):
+    """M26 part 2: `template: - sensor: {name: X}` (dict, not list) is valid HA
+    and must be extracted, same as the list form."""
+    (tmp_path / ".storage").mkdir(exist_ok=True)
+    (tmp_path / "configuration.yaml").write_text(
+        "template:\n  - sensor:\n      name: My Sensor\n      state: '42'\n"
+    )
+    w, i = [], []
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
+    entities = ext.get_config_defined_entities()
+    assert "sensor.my_sensor" in entities
+
+
 def test_extracts_group_entity(tmp_path):
     (tmp_path / ".storage").mkdir(exist_ok=True)
     (tmp_path / "configuration.yaml").write_text(

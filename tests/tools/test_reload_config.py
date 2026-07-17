@@ -23,9 +23,9 @@ def _nul(s: str) -> str:
 
 
 def _make_client():
-    """Return a mock HAClient with call_service stubbed to return True."""
+    """Return a mock HAClient with post stubbed to return success by default."""
     client = MagicMock()
-    client.call_service.return_value = True
+    client.post.return_value = MagicMock(status_code=200)
     client.timeout = 30
     return client
 
@@ -131,46 +131,57 @@ class TestDetectChangedServices:
 
 
 class TestReloadService:
-    """reload_service now takes a HAClient instead of (url, headers, timeout)."""
+    """M16: reload_service now uses client.post directly (not call_service)."""
 
     def test_success_returns_service_and_true(self):
         client = _make_client()
-        client.call_service.return_value = True
+        client.post.return_value = MagicMock(status_code=200)
         svc, ok, err = reload_service(client, "automation/reload")
         assert svc == "automation/reload"
         assert ok is True
         assert err is None
 
-    def test_failure_returns_service_and_false(self):
+    def test_failure_returns_service_and_false_with_detail(self):
         client = _make_client()
-        client.call_service.return_value = False
+        resp = MagicMock(status_code=500, text="Internal Server Error: bad config")
+        client.post.return_value = resp
         svc, ok, err = reload_service(client, "automation/reload")
         assert svc == "automation/reload"
         assert ok is False
-        assert err is None
+        assert err is not None and "500" in err and "Internal Server Error" in err
 
-    def test_call_service_invoked_with_domain_and_action(self):
+    def test_post_invoked_with_correct_path(self):
         client = _make_client()
+        client.post.return_value = MagicMock(status_code=200)
         reload_service(client, "automation/reload")
-        client.call_service.assert_called_once_with("automation", "reload")
+        client.post.assert_called_once_with("/api/services/automation/reload", json={})
 
     def test_core_config_service_dispatches_correctly(self):
         client = _make_client()
+        client.post.return_value = MagicMock(status_code=200)
         reload_service(client, "homeassistant/reload_core_config")
-        client.call_service.assert_called_once_with(
-            "homeassistant", "reload_core_config"
+        client.post.assert_called_once_with(
+            "/api/services/homeassistant/reload_core_config", json={}
         )
 
     def test_request_error_returns_service_and_false_with_detail(self):
-        """Network errors (HARequestError) propagate error detail in 3rd element."""
+        """Network errors (HARequestError) propagate error detail."""
         client = _make_client()
-        client.call_service.side_effect = HARequestError(
+        client.post.side_effect = HARequestError(
             "POST /api/services/automation/reload failed: timeout"
         )
         svc, ok, err = reload_service(client, "automation/reload")
         assert svc == "automation/reload"
         assert ok is False
         assert err is not None and "timeout" in err
+
+    def test_unexpected_exception_caught(self):
+        """M17: non-HARequestError exceptions in reload_service are caught."""
+        client = _make_client()
+        client.post.side_effect = RuntimeError("connection reset mid-read")
+        svc, ok, err = reload_service(client, "automation/reload")
+        assert ok is False
+        assert err is not None and "RuntimeError" in err
 
 
 class TestReloadConfig:
@@ -200,7 +211,7 @@ class TestReloadConfig:
             assert reload_config() is True
 
     def test_api_failure(self):
-        self._mock_client.call_service.return_value = False
+        self._mock_client.post.return_value = MagicMock(status_code=500)
         with patch(
             "tools.reload_config.detect_changed_services",
             return_value={"homeassistant/reload_core_config"},
@@ -240,29 +251,35 @@ class TestReloadConfig:
         assert "long_lived_access_token" in err
 
     def test_detect_returns_none_reloads_all_services(self):
+        ok_resp = MagicMock(status_code=200)
+        self._mock_client.post.return_value = ok_resp
         with patch("tools.reload_config.detect_changed_services", return_value=None):
             result = reload_config()
         assert result is True
-        assert self._mock_client.call_service.call_count == 4
+        assert self._mock_client.post.call_count == 4
 
     def test_detect_returns_empty_set_reloads_all_services(self):
+        ok_resp = MagicMock(status_code=200)
+        self._mock_client.post.return_value = ok_resp
         with patch("tools.reload_config.detect_changed_services", return_value=set()):
             result = reload_config()
         assert result is True
-        assert self._mock_client.call_service.call_count == 4
+        assert self._mock_client.post.call_count == 4
 
     def test_detect_returns_one_service_makes_one_call(self):
+        self._mock_client.post.return_value = MagicMock(status_code=200)
         with patch(
             "tools.reload_config.detect_changed_services",
             return_value={"automation/reload"},
         ):
             result = reload_config()
         assert result is True
-        assert self._mock_client.call_service.call_count == 1
+        assert self._mock_client.post.call_count == 1
 
     def test_one_service_fails_returns_false(self):
-        # call_service returns True for the first call, False for the second.
-        self._mock_client.call_service.side_effect = [True, False]
+        ok = MagicMock(status_code=200)
+        fail = MagicMock(status_code=500)
+        self._mock_client.post.side_effect = [ok, fail]
         with patch(
             "tools.reload_config.detect_changed_services",
             return_value={"automation/reload", "script/reload"},
@@ -289,7 +306,7 @@ class TestReloadConfig:
         assert "✅ automations reloaded" in err
 
     def test_prints_failure_per_service(self, capsys):
-        self._mock_client.call_service.return_value = False
+        self._mock_client.post.return_value = MagicMock(status_code=500)
         with patch(
             "tools.reload_config.detect_changed_services",
             return_value={"script/reload"},
@@ -301,12 +318,15 @@ class TestReloadConfig:
     def test_core_config_reloads_before_domain_services(self):
         """reload_core_config must run before any domain services in the same call."""
         call_order = []
+        ok_resp = MagicMock(status_code=200)
 
-        def _track_call(domain, action, data=None):
-            call_order.append(f"{domain}/{action}")
-            return True
+        def _track_post(path, **kwargs):
+            # Path is like "/api/services/automation/reload"
+            svc = path.removeprefix("/api/services/")
+            call_order.append(svc)
+            return ok_resp
 
-        self._mock_client.call_service.side_effect = _track_call
+        self._mock_client.post.side_effect = _track_post
         with patch(
             "tools.reload_config.detect_changed_services",
             return_value={"homeassistant/reload_core_config", "automation/reload"},
@@ -340,7 +360,9 @@ class TestReloadConfig:
         assert out.startswith("RELOADED 2/2")
 
     def test_summary_mode_compact_failure(self, capsys):
-        self._mock_client.call_service.side_effect = [True, False]
+        ok = MagicMock(status_code=200)
+        fail_resp = MagicMock(status_code=500)
+        self._mock_client.post.side_effect = [ok, fail_resp]
         with patch(
             "tools.reload_config.detect_changed_services",
             return_value={"automation/reload", "script/reload"},
@@ -388,3 +410,34 @@ class TestReloadConfig:
             reload_config(summary=True)
         out = capsys.readouterr().out
         assert "must be an integer" not in out
+
+
+class TestM15CoreFailureSkipsDomain:
+    """M15: if core config reload fails, domain reloads must be skipped."""
+
+    def test_core_config_failure_skips_domain_reloads(self):
+        from unittest.mock import patch
+
+        client = _make_client()
+        client.post.return_value = MagicMock(status_code=500)
+
+        def _factory():
+            return client
+
+        with (
+            patch("tools.reload_config.HAClient.from_env", _factory),
+            patch(
+                "tools.reload_config.detect_changed_services",
+                return_value={
+                    "homeassistant/reload_core_config",
+                    "automation/reload",
+                    "script/reload",
+                },
+            ),
+        ):
+            ok = reload_config(summary=True)
+        assert ok is False
+        # Only the core reload should have been attempted.
+        actual_calls = [c[0][0] for c in client.post.call_args_list]
+        assert len(actual_calls) == 1
+        assert "reload_core_config" in actual_calls[0]

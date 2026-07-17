@@ -86,12 +86,25 @@ class HAClient:
         url, token, timeout = _env_config()
         return cls(url, token, timeout=timeout)
 
+    def close(self) -> None:
+        """Close the underlying requests.Session, releasing pooled connections."""
+        self._session.close()
+
+    def __enter__(self) -> HAClient:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
         """Dispatch a request to ``path``. Raises HARequestError on failure."""
         url = f"{self.url}{path}"
+        # M4: caller-provided headers/timeouts win over defaults.
+        merged_headers = {**self.headers, **kwargs.pop("headers", {})}
+        kwargs.setdefault("timeout", self.timeout)
         try:
             return getattr(self._session, method.lower())(
-                url, headers=self.headers, timeout=self.timeout, **kwargs
+                url, headers=merged_headers, **kwargs
             )
         except requests.RequestException as e:
             raise HARequestError(f"{method.upper()} {path} failed: {e}") from e

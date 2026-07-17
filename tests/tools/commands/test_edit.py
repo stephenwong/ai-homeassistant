@@ -3,6 +3,8 @@
 from argparse import Namespace
 from unittest.mock import patch
 
+import pytest
+
 from tests.helpers import make_parser
 from tools.commands.edit import add_parser, run
 
@@ -559,3 +561,82 @@ delete:
         )
         run(self._ns(config=str(tmp_path), alias="A", remove=True))
         assert "Removed:" in capsys.readouterr().out
+
+
+class TestM8ParseValue:
+    """M8: pin YAML-based value coercion for --set KEY=VALUE."""
+
+    @pytest.mark.parametrize(
+        "raw, expected",
+        [
+            ("true", True),
+            ("false", False),
+            ("yes", "yes"),  # ruamel safe=YAML 1.2 — yes is a string, not bool
+            ("123", 123),
+            ("3.14", 3.14),
+            ("null", None),
+            ("~", None),
+            ("", None),  # empty string → None (documented)
+            ("hello world", "hello world"),
+            ("[1, 2]", [1, 2]),
+            ('"true"', "true"),  # quoted — the literal-string escape hatch
+            ("'123'", "123"),  # quoted — stays string
+        ],
+    )
+    def test_coercion(self, raw, expected):
+        from tools.commands.edit import _parse_value
+
+        assert _parse_value(raw) == expected
+        if isinstance(expected, bool):
+            assert isinstance(_parse_value(raw), bool)
+        elif isinstance(expected, int) and not isinstance(expected, bool):
+            assert isinstance(_parse_value(raw), int)
+
+    def test_yaml_error_falls_back_to_raw(self):
+        from tools.commands.edit import _parse_value
+
+        assert _parse_value("[1, 2") == "[1, 2"
+
+
+class TestM7RunSetQuiet:
+    """M7: --set in quiet/summary mode must not print Updated: to stdout."""
+
+    def test_run_set_suppresses_output_when_quiet(self, tmp_path, capsys):
+        autos = tmp_path / "automations.yaml"
+        autos.write_text("- alias: A\n  id: '1'\n")
+        args = Namespace(
+            file="automations",
+            alias="A",
+            config=str(tmp_path),
+            show=False,
+            set=["mode=single"],
+            add=None,
+            remove=False,
+            quiet=True,
+            summary=True,
+            no_summary=False,
+        )
+        rc = run(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Updated" not in captured.out
+
+    def test_run_set_prints_when_verbose(self, tmp_path, capsys):
+        autos = tmp_path / "automations.yaml"
+        autos.write_text("- alias: A\n  id: '1'\n")
+        args = Namespace(
+            file="automations",
+            alias="A",
+            config=str(tmp_path),
+            show=False,
+            set=["mode=single"],
+            add=None,
+            remove=False,
+            quiet=False,
+            summary=False,
+            no_summary=True,
+        )
+        rc = run(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Updated" in captured.out

@@ -3,6 +3,8 @@
 import json
 from unittest.mock import patch
 
+import pytest
+
 from tools.cache import (
     _blob_hash,
     compute_hash,
@@ -80,10 +82,19 @@ class TestComputeHash:
 
 class TestLoadCache:
     def test_valid_cache_returns_dict(self, tmp_path):
+        from tools.cache import CACHE_SCHEMA_VERSION
+
         cache_dir = tmp_path / ".cache" / "validators"
         cache_dir.mkdir(parents=True)
         (cache_dir / "Foo.json").write_text(
-            json.dumps({"hash": "abc", "passed": True, "duration": 0.5})
+            json.dumps(
+                {
+                    "schema": CACHE_SCHEMA_VERSION,
+                    "hash": "abc",
+                    "passed": True,
+                    "duration": 0.5,
+                }
+            )
         )
         result = load_cache(tmp_path, "Foo")
         assert result is not None
@@ -123,6 +134,37 @@ class TestLoadCache:
         assert result is None
 
 
+class TestCacheSchemaVersion:
+    """M1: CACHE_SCHEMA_VERSION must be present in saved caches and checked on load."""
+
+    def test_saved_cache_includes_schema_version(self, tmp_path):
+        from tools.cache import CACHE_SCHEMA_VERSION, save_cache
+
+        save_cache(tmp_path, "TestValidator", "Test", "hash123", True, 0.5)
+        data = json.loads(
+            (tmp_path / ".cache" / "validators" / "TestValidator.json").read_text()
+        )
+        assert data["schema"] == CACHE_SCHEMA_VERSION
+
+    def test_load_cache_returns_none_on_schema_mismatch(self, tmp_path):
+        from tools.cache import CACHE_SCHEMA_VERSION, load_cache
+
+        save_cache(tmp_path, "TestValidator", "Test", "hash123", True, 0.5)
+        p = tmp_path / ".cache" / "validators" / "TestValidator.json"
+        data = json.loads(p.read_text())
+        data["schema"] = CACHE_SCHEMA_VERSION + 999
+        p.write_text(json.dumps(data))
+        assert load_cache(tmp_path, "TestValidator") is None
+
+    def test_load_cache_returns_none_on_missing_schema(self, tmp_path):
+        from tools.cache import load_cache
+
+        p = tmp_path / ".cache" / "validators" / "TestValidator.json"
+        p.parent.mkdir(parents=True)
+        p.write_text(json.dumps({"hash": "x", "passed": True}))
+        assert load_cache(tmp_path, "TestValidator") is None
+
+
 class TestSaveCache:
     def test_saves_json_with_required_keys(self, tmp_path):
         save_cache(tmp_path, "Foo", "Test Foo", "hash123", True, 0.42)
@@ -153,6 +195,53 @@ class TestSaveCache:
         data = json.loads(cache_file.read_text())
         assert data["validator"] == "New"
         assert data["hash"] == "new"
+
+
+class TestM2AtomicSaveCache:
+    """M2: save_cache atomic (temp-file + os.replace) and retry on read errors."""
+
+    def test_save_cache_is_atomic_no_tmp_left(self, tmp_path):
+        """A successful save leaves no .tmp file beside the cache."""
+        from tools.cache import save_cache
+
+        save_cache(tmp_path, "TestValidator", "Test", "h", True, 0.5)
+        cache_dir = tmp_path / ".cache" / "validators"
+        files = [p.name for p in cache_dir.iterdir()]
+        assert files == ["TestValidator.json"]
+        assert not (cache_dir / "TestValidator.json.tmp").exists()
+
+    def test_save_cache_atomic_on_dump_failure(self, tmp_path, monkeypatch):
+        """If json.dump raises mid-write, the existing cache is not truncated."""
+
+        from tools.cache import save_cache
+
+        save_cache(tmp_path, "TestValidator", "Test", "orig", True, 0.5)
+        cache_file = tmp_path / ".cache" / "validators" / "TestValidator.json"
+        original_contents = cache_file.read_text()
+
+        # Force json.dump to fail on the next save.
+        import tools.cache as cache_mod
+
+        def boom(*a, **kw):
+            raise RuntimeError("disk full")
+
+        monkeypatch.setattr(cache_mod.json, "dump", boom)
+        with pytest.raises(RuntimeError):
+            save_cache(tmp_path, "TestValidator", "Test", "new", True, 0.5)
+
+        # Original cache must be intact (atomic write).
+        assert cache_file.read_text() == original_contents
+        # And no .tmp left behind.
+        assert not (cache_file.with_suffix(".json.tmp")).exists()
+
+    def test_load_cache_retries_on_transient_json_error(self, tmp_path):
+        """M2: load_cache degrades gracefully on transient JSONDecodeError."""
+        from tools.cache import load_cache
+
+        cache_file = tmp_path / ".cache" / "validators" / "TestValidator.json"
+        cache_file.parent.mkdir(parents=True)
+        cache_file.write_text("")  # invalid JSON
+        assert load_cache(tmp_path, "TestValidator") is None
 
 
 class TestSaveBlobErrors:

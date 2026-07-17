@@ -92,10 +92,25 @@ class HAOfficialValidator(ValidatorBase):
             self.errors.append(f"Failed to run Home Assistant config check: {e}")
             return False
 
+    _BENIGN_PACKAGE_MARKERS = (
+        "unable to install package",
+        "no solution found when resolving",
+        "requirements are unsatisfiable",
+        "requirements for",
+    )
+
+    def _has_benign_package_context(self, stdout: str, stderr: str) -> bool:
+        blob = (stdout + "\n" + stderr).lower()
+        return any(m in blob for m in self._BENIGN_PACKAGE_MARKERS)
+
     def is_ignorable_message(self, line: str) -> bool:
-        """Check if a message can be safely ignored (non-critical warnings)."""
+        """Check if a message can be safely ignored (non-critical warnings).
+
+        RuntimeError/^^^ suppression is handled contextually in
+        parse_check_config_output (M12) — not here.
+        """
         ignorable_patterns = [
-            # TurboJPEG library warnings - not needed for config validation
+            # TurboJPEG library warnings — not needed for config validation
             "turbojpeg",
             "libturbojpeg",
             "Camera snapshot performance will be sub-optimal",
@@ -103,14 +118,11 @@ class HAOfficialValidator(ValidatorBase):
             "TurboJPEGSingleton",
             # Blueprint selector warnings for newer HA features
             "selector']['reorder']",
-            # Python traceback lines from non-critical errors
+            # Python traceback header — not an error by itself
             "Traceback (most recent call last):",
-            "raise RuntimeError",
-            "RuntimeError:",
-            "^^^",
-            # Package installation and integration load failures in local environment.
-            # Not config errors — integration packages are installed at runtime on the
-            # real HA server, not in this local validation environment.
+            # Package installation failures in local validation environment.
+            # Not config errors — integration packages are installed at runtime
+            # on the real HA server.
             "Unable to install package",
             "No solution found when resolving",
             "requirements are unsatisfiable",
@@ -120,26 +132,42 @@ class HAOfficialValidator(ValidatorBase):
         line_lower = line.lower()
         return any(pattern.lower() in line_lower for pattern in ignorable_patterns)
 
-    def is_ignorable_traceback_line(self, line: str) -> bool:
-        """Check if line is part of a Python traceback we can ignore."""
-        # Match traceback file/line references
-        return line.strip().startswith("File ") and ".py" in line
+    def is_ignorable_traceback_line(
+        self, line: str, *, benign_ctx: bool = False
+    ) -> bool:
+        """Check if line is part of a Python traceback we can ignore.
+
+        Only suppresses ``File ... .py`` lines when *benign_ctx* is set
+        (i.e. the surrounding output contains a known-benign package-install
+        marker). Without that context, traceback lines are real errors.
+
+        ``benign_ctx`` defaults to ``False`` so existing callers that invoke
+        ``is_ignorable_traceback_line(line)`` without the keyword continue to
+        get the strict (non-suppressing) behaviour.
+        """
+        return benign_ctx and line.strip().startswith("File ") and ".py" in line
 
     def parse_check_config_output(self, stdout: str, stderr: str):
         """Parse Home Assistant check_config output."""
+        benign_ctx = self._has_benign_package_context(stdout, stderr)
+
         # Parse stdout
         if stdout:
-            lines = stdout.split("\n")
-            for line in lines:
+            for line in stdout.split("\n"):
                 line = line.strip()
                 if not line:
                     continue
 
-                # Skip ignorable messages and traceback lines
-                if self.is_ignorable_message(line) or self.is_ignorable_traceback_line(
-                    line
-                ):
+                # Skip ignorable messages (turbojpeg, Traceback header, etc.)
+                if self.is_ignorable_message(line):
                     continue
+
+                # M12: scope RuntimeError/^^^ suppression to benign context.
+                if benign_ctx:
+                    if "runtimeerror:" in line.lower() or line.strip() == "^^^":
+                        continue
+                    if self.is_ignorable_traceback_line(line, benign_ctx=True):
+                        continue
 
                 # Look for specific patterns
                 if (
@@ -152,7 +180,7 @@ class HAOfficialValidator(ValidatorBase):
                         self.info.append(f"HA Check: {line}")
                     else:
                         self.errors.append(f"HA Check: {line}")
-                elif re.match(r"^\W*(ERROR|Error)\b", line):
+                elif re.match(r"^\W*(ERROR|Error|RuntimeError)\b", line):
                     self.errors.append(f"HA Check: {line}")
                 elif re.match(r"^\W*(WARNING|Warning)\b", line):
                     self.warnings.append(f"HA Check: {line}")
@@ -163,30 +191,36 @@ class HAOfficialValidator(ValidatorBase):
 
         # Parse stderr for actual errors
         if stderr:
-            lines = stderr.split("\n")
-            for line in lines:
+            # M11: severity indicators that mark a line as a real error regardless
+            # of any benign substring it also contains.
+            error_indicators = ("error", "fail", "fatal", "exception", "traceback")
+            benign_any = ["debug", "info:", "starting"]
+            benign_phrases = [
+                "voluptuous",
+                "setup of domain",
+                "setup of platform",
+                "loading",
+                "initialized",
+            ]
+
+            for line in stderr.split("\n"):
                 line = line.strip()
                 if not line:
                     continue
+                line_lower = line.lower()
 
-                # Filter out debug/info messages
-                if any(x in line.lower() for x in ["debug", "info:", "starting"]):
+                # Real-error lines survive even if they also mention a benign word.
+                if any(ind in line_lower for ind in error_indicators):
+                    self.errors.append(f"HA Error: {line}")
                     continue
 
-                # Skip common non-error messages
-                if any(
-                    x in line.lower()
-                    for x in [
-                        "voluptuous",
-                        "setup of domain",
-                        "setup of platform",
-                        "loading",
-                        "initialized",
-                    ]
-                ):
+                # Pure debug/info noise — suppress.
+                if any(x in line_lower for x in benign_any):
+                    continue
+                if any(x in line_lower for x in benign_phrases):
                     continue
 
-                # This is likely an actual error
+                # Anything else is treated as an error (unchanged behaviour).
                 self.errors.append(f"HA Error: {line}")
 
     def _validate(self) -> bool:

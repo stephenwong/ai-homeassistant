@@ -263,7 +263,14 @@ def _cap_trace_dict(data: dict, max_chars: int) -> dict:
         if len(remaining) <= 1:
             break
         del remaining[step_key]
-        trial = {**data, "trace": remaining}
+        dropped_so_far = original_count - len(remaining)
+        trial = {
+            **data,
+            "trace": remaining,
+            "_truncated": True,
+            "dropped_steps": dropped_so_far,
+            "kept_steps": len(remaining),
+        }
         trial_ser = json.dumps(trial, separators=(",", ":"), ensure_ascii=False)
         if len(trial_ser) <= max_chars:
             break

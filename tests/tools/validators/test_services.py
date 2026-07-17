@@ -32,6 +32,53 @@ class TestFileDeps:
         assert v.file_deps() == []
 
 
+class TestM10aDeviceActions:
+    """M10a: HA device-action steps (device_id + domain + type) must be
+    synthesised as `<domain>.<type>` for service validation."""
+
+    def test_device_action_step_extracted_as_synthetic_service(self):
+        found: list[tuple[str, str]] = []
+        step = {
+            "device_id": "abc-123",
+            "domain": "light",
+            "entity_id": "light.kitchen",
+            "type": "turn_on",
+        }
+        ServiceValidator._extract_services(step, "automations.yaml", found)
+        assert any(svc == "light.turn_on" for svc, _ in found)
+
+    def test_device_action_without_domain_not_extracted(self):
+        """Missing domain or type means it's not a valid device action."""
+        found: list[tuple[str, str]] = []
+        step = {"device_id": "abc-123", "type": "turn_on"}  # no domain
+        ServiceValidator._extract_services(step, "automations.yaml", found)
+        assert not any(svc == "turn_on" for svc, _ in found)
+
+
+class TestM9DataPayloadNotExtracted:
+    """M9: `action:` keys inside `data:` payloads are notification button labels,
+    not service calls — must not be extracted."""
+
+    def test_data_payload_actions_not_extracted_as_services(self):
+        found: list[tuple[str, str]] = []
+        config = {
+            "action": "notify.mobile_app",
+            "data": {
+                "data": {
+                    "actions": [
+                        {"action": "SNOOZE"},
+                        {"action": "DISMISS"},
+                    ]
+                }
+            },
+        }
+        ServiceValidator._extract_services(config, "automations.yaml", found)
+        services = [svc for svc, _ in found]
+        assert services == ["notify.mobile_app"]
+        assert "SNOOZE" not in services
+        assert "DISMISS" not in services
+
+
 class TestServiceValidation:
     def test_valid_service_passes(self, config_dir):
         _write_automation(

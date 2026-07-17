@@ -9,10 +9,12 @@ import json
 import sys
 from pathlib import Path
 
-from ruamel.yaml import YAMLError
+from ruamel.yaml import YAML, YAMLError
 
 from tools.common import resolve_summary
 from tools.ha.yaml_editor import YAMLEditor
+
+_SAFE_YAML = YAML(typ="safe")
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -141,7 +143,7 @@ def run(args: argparse.Namespace) -> int:
         alias: str = args.alias  # type: ignore[assignment]
 
         if args.set:
-            return _run_set(editor, alias, args.set)
+            return _run_set(editor, alias, args.set, quiet)
 
         if args.remove:
             return _run_remove(editor, alias, quiet)
@@ -231,7 +233,7 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
     return 0
 
 
-def _run_set(editor: YAMLEditor, alias: str, kvs: list[str]) -> int:
+def _run_set(editor: YAMLEditor, alias: str, kvs: list[str], quiet: bool) -> int:
     updates: dict = {}
     for kv in kvs:
         if "=" not in kv:
@@ -262,7 +264,8 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str]) -> int:
         return 1
 
     editor.save()
-    print(f"Updated '{alias}': {list(updates.keys())}")
+    if not quiet:
+        print(f"Updated '{alias}': {list(updates.keys())}")
     return 0
 
 
@@ -284,11 +287,16 @@ def _run_remove(editor: YAMLEditor, alias: str, quiet: bool) -> int:
 
 
 def _parse_value(raw: str):
-    """Parse a single key=value string using YAML for booleans/ints etc."""
-    from ruamel.yaml import YAML
+    """Parse a single key=value string using YAML for booleans/ints etc.
 
-    y = YAML(typ="safe")
+    Coercion table (pinned by test_parse_value_coercion):
+        true/false -> bool    123 -> int     3.14 -> float
+        null/~/"" -> None     hello -> str   yes/no -> str (YAML 1.2)
+        [1,2] -> list         '"true"' -> literal str "true"
+    To force a literal string that looks like another type, wrap it in
+    single or double quotes (e.g. --set foo='"true"').
+    """
     try:
-        return y.load(raw)
-    except YAMLError, ValueError, TypeError:  # pragma: no cover
+        return _SAFE_YAML.load(raw)
+    except YAMLError, ValueError, TypeError:
         return raw

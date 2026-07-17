@@ -5,6 +5,22 @@ import pytest
 from tools.output_shape import apply_output_shape
 
 
+class TestFirstBound:
+    """M23: ``first`` must be >= 1 (argparse guarantees this, but the public
+    function must guard against programmatic misuse)."""
+
+    def test_first_zero_raises(self):
+        with pytest.raises(ValueError, match="first"):
+            apply_output_shape([1, 2, 3], first=0)
+
+    def test_first_negative_raises(self):
+        with pytest.raises(ValueError, match="first"):
+            apply_output_shape([1, 2, 3], first=-1)
+
+    def test_first_none_passes_through(self):
+        assert apply_output_shape([1, 2, 3]) == [1, 2, 3]
+
+
 class TestNoOp:
     def test_no_kwargs_returns_unchanged(self):
         data = [{"a": 1}, {"b": 2}]
@@ -150,6 +166,63 @@ class TestMaxChars:
         data = [{"very_long_key_" * 50: "x"}]
         result = apply_output_shape(data, max_chars=20)
         assert result == [{"_truncated": True, "shown": 0, "total": 1}]
+
+
+class TestTruncateList:
+    """M24: characterisation tests for _truncate_list — pin behaviour before
+    the O(N²) → O(N log N) refactor."""
+
+    def test_truncate_list_empty_input(self):
+        from tools.output_shape import _truncate_list
+
+        result = _truncate_list([], 100)
+        assert result == [{"_truncated": True, "shown": 0, "total": 0}]
+
+    def test_truncate_list_keeps_largest_prefix_that_fits(self):
+        import json
+
+        from tools.output_shape import _truncate_list
+
+        items = [{"i": i, "v": "x" * 10} for i in range(50)]
+        max_chars = 300
+        result = _truncate_list(items, max_chars)
+        assert isinstance(result, list)
+        assert result[-1]["_truncated"] is True
+        marker = result[-1]
+        assert marker["total"] == 50
+        assert result[:-1] == items[: marker["shown"]]
+        serialized = json.dumps(result, separators=(",", ":"), ensure_ascii=False)
+        assert len(serialized) <= max_chars
+
+    def test_truncate_list_tiny_cap_returns_marker_only(self):
+        from tools.output_shape import _truncate_list
+
+        result = _truncate_list(["x" * 200], 10)
+        assert result == [{"_truncated": True, "shown": 0, "total": 1}]
+
+
+class TestMaxCharsPrettyAsymmetry:
+    """M25: --max-chars measures compact-JSON size, not pretty size.
+
+    This is intentional: compact size is the proxy for token consumption.
+    Pretty printing is only used for human consumption, and can produce larger
+    output. If you change this behaviour, update the module docstring and
+    these tests together.
+    """
+
+    def test_max_chars_measures_compact_not_pretty(self):
+        import json
+
+        from tools.output_shape import apply_output_shape
+
+        data = [{"k": i} for i in range(5)]
+        out = apply_output_shape(data, max_chars=200)
+        compact = len(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
+        pretty = len(json.dumps(out, indent=2, ensure_ascii=False))
+        assert compact <= 200
+        assert pretty >= compact, (
+            "pretty output must be >= compact size (asymmetry documented in M25)"
+        )
 
 
 class TestOrdering:

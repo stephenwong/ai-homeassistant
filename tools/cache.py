@@ -1,12 +1,17 @@
 """Validator result cache — skips re-validation when no relevant files changed."""
 
+import contextlib
 import hashlib
 import json
+import os
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 CACHE_DIR_NAME = ".cache/validators"
+
+CACHE_SCHEMA_VERSION = 1
 
 
 def compute_hash(config_dir: Path, patterns: list[str]) -> str:
@@ -42,21 +47,35 @@ def cache_path(config_dir: Path, name: str) -> Path:
 def load_cache(config_dir: Path, name: str) -> dict | None:
     """Load a cached validator result. Returns None on any failure.
 
-    Does NOT create directories — only reads from existing cache files.
+    Retries once after 100ms on transient JSON decode errors (per AGENTS.md
+    convention for atomic-write safety). Does NOT create directories — only
+    reads from existing cache files.
     """
     path = config_dir / CACHE_DIR_NAME / f"{name}.json"
     if not path.is_file():
         return None
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
+    data = None
+    for attempt in range(2):
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            break
+        except json.JSONDecodeError:
+            if attempt == 0:
+                time.sleep(0.1)
+                continue
             return None
-        if "hash" not in data or "passed" not in data:
+        except OSError:
             return None
-        return data
-    except OSError, json.JSONDecodeError, ValueError:
+    if data is None:
         return None
+    if not isinstance(data, dict):
+        return None
+    if "hash" not in data or "passed" not in data:
+        return None
+    if data.get("schema") != CACHE_SCHEMA_VERSION:
+        return None
+    return data
 
 
 # ====================================================================
@@ -122,8 +141,14 @@ def save_cache(
     passed: bool,
     duration: float,
 ) -> None:
-    """Save a validator result to the cache.  Writes warning to stderr on failure."""
+    """Save a validator result to the cache atomically.
+
+    Writes to a temp file then ``os.replace``s it into place, so a crash
+    mid-write never leaves a truncated cache file.  Writes a warning to
+    stderr on persistent failure.
+    """
     data = {
+        "schema": CACHE_SCHEMA_VERSION,
         "validator": validator_name,
         "hash": file_hash,
         "passed": passed,
@@ -131,8 +156,16 @@ def save_cache(
         "duration": round(duration, 4),
     }
     path = cache_path(config_dir, name)
+    tmp = path.with_suffix(".json.tmp")
     try:
-        with open(path, "w", encoding="utf-8") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
     except OSError as e:
         print(f"WARN: failed to write cache {path}: {e}", file=sys.stderr)
+    finally:
+        if tmp.exists():
+            with contextlib.suppress(OSError):
+                tmp.unlink()
