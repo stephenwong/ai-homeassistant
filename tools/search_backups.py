@@ -21,10 +21,11 @@ from tools.common import get_env_int, non_negative_int
 from tools.prune_backups import get_backups
 
 
-def is_potentially_unsafe_regex(pattern: str) -> bool:
-    """Detect common catastrophic-backtracking regex patterns.
+def is_likely_unsafe_regex(pattern: str) -> bool:
+    """Heuristic check for patterns that MIGHT cause ReDoS.
 
-    This intentionally targets only obvious nested-quantifier forms.
+    Only catches the classic ``(a+)+`` / ``(a*)*`` shapes. NOT a complete
+    ReDoS detector — pair with a watchdog timeout at the call site.
     """
     nested_quantifier_patterns = [
         r"\([^)]*[+*][^)]*\)[+*]",  # e.g. (a+)+, (.*)+
@@ -35,17 +36,19 @@ def is_potentially_unsafe_regex(pattern: str) -> bool:
 
 def search_backup(
     backup: dict, pattern: re.Pattern, yaml_only: bool = True, context_lines: int = 0
-) -> list[dict]:
-    """Search a single backup archive for a pattern. Returns list of matches."""
+) -> tuple[list[dict], bool]:
+    """Search a single backup archive for a pattern. Returns (matches, unreadable)."""
     matches = []
     try:
         with tarfile.open(backup["path"], "r:gz") as tar:
-            for member in tar.getmembers():
+            for member in tar:
                 if not member.isfile():
                     continue
 
+                display_name = member.name.removeprefix("./")
+
                 if yaml_only and not (
-                    member.name.endswith(".yaml") or member.name.endswith(".yml")
+                    display_name.endswith(".yaml") or display_name.endswith(".yml")
                 ):
                     continue
 
@@ -79,7 +82,7 @@ def search_backup(
                                 continue
 
                             match_entry = {
-                                "file": member.name,
+                                "file": display_name,
                                 "line_num": line_num,
                                 "line": line,
                             }
@@ -101,8 +104,9 @@ def search_backup(
                 match.pop("_remaining_after", None)
     except (tarfile.TarError, OSError) as e:
         print(f"  Warning: Could not read {backup['filename']}: {e}", file=sys.stderr)
+        return [], True
 
-    return matches
+    return matches, False
 
 
 def main() -> int:
@@ -128,7 +132,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if is_potentially_unsafe_regex(args.pattern):
+    if is_likely_unsafe_regex(args.pattern):
         print(
             "Invalid regex pattern: pattern appears unsafe "
             "(nested quantifiers can cause catastrophic backtracking)",
@@ -183,9 +187,12 @@ def main() -> int:
         for backup, future in futures:
             results.append((backup, future.result()))
 
-    match_count = sum(1 for _backup, matches in results if matches)
+    unreadable_count = sum(
+        1 for _backup, (_matches, unreadable) in results if unreadable
+    )
+    match_count = sum(1 for _backup, (matches, _u) in results if matches)
 
-    for backup, matches in results:
+    for backup, (matches, _u) in results:
         date_str = backup["timestamp"].strftime("%b %d")
         if matches:
             print(f"  MATCH  {backup['filename']} ({date_str})")
@@ -202,8 +209,12 @@ def main() -> int:
         else:
             print(f"  ----   {backup['filename']} ({date_str})")
 
-    print(f"\nFound in {match_count} of {len(backups)} backups", file=sys.stderr)
-    return 0
+    unreadable_suffix = f" ({unreadable_count} unreadable)" if unreadable_count else ""
+    print(
+        f"\nFound in {match_count} of {len(backups)} backups{unreadable_suffix}",
+        file=sys.stderr,
+    )
+    return 0 if match_count else (1 if unreadable_count else 0)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ class TestValidatorResult:
         r = ValidatorResult(
             description="Test",
             passed=True,
-            stdout="out",
+            stdout="",
             stderr="err",
             duration=0.5,
         )
@@ -649,7 +649,6 @@ class TestRun:
         _, err = capsys.readouterr()
         assert "MyValidator" in err  # 260
         assert "FAILED" in err  # 238/262
-        assert "some stdout output" in err  # 264-267
         assert "the error text" in err  # 268-271
         assert "1.50s" in err  # 263
         assert "failed" in err.lower()  # 294

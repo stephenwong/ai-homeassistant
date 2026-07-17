@@ -1211,3 +1211,67 @@ class TestRaw:
         args = make_args(raw=True)
         assert curl_cmd.run(args) == 0
         assert capsys.readouterr().out == "raw body"
+
+
+# ---------------------------------------------------------------------------
+# TQ2: --max-chars interaction tests
+# ---------------------------------------------------------------------------
+
+
+class TestMaxCharsInteractions:
+    """TQ2: --max-chars combined with other flags."""
+
+    def test_pretty_with_max_chars_bounds_compact_size(self, mock_client, capsys):
+        """--pretty + --max-chars: compact size must be bounded (pretty may exceed)."""
+        data = [{f"k{i}": i} for i in range(100)]
+        mock_client.get.return_value = json_resp(data)
+        args = make_args(endpoint="/api/states", pretty=True, max_chars=200)
+        assert curl_cmd.run(args) == 0
+        out = capsys.readouterr().out
+        parsed = json.loads(out)
+        compact = len(json.dumps(parsed, separators=(",", ":")))
+        assert compact <= 200, f"compact size {compact} exceeds max_chars=200"
+
+    def test_no_guard_disables_env_max_chars(self, mock_client, monkeypatch, capsys):
+        """--no-guard disables even HA_CLI_MAX_CHARS env var (user preference wins)."""
+        monkeypatch.setenv("HA_CLI_MAX_CHARS", "150")
+        data = [{"x": i} for i in range(500)]
+        mock_client.get.return_value = json_resp(data)
+        args = make_args(endpoint="/api/states", no_guard=True)
+        assert curl_cmd.run(args) == 0
+        parsed = json.loads(capsys.readouterr().out)
+        assert len(parsed) == 500  # all items, no cap
+
+    def test_auth_token_never_in_stderr(self, mock_client, capsys):
+        """On HTTP error, the auth token must not appear in stderr."""
+        mock_client.get.return_value = json_resp({}, status=500)
+        args = make_args(endpoint="/api/states")
+        assert curl_cmd.run(args) == 1
+        err = capsys.readouterr().err
+        assert "Bearer" not in err
+        assert "tok" not in err
+
+    def test_large_list_does_not_hang(self, mock_client, capsys):
+        """1000+ items must shape in reasonable time (perf guard)."""
+        import time
+
+        data = [{"i": i, "v": "x" * 20} for i in range(2000)]
+        mock_client.get.return_value = json_resp(data)
+        args = make_args(endpoint="/api/states", max_chars=500)
+        start = time.monotonic()
+        assert curl_cmd.run(args) == 0
+        elapsed = time.monotonic() - start
+        assert elapsed < 3.0, f"shaping took {elapsed:.2f}s (may be slow under CI load)"
+
+    def test_headers_are_case_insensitive(self, mock_client, capsys):
+        """CaseInsensitiveDict headers should not break response parsing."""
+        from requests.structures import CaseInsensitiveDict
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.headers = CaseInsensitiveDict({"CONTENT-TYPE": "application/json"})
+        resp.json.return_value = {"ok": True}
+        resp.text = '{"ok": true}'
+        mock_client.get.return_value = resp
+        args = make_args(endpoint="/api/states")
+        assert curl_cmd.run(args) == 0

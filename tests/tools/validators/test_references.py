@@ -106,8 +106,8 @@ class TestIsUUIDFormat:
         assert validator.is_uuid_format("sensor.kitchen_motion") is False
         assert validator.is_uuid_format("88a52f17bf43cb276836f06ac5c0744") is False
         assert validator.is_uuid_format("88a52f17bf43cb276836f06ac5c074455") is False
-        assert validator.is_uuid_format("88a52f17-bf43-cb27-6836-f06ac5c07444") is False
         assert validator.is_uuid_format("gghhiijjkkllmmnnooppqqrrssttuu99") is False
+        assert validator.is_uuid_format("88a52f17-bf43-cb27-6836-f06ac5c0744X") is False
 
 
 class TestExtractEntityRegistryIds:
@@ -1207,3 +1207,102 @@ class TestCoverageExtras:
         assert "PASS" in captured.out
         assert "with warnings" in captured.out
         assert "Notify only" in captured.err
+
+
+# ── Batch 11: L39-L44 ─────────────────────────────────────────────────────
+
+
+def test_disabled_device_referenced_warns(validator, config_dir):
+    """L39: a reference to a disabled device must warn."""
+    test_file = config_dir / "test_disabled_device.yaml"
+    test_file.write_text("device_id: disabled_device_id_123456789012\n")
+    assert validator.validate_file_references(test_file) is True
+    assert any("disabled device" in w.lower() for w in validator.warnings)
+
+
+def test_hidden_entity_referenced_emits_info(validator, config_dir):
+    """L40: a hidden entity reference must produce an info note."""
+    # The existing config_dir fixture doesn't have a hidden entity.
+    # Write a new file referencing an entity that we mark as hidden.
+    test_file = config_dir / "test_hidden_entity.yaml"
+    test_file.write_text("entity_id: binary_sensor.test_motion_battery\n")
+    # Manually add hidden_by to the registry in memory
+    reg_file = config_dir / ".storage" / "core.entity_registry"
+    import json
+
+    data = json.loads(reg_file.read_text())
+    for ent in data["data"]["entities"]:
+        if ent["entity_id"] == "binary_sensor.test_motion_battery":
+            ent["hidden_by"] = "user"
+    reg_file.write_text(json.dumps(data))
+    # Recreate validator to pick up changes
+    from tools.validators.references import ReferenceValidator
+
+    v = ReferenceValidator(str(config_dir))
+    v.validate_file_references(test_file)
+    assert any("hidden" in i.lower() and "test_motion_battery" in i for i in v.info)
+
+
+@pytest.mark.parametrize(
+    "uuid_val",
+    [
+        "aAbBcCdDeEfF00112233445566778899",  # 32 hex, mixed case
+        "abcdefAB-12ab-cd34-ef56-abcdefABCDEF",  # dashed, mixed case
+        "00000000-0000-0000-0000-000000000000",  # canonical dashed
+    ],
+)
+def test_is_uuid_format_accepts_canonical_forms(validator, uuid_val):
+    """L41: both naked (32 hex) and dashed (8-4-4-4-12) UUIDs must match."""
+    assert validator.is_uuid_format(uuid_val) is True
+
+
+def test_references_main_accepts_quiet(monkeypatch, tmp_path):
+    """L42: main() must accept --quiet without error."""
+    from tools.validators.references import main
+
+    (tmp_path / ".storage").mkdir(exist_ok=True)
+    (tmp_path / "configuration.yaml").write_text("homeassistant:\n")
+    monkeypatch.setattr("sys.argv", ["ref_validator", str(tmp_path), "--quiet"])
+    assert main() == 0
+
+
+class TestExtractEntityReferencesNesting:
+    """L44-gap: choose/repeat/parallel nesting must be traversed."""
+
+    def test_extracts_entities_from_choose_parallel_nested(self, validator):
+        data = {
+            "action": [
+                {"action": "light.turn_on", "target": {"entity_id": "light.a"}},
+                {
+                    "choose": [
+                        {
+                            "conditions": [],
+                            "sequence": [
+                                {
+                                    "action": "switch.turn_on",
+                                    "target": {"entity_id": "switch.b"},
+                                },
+                            ],
+                        },
+                    ]
+                },
+                {
+                    "repeat": {
+                        "count": 1,
+                        "sequence": [
+                            {
+                                "action": "light.turn_off",
+                                "target": {"entity_id": "light.c"},
+                            },
+                        ],
+                    }
+                },
+                {
+                    "parallel": [
+                        {"action": "fan.turn_on", "target": {"entity_id": "fan.d"}},
+                    ]
+                },
+            ]
+        }
+        refs = validator.extract_entity_references(data)
+        assert {"light.a", "switch.b", "light.c", "fan.d"} <= refs

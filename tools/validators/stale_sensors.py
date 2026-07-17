@@ -81,6 +81,10 @@ class StaleSensorValidator(ValidatorBase):
         """Get the current UTC time. Easy to mock in unit tests."""
         return datetime.now(UTC)
 
+    def _validate(self) -> bool:
+        """StaleSensorValidator overrides validate_all() — this satisfies ABC."""
+        return True
+
     def _load_registry(self) -> dict[str, Any] | None:
         """Load and parse the local entity registry with retry-on-failure."""
         registry_file = self.config_dir / ".storage" / "core.entity_registry"
@@ -274,8 +278,20 @@ class StaleSensorValidator(ValidatorBase):
             # Determine baseline timestamp to compare
             baseline_ts = heartbeat_ts
             if baseline_ts is None:
-                last_updated_str = state.get("last_updated")
-                baseline_ts = self.parse_timestamp(last_updated_str)
+                # Prefer last_changed (value-change) over last_updated (attr-write).
+                last_changed = state.get("last_changed")
+                last_updated = state.get("last_updated")
+                if last_changed and last_updated:
+                    # Use whichever is older — value change before latest attr write
+                    # is the stronger staleness signal.
+                    try:
+                        tc = self.parse_timestamp(last_changed)
+                        tu = self.parse_timestamp(last_updated)
+                        baseline_ts = min(tc, tu) if (tc and tu) else (tc or tu)
+                    except Exception:
+                        baseline_ts = self.parse_timestamp(last_updated)
+                else:
+                    baseline_ts = self.parse_timestamp(last_changed or last_updated)
 
             if baseline_ts is None:
                 continue

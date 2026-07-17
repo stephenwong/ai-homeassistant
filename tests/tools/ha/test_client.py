@@ -38,8 +38,12 @@ class TestInit:
 
 
 class TestFromEnv:
-    """All from_env tests patch load_env_file so the project's real .env
-    doesn't leak into the test environment and override monkeypatched values.
+    """Tests for HAClient.from_env().
+
+    These rely on the autouse ``_stub_load_env_file`` fixture in
+    ``tests/conftest.py``, which no-ops ``load_env_file`` for both
+    ``tools.ha.client`` and ``tools.validators.stale_sensors``. No per-test
+    patching is needed.
     """
 
     def test_reads_env_vars(self, monkeypatch):

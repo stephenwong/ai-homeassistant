@@ -2,7 +2,7 @@
 
 import argparse
 
-from tools.common import resolve_summary
+from tools.common import positive_int, resolve_summary
 from tools.validators.stale_sensors import StaleSensorValidator
 
 
@@ -22,7 +22,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument(
         "--threshold",
         "-t",
-        type=int,
+        type=positive_int,
         default=24,
         help="Staleness threshold in hours (default: 24)",
     )
@@ -32,7 +32,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     parser.add_argument(
         "--exclude-platforms",
-        help="Platforms to exclude (default: template,group,etc.)",
+        help="Comma-separated platforms to exclude "
+        "(OVERRIDES the defaults; defaults: template,group,derivative,...)",
     )
     parser.add_argument(
         "--only-domains",
@@ -91,9 +92,4 @@ def run(args: argparse.Namespace) -> int:
         summary=summary,
     )
 
-    validator.validate_all()
-    validator.print_results()
-
-    if args.fail_on_stale and validator.warnings:
-        return 1
-    return 0
+    return 0 if validator.validate_all() else 1

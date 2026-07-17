@@ -4,6 +4,8 @@ import argparse
 from argparse import Namespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tools.commands import stale_sensors as stale_cmd
 
 
@@ -45,6 +47,32 @@ class TestAddParser:
         assert args.ignore_restored is True
         assert args.fail_on_stale is True
 
+    def test_negative_threshold_rejected(self):
+        """L30: --threshold -1 must be rejected at argparse time."""
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        stale_cmd.add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["stale-sensors", "--threshold", "-1"])
+
+    def test_zero_threshold_rejected(self):
+        """L30: --threshold 0 is meaningless — reject."""
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        stale_cmd.add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["stale-sensors", "--threshold", "0"])
+
+    def test_exclude_platforms_help_documents_override(self, capsys):
+        """L31: --exclude-platforms help text must mention OVERRIDES."""
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        stale_cmd.add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["stale-sensors", "--help"])
+        out = capsys.readouterr().out
+        assert "OVERRIDES" in out
+
 
 class TestRun:
     @patch("tools.commands.stale_sensors.StaleSensorValidator")
@@ -78,16 +106,83 @@ class TestRun:
             summary=True,
         )
         mock_val.validate_all.assert_called_once()
-        mock_val.print_results.assert_called_once()
+
+    @patch("tools.commands.stale_sensors.StaleSensorValidator")
+    def test_run_returns_validate_all_result(self, mock_val_class):
+        """L29: run() must return 1 iff validate_all() returned False."""
+        mock_val = MagicMock()
+        mock_val_class.return_value = mock_val
+
+        mock_val.validate_all.return_value = True
+        mock_val.warnings = []
+        args = Namespace(
+            config="config_path",
+            threshold=24,
+            exclude_domains=None,
+            exclude_platforms=None,
+            only_domains=None,
+            ignore_restored=False,
+            fail_on_stale=False,
+            summary=True,
+            no_summary=False,
+        )
+        assert stale_cmd.run(args) == 0
+
+        mock_val.validate_all.return_value = False
+        assert stale_cmd.run(args) == 1
+
+    @patch("tools.commands.stale_sensors.StaleSensorValidator")
+    def test_run_delegates_to_validator_explicit_summary(self, mock_val_class):
+        """L32: explicit summary= kwarg — no TTY reliance."""
+        mock_val = MagicMock()
+        mock_val.validate_all.return_value = True
+        mock_val.warnings = []
+        mock_val_class.return_value = mock_val
+
+        args = Namespace(
+            config="config_path",
+            threshold=24,
+            exclude_domains=None,
+            exclude_platforms=None,
+            only_domains="sensor",
+            ignore_restored=False,
+            fail_on_stale=False,
+            summary=True,
+            no_summary=False,
+        )
+        stale_cmd.run(args)
+        mock_val_class.assert_called_once()
+        assert mock_val_class.call_args.kwargs["summary"] is True
+
+    @patch("tools.commands.stale_sensors.StaleSensorValidator")
+    def test_exclude_domains_subtracts_from_default(self, mock_val_class):
+        """L32: --exclude-domains sensor must remove 'sensor' from the scanned set."""
+        mock_val = MagicMock()
+        mock_val.validate_all.return_value = True
+        mock_val.warnings = []
+        mock_val_class.return_value = mock_val
+
+        args = Namespace(
+            config="config_path",
+            threshold=24,
+            exclude_domains="sensor",
+            exclude_platforms=None,
+            only_domains="sensor,light",
+            ignore_restored=False,
+            fail_on_stale=False,
+        )
+        stale_cmd.run(args)
+        mock_val_class.assert_called_once()
+        # sensor should be subtracted, leaving only light
+        assert mock_val_class.call_args.kwargs["only_domains"] == {"light"}
 
     @patch("tools.commands.stale_sensors.StaleSensorValidator")
     def test_fail_on_stale_behavior(self, mock_val_class):
         mock_val = MagicMock()
-        mock_val.validate_all.return_value = True
-        mock_val.warnings = ["sensor.test_temp is stale"]
         mock_val_class.return_value = mock_val
 
-        # Case 1: fail_on_stale is False -> exit code is 0
+        # Case 1: fail_on_stale is False -> validator returns True -> exit 0
+        mock_val.validate_all.return_value = True
         args = Namespace(
             config="config_path",
             threshold=24,
@@ -99,6 +194,7 @@ class TestRun:
         )
         assert stale_cmd.run(args) == 0
 
-        # Case 2: fail_on_stale is True -> exit code is 1
+        # Case 2: fail_on_stale is True -> validator returns False -> exit 1
+        mock_val.validate_all.return_value = False
         args.fail_on_stale = True
         assert stale_cmd.run(args) == 1

@@ -7,10 +7,12 @@ Works with both list-based (automations.yaml, scenes.yaml) and dict-based
 
 import contextlib
 import os
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 
 class ValidationError(Exception):
@@ -61,15 +63,23 @@ class YAMLEditor:
 
     def _atomic_save(self, validator: Callable[[Path], bool]) -> None:
         """Write to a temp file, validate, then atomically rename."""
-        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp_path = None
         try:
-            self.dump(self._data, tmp)
-            if not validator(tmp):
+            tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115 — delete=False, not a context manager
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                delete=False,
+            )
+            tmp_path = Path(tmp.name)
+            tmp.close()
+            self.dump(self._data, tmp_path)
+            if not validator(tmp_path):
                 raise ValidationError("Atomic save aborted: validation failed")
-            os.replace(tmp, self.path)
+            os.replace(tmp_path, self.path)
         finally:
-            if tmp.exists():
-                tmp.unlink()
+            if tmp_path is not None and tmp_path.exists():
+                tmp_path.unlink()
 
     def dump(self, data, path: Path) -> None:
         """Write YAML data to a file path."""
@@ -104,6 +114,8 @@ class YAMLEditor:
 
     def find_automation(self, alias: str) -> int | None:
         """Return the index of an automation by alias, or None if not found."""
+        if alias is None:
+            return None
         self._ensure_loaded()
         if not isinstance(self._data, list):
             return None
@@ -127,7 +139,7 @@ class YAMLEditor:
         """
         self._ensure_loaded()
         if self._data is None:
-            self._data = []
+            self._data = CommentedSeq()
         self._require_list("add automation")
         assert isinstance(self._data, list)
         alias = automation.get("alias") if isinstance(automation, dict) else None
@@ -143,7 +155,7 @@ class YAMLEditor:
         """
         self._ensure_loaded()
         if self._data is None:
-            self._data = {}
+            self._data = CommentedMap()
         self._require_dict("add script")
         assert isinstance(self._data, dict)
         if key in self._data:
@@ -155,6 +167,7 @@ class YAMLEditor:
 
         Raises TypeError if data is not a list.
         Raises ValueError if the alias is not found.
+        Raises TypeError if the target entry is not a dict.
         """
         self._require_list("update automation")
         assert isinstance(self._data, list)
@@ -162,22 +175,29 @@ class YAMLEditor:
         if idx is None:
             raise ValueError(f"Automation with alias '{alias}' not found")
         target = self._data[idx]
-        if isinstance(target, dict):
-            target.update(updates)
+        if not isinstance(target, dict):
+            raise TypeError(
+                f"Automation '{alias}' is not a dict (got {type(target).__name__})"
+            )
+        target.update(updates)
 
     def update_script(self, key: str, updates: dict) -> None:
         """Merge updates into a script entry. Does NOT save.
 
         Raises TypeError if data is not a dict.
         Raises ValueError if the key is not found.
+        Raises TypeError if the target entry is not a dict.
         """
         self._require_dict("update script")
         assert isinstance(self._data, dict)
         if key not in self._data:
             raise ValueError(f"Script '{key}' not found")
         target = self._data[key]
-        if isinstance(target, dict):
-            target.update(updates)
+        if not isinstance(target, dict):
+            raise TypeError(
+                f"Script '{key}' is not a dict (got {type(target).__name__})"
+            )
+        target.update(updates)
 
     def remove_automation(self, alias: str) -> None:
         """Remove an automation by alias. Does NOT save.

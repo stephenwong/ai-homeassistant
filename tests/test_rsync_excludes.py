@@ -18,6 +18,8 @@ import pytest
 PULL_EXCLUDES = Path(__file__).parent.parent / ".rsync-excludes-pull"
 PUSH_EXCLUDES = Path(__file__).parent.parent / ".rsync-excludes-push"
 
+pytestmark = pytest.mark.skipif(not shutil.which("rsync"), reason="rsync not installed")
+
 
 @pytest.fixture
 def temp_dir():
@@ -265,4 +267,13 @@ def test_pull_deletes_stale_local_files(temp_dir, remote_dir):
 
     assert not (local / "stale_file.yaml").exists(), (
         "Stale files should be deleted by --delete"
+    )
+
+
+def test_push_excludes_z2m_coordinator_backup(local_dir, remote_dir):
+    """L80: the push-side exclude file must protect z2m coordinator_backup.json."""
+    run_rsync(local_dir, remote_dir, PUSH_EXCLUDES)
+
+    assert (remote_dir / "zigbee2mqtt" / "coordinator_backup.json").exists(), (
+        "coordinator_backup.json should be preserved on remote during push"
     )

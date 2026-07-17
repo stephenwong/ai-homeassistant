@@ -7,7 +7,6 @@ Also checks scripts.yaml for duplicate top-level keys (M10b).
 """
 
 import argparse
-import collections
 
 import yaml
 
@@ -59,7 +58,7 @@ class DuplicateIDValidator(ValidatorBase):
             warnings and do not change the return value.
         """
         all_valid = True
-        seen: collections.Counter[str] = collections.Counter()
+        seen: dict[str, list[int]] = {}
         missing = 0
 
         for i, automation in enumerate(automations):
@@ -74,12 +73,14 @@ class DuplicateIDValidator(ValidatorBase):
                 alias = automation.get("alias", f"#{i}")
                 self.warnings.append(f"{source}: Automation '{alias}' missing 'id'")
             else:
-                seen[str(aid)] += 1
+                seen.setdefault(str(aid), []).append(i)
 
-        for aid, count in seen.items():
-            if count > 1:
+        for aid, indices in seen.items():
+            if len(indices) > 1:
+                aliases = [automations[i].get("alias", "<no alias>") for i in indices]
                 self.errors.append(
-                    f"{source}: Duplicate automation id '{aid}' used {count} times"
+                    f"{source}: Duplicate automation id '{aid}' at positions {indices} "
+                    f"(aliases: {aliases})"
                 )
                 all_valid = False
 

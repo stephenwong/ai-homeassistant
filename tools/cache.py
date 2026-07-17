@@ -23,7 +23,7 @@ def compute_hash(config_dir: Path, patterns: list[str]) -> str:
     sha = hashlib.sha256()
     paths: list[Path] = []
     for pattern in patterns:
-        for p in sorted(config_dir.glob(pattern)):
+        for p in config_dir.glob(pattern):
             if p.is_file():
                 paths.append(p)
     # Deduplicate in case patterns overlap
@@ -33,7 +33,11 @@ def compute_hash(config_dir: Path, patterns: list[str]) -> str:
             continue
         seen.add(p)
         sha.update(str(p.relative_to(config_dir)).encode())
-        sha.update(p.read_bytes())
+        try:
+            sha.update(p.read_bytes())
+        except OSError as e:
+            print(f"WARN: skipping {p} in hash: {e}", file=sys.stderr)
+            continue
     return sha.hexdigest()
 
 
@@ -129,7 +133,7 @@ def load_blob(config_dir: Path, name: str):
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except OSError, json.JSONDecodeError, ValueError:
+    except OSError, ValueError:
         return None
 
 

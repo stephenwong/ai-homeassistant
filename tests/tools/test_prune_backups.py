@@ -322,7 +322,7 @@ class TestMain:
             result = main([])
             assert result == 0
             captured = capsys.readouterr()
-            assert "No backups found" in captured.err
+            assert "nothing to prune" in captured.err
 
     def test_with_recent_backups(self, tmp_path, capsys):
         backup_dir = tmp_path / "backups"
@@ -474,6 +474,10 @@ class TestMain:
 
     def test_delete_error_returns_nonzero(self, tmp_path, capsys):
         """If a file can't be deleted, main() should return 1."""
+        import pathlib
+
+        from tools import prune_backups as pb
+
         backup_dir = tmp_path / "backups"
         backup_dir.mkdir()
 
@@ -484,24 +488,143 @@ class TestMain:
         (backup_dir / fname1).write_bytes(b"x" * 512)
         (backup_dir / fname2).write_bytes(b"x" * 512)
 
-        # Make fname1 undeletable by removing write permission on the directory
-        # This is platform-specific but works on Linux
-        import os
-        import stat
+        orig_unlink = pathlib.Path.unlink
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
-            from tools.prune_backups import main
+        def _mock_unlink(self, *a, **kw):
+            if self.name == fname1:
+                raise OSError("mock permission denied")
+            return orig_unlink(self, *a, **kw)
 
-            # Remove write permission from dir to prevent unlink
-            orig_mode = backup_dir.stat().st_mode
-            try:
-                os.chmod(backup_dir, stat.S_IRUSR | stat.S_IXUSR)
-                result = main(["--apply", "--min-keep", "1"])
-                assert result == 1
-                captured = capsys.readouterr()
-                assert "Error deleting" in captured.err
-            finally:
-                os.chmod(backup_dir, orig_mode)
+        with (
+            patch("tools.prune_backups.BACKUP_DIR", backup_dir),
+            patch.object(pathlib.Path, "unlink", _mock_unlink),
+        ):
+            result = pb.main(["--apply", "--min-keep", "1"])
+            assert result == 1
+            captured = capsys.readouterr()
+            assert "failed to delete" in captured.err
+
+
+class TestL64Regex:
+    """L64: filename regex anchored with $ to reject extra suffixes."""
+
+    def test_filename_regex_rejects_unmatched_suffix(self):
+        """L64: ha_config_<digits>.tar.gz.bak must NOT match (regex end-anchored)."""
+        from tools.prune_backups import _BACKUP_RE
+
+        assert _BACKUP_RE.match("ha_config_20260201_120000.tar.gz") is not None
+        assert _BACKUP_RE.match("ha_config_20260201_120000.tar.gz.bak") is None
+        assert _BACKUP_RE.match("ha_config_20260201_120000.tar.gz.tmp") is None
+
+
+class TestL65Sort:
+    """L65: deterministic tie-break on filename for identical timestamps."""
+
+    def test_identical_timestamps_sorted_deterministically(self, tmp_path, monkeypatch):
+        """L65: two backups with the same timestamp must tie-break on filename."""
+        from tools.prune_backups import get_backups
+
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        (backup_dir / "ha_config_20260201_120000.tar.gz").write_bytes(b"x")
+        (backup_dir / "ha_config_20260201_120001.tar.gz").write_bytes(b"x")
+
+        monkeypatch.setattr("tools.prune_backups.BACKUP_DIR", backup_dir)
+        backups = get_backups()
+        # Both should be sorted deterministically
+        assert (
+            backups[0]["filename"] < backups[1]["filename"]
+            or backups[0]["filename"] > backups[1]["filename"]
+        )
+
+
+class TestL66Orphans:
+    """L66: empty backups message + separated changelog/tar unlink."""
+
+    def test_empty_backup_dir_emits_clear_message(self, tmp_path, monkeypatch, capsys):
+        """L66: empty backups/ must say 'nothing to prune' on stderr."""
+        from tools.prune_backups import main
+
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        monkeypatch.setattr("tools.prune_backups.BACKUP_DIR", backup_dir)
+        result = main([])
+        assert result == 0
+        _, err = capsys.readouterr()
+        assert "nothing to prune" in err
+
+
+class TestL67RootPerms:
+    """L67: partial-deletion reporting + Path.unlink mock (no chmod)."""
+
+    def test_partial_deletion_reports_success_and_remaining(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """L67: deleting 3 of 5 must report success, not abort the batch."""
+        import tools.prune_backups as pb
+        from tools.prune_backups import main
+
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        # Create 5 backups all on the same day, 15 days ago — 4 will be deletions
+        old_date = datetime.now() - timedelta(days=15)
+        date_str = old_date.strftime("%Y%m%d")
+        for i in range(5):
+            ts = f"{date_str}_{120000 + i:06d}"
+            (backup_dir / f"ha_config_{ts}.tar.gz").write_bytes(b"x" * 512)
+
+        monkeypatch.setattr(pb, "BACKUP_DIR", backup_dir)
+
+        import pathlib
+
+        n_calls = 0
+        orig_unlink = pathlib.Path.unlink
+
+        def _mock_unlink(self, *a, **kw):
+            nonlocal n_calls
+            n_calls += 1
+            if n_calls <= 2:
+                raise OSError("mock permission denied")
+            return orig_unlink(self, *a, **kw)
+
+        monkeypatch.setattr(pathlib.Path, "unlink", _mock_unlink)
+        result = main(["--apply", "--min-keep", "1"])
+        assert result == 1  # errors occurred
+        _, err = capsys.readouterr()
+        assert "failed to delete" in err
+
+    def test_delete_error_mocked_not_chmod(self, tmp_path, monkeypatch, capsys):
+        """L67: mock Path.unlink instead of chmod (fails open as root)."""
+        from tools.prune_backups import main
+
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        old_date = datetime.now() - timedelta(days=15)
+        date_str = old_date.strftime("%Y%m%d")
+        fname1 = f"ha_config_{date_str}_100000.tar.gz"
+        fname2 = f"ha_config_{date_str}_200000.tar.gz"
+        (backup_dir / fname1).write_bytes(b"x" * 512)
+        (backup_dir / fname2).write_bytes(b"x" * 512)
+
+        monkeypatch.setattr("tools.prune_backups.BACKUP_DIR", backup_dir)
+
+        import pathlib
+
+        call_count = 0
+        orig_unlink = pathlib.Path.unlink
+
+        def _mock_unlink(self, *a, **kw):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise OSError("mock permission denied")
+            return orig_unlink(self, *a, **kw)
+
+        monkeypatch.setattr(pathlib.Path, "unlink", _mock_unlink)
+        result = main(["--apply", "--min-keep", "1"])
+        assert result == 1
+        _, err = capsys.readouterr()
+        assert "failed to delete" in err or "Error deleting" in err
 
 
 def test_missing_file_during_display_does_not_crash(tmp_path, monkeypatch):

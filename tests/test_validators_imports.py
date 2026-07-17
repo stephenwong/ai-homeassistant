@@ -123,3 +123,44 @@ def test_entity_definitions_imports():
     from tools.validators.entity_definitions import EntityDefinitionExtractor
 
     assert {"sun.sun", "zone.home"} == EntityDefinitionExtractor.BUILTIN_ENTITIES
+
+
+class TestL80FileDeps:
+    """L80: round-trip compute_hash + summary= kwarg forwarding."""
+
+    def test_file_deps_patterns_resolve_against_real_config(self):
+        """L80: every file_deps() pattern must resolve (catch typos)."""
+        from pathlib import Path
+
+        from tools.cache import compute_hash
+
+        config_dir = Path(__file__).parent.parent / "config"
+        for cls, _desc in [
+            (DuplicateIDValidator, ""),
+            (YAMLValidator, ""),
+            (ReferenceValidator, ""),
+        ]:
+            instance = cls(config_dir=str(config_dir))
+            deps = instance.file_deps()
+            if deps:
+                h = compute_hash(Path(config_dir), deps)
+                assert isinstance(h, str)
+                assert len(h) == 64
+
+
+ALL_VALIDATOR_SUBCLASSES = [
+    DuplicateIDValidator,
+    YAMLValidator,
+    ReferenceValidator,
+    ServiceValidator,
+    HAOfficialValidator,
+    TemplateValidator,
+]
+
+
+@pytest.mark.parametrize("cls", ALL_VALIDATOR_SUBCLASSES)
+def test_summary_kwarg_forwarded(cls):
+    """L80 (AGENTS.md): every subclass __init__ must accept+forward summary=."""
+    instance = cls(summary=True)
+    assert hasattr(instance, "summary")
+    assert instance.summary is True

@@ -1,7 +1,7 @@
 """Shared JSON output-shaping helpers for token-efficient CLI output.
 
 Provides ``apply_output_shape()`` — a single transform applying (in order)
-first-slice → pick (field projection) → max-chars (character-length truncation).
+first-slice → pick (field projection) → max-chars (char-length truncation).
 Used by curl and other JSON-emitting subcommands to cap token
 output for agent consumption.
 """
@@ -35,6 +35,8 @@ def apply_output_shape(
         data = _first(data, first)
     if pick and pick.strip():
         fields = [f.strip() for f in pick.split(",") if f.strip()]
+        if not fields:
+            return data
         data = _pick_fields(data, fields)
     if max_chars is not None and max_chars > 0:
         data = _truncate_by_chars(data, max_chars)

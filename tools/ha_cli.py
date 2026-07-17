@@ -58,15 +58,16 @@ def main(argv: list[str] | None = None) -> int:
     # Each subparser sets `func` via set_defaults; call it.
     func = getattr(args, "func", None)
     if func is None:
-        parser.print_help()
+        parser.print_help(sys.stderr)
         return 2
 
     try:
-        return int(func(args))
+        rc = func(args)
+        return rc if isinstance(rc, int) and not isinstance(rc, bool) else 1
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         return 130
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

@@ -133,6 +133,16 @@ class TestRunShow:
         assert result == 1
         assert "not found" in capsys.readouterr().err.lower()
 
+    # ── L16: empty file diagnostic ─────────────────────────────────────
+
+    def test_show_empty_file_emits_diagnostic(self, tmp_path, capsys):
+        """L16: --show on an empty file must print '(empty file)' to stderr."""
+        _write_file(tmp_path, "automations", "")
+        rc = run(self._args(tmp_path))
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "empty" in err.lower()
+
 
 class TestRunSet:
     def _args(self, cfg_dir, alias=None, kvs=None):
@@ -539,10 +549,46 @@ delete:
 
     # ── Path traversal guard (covers 87-88, 116-118) ──────────────────
 
-    def test_path_traversal_rejected(self, capsys):
-        result = run(self._ns(config="config", file="../../../etc/passwd", show=True))
+    def test_path_traversal_rejected(self, tmp_path, capsys):
+        result = run(
+            self._ns(config=str(tmp_path), file="../../../etc/passwd", show=True)
+        )
         assert result == 1
         assert "inside config directory" in capsys.readouterr().err.lower()
+
+    # ── L17: --set requires at least one KEY=VALUE ─────────────────────
+
+    def test_set_with_no_values_rejected(self, tmp_path, capsys):
+        """L17: --set with no KEY=VALUE pairs must be rejected."""
+        parser, subparsers = make_parser()
+        from tools.commands.edit import add_parser
+
+        add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["edit", "automations", "X", "--set"])
+
+    # ── L18: --add with positional alias is ambiguous ─────────────────
+
+    def test_add_with_positional_alias_rejected(self, tmp_path, capsys):
+        """L18: --add + a positional alias must be rejected as ambiguous."""
+        _write_file(
+            tmp_path,
+            "automations",
+            "- alias: A\n  triggers: []\n  actions: []\n",
+        )
+        args = Namespace(
+            config=str(tmp_path),
+            file="automations",
+            alias="A",
+            show=False,
+            set=None,
+            add='{"alias":"B"}',
+            remove=False,
+            quiet=False,
+        )
+        rc = run(args)
+        assert rc == 1
+        assert "ignores the positional alias" in capsys.readouterr().err.lower()
 
     # ── Success prints (covers 235, 285) ──────────────────────────────
 
@@ -640,3 +686,27 @@ class TestM7RunSetQuiet:
         assert rc == 0
         captured = capsys.readouterr()
         assert "Updated" in captured.out
+
+
+# ── L21: round-trip comment preservation (the YAMLEditor value prop) ──
+
+
+def test_edit_round_trip_preserves_comments(tmp_path):
+    """L21: load -> save via the edit command must preserve YAML comments."""
+    auto = tmp_path / "automations.yaml"
+    original = (
+        "# top-level comment\n"
+        "- alias: A\n"
+        "  mode: single        # inline comment\n"
+        "  triggers: []\n"
+        "  actions: []\n"
+    )
+    from tools.ha.yaml_editor import YAMLEditor
+
+    auto.write_text(original, encoding="utf-8")
+    e = YAMLEditor(auto)
+    e.load()
+    e.save()
+    saved = auto.read_text(encoding="utf-8")
+    assert "# top-level comment" in saved
+    assert "# inline comment" in saved

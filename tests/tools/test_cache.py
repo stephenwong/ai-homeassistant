@@ -80,6 +80,56 @@ class TestComputeHash:
         assert hash_top_only != hash_all
 
 
+class TestL78OrderIndependent:
+    """L78: hash must be order-independent (inner sorted() was removed)."""
+
+    def test_compute_hash_is_order_independent(self, tmp_path):
+        """L78: hash must be the same regardless of file creation/glob order."""
+        (tmp_path / "b.yaml").write_text("content b")
+        (tmp_path / "a.yaml").write_text("content a")
+        h1 = compute_hash(tmp_path, ["*.yaml"])
+        assert isinstance(h1, str)
+        assert len(h1) == 64
+
+        # Recreate files in different order — hash must be identical.
+        for p in tmp_path.glob("*.yaml"):
+            p.unlink()
+        (tmp_path / "a.yaml").write_text("content a")
+        (tmp_path / "b.yaml").write_text("content b")
+        h2 = compute_hash(tmp_path, ["*.yaml"])
+        assert h1 == h2, "hash must be independent of file creation order"
+
+
+class TestL79UnreadableFile:
+    """L79: a transient OSError on one file must skip it, not disable caching."""
+
+    def test_compute_hash_skips_unreadable_file(self, tmp_path, monkeypatch, capsys):
+        """L79: a transient OSError on one file must skip it, not disable caching."""
+        (tmp_path / "a.yaml").write_text("readable")
+        (tmp_path / "b.yaml").write_text("also readable")
+
+        import pathlib
+
+        from tools.cache import compute_hash
+
+        orig_read_bytes = pathlib.Path.read_bytes
+        n_calls = 0
+
+        def _mock_read_bytes(self):
+            nonlocal n_calls
+            n_calls += 1
+            if self.name == "b.yaml":
+                raise OSError("simulated read failure")
+            return orig_read_bytes(self)
+
+        monkeypatch.setattr(pathlib.Path, "read_bytes", _mock_read_bytes)
+        result = compute_hash(tmp_path, ["*.yaml"])
+        assert isinstance(result, str)
+        assert len(result) == 64
+        _, err = capsys.readouterr()
+        assert "WARN" in err
+
+
 class TestLoadCache:
     def test_valid_cache_returns_dict(self, tmp_path):
         from tools.cache import CACHE_SCHEMA_VERSION

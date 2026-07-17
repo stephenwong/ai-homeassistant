@@ -441,3 +441,67 @@ class TestM15CoreFailureSkipsDomain:
         actual_calls = [c[0][0] for c in client.post.call_args_list]
         assert len(actual_calls) == 1
         assert "reload_core_config" in actual_calls[0]
+
+
+class TestL68DeterministicOrder:
+    """L68: verbose per-service output is deterministically ordered."""
+
+    def test_verbose_output_order_is_deterministic(self, monkeypatch, capsys):
+        """L68: output across multiple services must be in sorted order."""
+        from unittest.mock import MagicMock, patch
+
+        from tools.reload_config import reload_config
+
+        client = MagicMock()
+        client.post.return_value = MagicMock(status_code=200)
+        client.timeout = 30
+
+        def _factory():
+            return client
+
+        monkeypatch.setattr("tools.reload_config.HAClient.from_env", _factory)
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"script/reload", "automation/reload"},
+        ):
+            ok = reload_config()
+        assert ok is True
+        _, err = capsys.readouterr()
+        # The "Reloading:" line should list services in sorted order
+        reloading_line = [ln for ln in err.split("\n") if "Reloading:" in ln]
+        assert reloading_line
+        # Both services must be listed in alphabetical order
+        assert "automations" in reloading_line[0]
+        assert "scripts" in reloading_line[0]
+        automation_pos = reloading_line[0].index("automations")
+        script_pos = reloading_line[0].index("scripts")
+        assert automation_pos < script_pos
+
+
+class TestL70ErrorDetail:
+    """L70: error-detail propagates through reload_config."""
+
+    def test_error_detail_propagates_through_reload_config(self, monkeypatch, capsys):
+        """L70: a non-2xx reload response must surface response.text in the summary."""
+        from unittest.mock import MagicMock, patch
+
+        from tools.reload_config import reload_config
+
+        client = MagicMock()
+        client.timeout = 30
+
+        resp = MagicMock(status_code=500, text="Bad config syntax")
+        client.post.return_value = resp
+
+        def _factory():
+            return client
+
+        monkeypatch.setattr("tools.reload_config.HAClient.from_env", _factory)
+        with patch(
+            "tools.reload_config.detect_changed_services",
+            return_value={"automation/reload"},
+        ):
+            ok = reload_config()
+        assert ok is False
+        _, err = capsys.readouterr()
+        assert "Bad config syntax" in err

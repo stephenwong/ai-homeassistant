@@ -344,6 +344,18 @@ uv run python tools/ha_cli.py reload
 | `make test-ssh` | Test SSH connection to HA |
 | `make clean` | Remove temp files and caches |
 
+### 💾 Backup Pruning (`prune_backups.py`)
+
+Smart retention pruning for HA backup archives. **Default is dry-run** — no files are deleted unless `--apply` is passed:
+
+```bash
+uv run python tools/prune_backups.py              # dry-run (default; prints plan only)
+uv run python tools/prune_backups.py --apply      # actually delete
+uv run python tools/prune_backups.py --apply --min-keep 5   # defense-in-depth floor
+```
+
+`--dry-run` is accepted as an explicit alias for the default. `--min-keep N` (default 3) refuses to delete if fewer than N backups would remain.
+
 ## ✏️ YAML Editing (`ha_cli edit`)
 
 **Prefer `ha_cli edit` over manual YAML editing** — it uses `ruamel.yaml` for round-trip editing that preserves comments, formatting, and key ordering. Operates on `automations.yaml` (list) and `scripts.yaml` (dict).

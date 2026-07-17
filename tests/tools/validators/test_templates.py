@@ -441,6 +441,73 @@ class TestEdgeCases:
             assert v.validate_all() is True
 
 
+class TestL50EmptyErrorBody:
+    """L50: empty error body must not IndexError."""
+
+    def test_empty_error_body_does_not_crash(self, config_dir):
+        """L50: _render returning ('error', '') must not IndexError."""
+        from unittest.mock import MagicMock, patch
+
+        _write_automation(
+            config_dir,
+            [
+                {
+                    "id": "t",
+                    "alias": "T",
+                    "triggers": [],
+                    "actions": [
+                        {
+                            "action": "notify.send",
+                            "data": {"message": "{{ something }}"},
+                        },
+                    ],
+                },
+            ],
+        )
+        client = MagicMock()
+        resp = MagicMock()
+        resp.status_code = 400
+        resp.json.return_value = {"message": ""}
+        resp.text = ""
+        client.post.return_value = resp
+        with patch("tools.validators.templates.HAClient.from_env", return_value=client):
+            v = TemplateValidator(str(config_dir))
+            assert v.validate_all() is True
+            assert len(v.errors) == 0
+
+
+class TestL51OSError:
+    """L51: OSError from from_env must degrade gracefully."""
+
+    def test_oserror_from_from_env_is_caught(self, config_dir):
+        """L51: OSError from from_env must degrade gracefully."""
+        from unittest.mock import patch
+
+        _write_automation(
+            config_dir,
+            [
+                {
+                    "id": "t",
+                    "alias": "T",
+                    "triggers": [],
+                    "actions": [
+                        {
+                            "action": "notify.send",
+                            "data": {"message": "{{ 1 + 1 }}"},
+                        },
+                    ],
+                },
+            ],
+        )
+        with patch(
+            "tools.validators.templates.HAClient.from_env",
+            side_effect=OSError("connection refused"),
+        ):
+            v = TemplateValidator(str(config_dir))
+            assert v.validate_all() is True
+            assert any("skipped" in i.lower() for i in v.info)
+
+
 class TestMain:
     def test_main_dispatches_clean(self, config_dir, monkeypatch):
         from tools.validators.templates import main

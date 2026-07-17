@@ -240,7 +240,7 @@ def test_handles_parse_error(tmp_path):
     ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
     entities = ext.get_config_defined_entities()
     assert isinstance(entities, set)
-    assert any("Failed to extract entity definitions" in w for w in w)
+    assert any("Failed to extract entity definitions" in msg for msg in w)
 
 
 def test_reports_summary(tmp_path):

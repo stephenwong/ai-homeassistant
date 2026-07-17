@@ -371,6 +371,33 @@ class TestEdgeCases:
             assert not any("light.turn_off" in e for e in v.errors)
 
 
+class TestL45NetworkGate:
+    """L45: catalog fetch must be skipped when no domain-bearing refs exist."""
+
+    def test_no_network_call_when_no_domain_qualified_services(
+        self, config_dir, monkeypatch
+    ):
+        """L45: with only bare names (no dot), the catalog fetch must be skipped."""
+        _write_automation(
+            config_dir,
+            [
+                {
+                    "id": "t",
+                    "alias": "T",
+                    "triggers": [],
+                    "actions": [
+                        {"action": "mobile_app_sm_s926b", "data": {}},
+                    ],
+                },
+            ],
+        )
+        # Without mocking, the gate should prevent from_env from being called
+        v = ServiceValidator(str(config_dir))
+        assert v.validate_all() is True
+        # No "skipped" message means no network call was attempted
+        assert not any("skipped" in i.lower() for i in v.info)
+
+
 class TestMain:
     def test_main_dispatches_clean(self, config_dir, monkeypatch):
         from tools.validators.services import main
@@ -400,3 +427,27 @@ class TestMain:
 
         monkeypatch.setattr("sys.argv", ["services", "/nonexistent"])
         assert main() == 1
+
+
+class TestL47Nesting:
+    """L47: choose/repeat/parallel nesting in service extraction."""
+
+    def test_extracts_services_from_choose_repeat_parallel(self):
+        config = {
+            "action": [
+                {"action": "light.turn_on"},
+                {
+                    "choose": [
+                        {"conditions": [], "sequence": [{"action": "switch.turn_on"}]},
+                    ]
+                },
+                {"repeat": {"count": 1, "sequence": [{"action": "light.turn_off"}]}},
+                {"parallel": [{"action": "fan.turn_on"}]},
+            ]
+        }
+        found = []
+        ServiceValidator._extract_services(config, "automations.yaml", found)
+        services = [svc for svc, _ in found]
+        assert set(
+            ["light.turn_on", "switch.turn_on", "light.turn_off", "fan.turn_on"]
+        ) <= set(services)

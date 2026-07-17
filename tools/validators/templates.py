@@ -99,7 +99,7 @@ class TemplateValidator(ValidatorBase):
 
         try:
             client = HAClient.from_env()
-        except HARequestError as e:
+        except (HARequestError, OSError) as e:
             self.info.append(f"Live template check skipped: {e}")
             client = None
 
@@ -126,12 +126,14 @@ class TemplateValidator(ValidatorBase):
                 self.errors.append(f"{path}: Template syntax error: {detail}")
                 all_ok = False
             elif any(f"'{n}' is undefined" in low for n in _RUNTIME_NAMES):
+                lines = detail.splitlines()
                 self.warnings.append(
-                    f"{path}: Uses runtime context ({detail.splitlines()[0]})"
+                    f"{path}: Uses runtime context ({lines[0] if lines else detail})"
                 )
             else:
+                lines = detail.splitlines()
                 self.warnings.append(
-                    f"{path}: Template render warning: {detail.splitlines()[0]}"
+                    f"{path}: Template render warning: {lines[0] if lines else detail}"
                 )
 
         return all_ok

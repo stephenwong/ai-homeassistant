@@ -172,10 +172,14 @@ class ReferenceValidator(ValidatorBase):
             "Area registry",
         )
 
+    _UUID_RE = re.compile(
+        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+    _UUID_NAKED_RE = re.compile(r"^[0-9a-fA-F]{32}$")
+
     def is_uuid_format(self, value: str) -> bool:
         """Check if a string matches UUID format (32 hex characters)."""
-        # UUID format: 8-4-4-4-12 hex digits, but HA often stores without hyphens
-        return bool(re.fullmatch(r"[a-f0-9]{32}", value))
+        return bool(self._UUID_RE.match(value) or self._UUID_NAKED_RE.match(value))
 
     def is_template(self, value: str) -> bool:
         """Check if value is a Jinja2 template expression."""
@@ -356,6 +360,10 @@ class ReferenceValidator(ValidatorBase):
                     self.warnings.append(
                         f"{file_path}: References disabled entity '{entity_id}'"
                     )
+                if entities[entity_id].get("hidden_by"):
+                    self.info.append(
+                        f"{file_path}: References hidden entity '{entity_id}'"
+                    )
                 continue
 
             # Check if entity is defined in config files
@@ -395,6 +403,10 @@ class ReferenceValidator(ValidatorBase):
             if device_id not in devices:
                 self.errors.append(f"{file_path}: Unknown device '{device_id}'")
                 all_valid = False
+            elif devices[device_id].get("disabled_by"):
+                self.warnings.append(
+                    f"{file_path}: References disabled device '{device_id}'"
+                )
 
         # Validate area references
         for area_id in area_refs:
@@ -506,11 +518,16 @@ def main() -> int:
         action="store_true",
         help="Force verbose output even when stdout is piped",
     )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output on success",
+    )
     args = parser.parse_args()
 
     summary = resolve_summary(args)
 
-    validator = ReferenceValidator(args.config_dir, summary=summary)
+    validator = ReferenceValidator(args.config_dir, summary=summary, quiet=args.quiet)
     is_valid = validator.validate_all()
     validator.print_results()
 

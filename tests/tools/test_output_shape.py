@@ -100,6 +100,17 @@ class TestPick:
     def test_scalar_passes_through(self):
         assert apply_output_shape(42, pick="state") == 42
 
+    def test_pick_comma_only_returns_data_unchanged(self):
+        """L57: pick=',' must behave as a no-op, not produce empty dicts."""
+        data = {"a": 1, "b": 2}
+        assert apply_output_shape(data, pick=",") == data
+
+    def test_pick_trailing_comma_ignored(self):
+        """L57: pick='a,' must pick just 'a' (no empty key)."""
+        data = {"a": 1, "b": 2}
+        out = apply_output_shape(data, pick="a,")
+        assert out == {"a": 1}
+
 
 class TestMaxChars:
     def test_truncates_list_with_marker(self):
@@ -160,6 +171,54 @@ class TestMaxChars:
         result = apply_output_shape(data, max_chars=300)
         serialized = pytest.importorskip("json").dumps(result)
         assert len(serialized) <= 300
+
+
+class TestPrintJson:
+    """L58: print_json output formatting."""
+
+    def test_compact_default(self, capsys):
+        from tools.output_shape import print_json
+
+        print_json({"a": 1})
+        assert capsys.readouterr().out == '{"a":1}\n'
+
+    def test_pretty_indents(self, capsys):
+        from tools.output_shape import print_json
+
+        print_json({"a": 1}, pretty=True)
+        out = capsys.readouterr().out
+        assert "\n" in out
+
+
+class TestHasTransformFlags:
+    """L58: _has_transform_flags detection."""
+
+    @pytest.mark.parametrize(
+        "overrides,expected",
+        [
+            ({"first": None, "pick": None, "max_chars": None}, False),
+            ({"first": 5, "pick": None, "max_chars": None}, True),
+            ({"first": None, "pick": "a", "max_chars": None}, True),
+            ({"first": None, "pick": None, "max_chars": 100}, True),
+        ],
+    )
+    def test_flag_matrix(self, overrides, expected):
+        from argparse import Namespace
+
+        from tools.common import _has_transform_flags
+
+        base = {
+            "count": False,
+            "keys": False,
+            "first": None,
+            "raw": False,
+            "pick": None,
+            "entity": None,
+            "domain": None,
+            "max_chars": None,
+        }
+        base.update(overrides)
+        assert _has_transform_flags(Namespace(**base)) is expected
 
     def test_only_marker_fits(self):
         """When every item is larger than max_chars, return just the marker."""

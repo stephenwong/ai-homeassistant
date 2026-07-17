@@ -8,8 +8,10 @@ Usage:
 """
 
 import argparse
+import contextlib
 import difflib
 import functools
+import os
 import sys
 import tarfile
 from pathlib import Path
@@ -67,7 +69,7 @@ def extract_files(backup_path: Path) -> dict[str, str]:
                         continue
                     with extracted:
                         files[member.name] = extracted.read().decode("utf-8")
-                except UnicodeDecodeError, KeyError:
+                except UnicodeDecodeError:
                     continue
     except (tarfile.TarError, OSError) as e:
         print(f"  Warning: Could not read {backup_path}: {e}", file=sys.stderr)
@@ -84,7 +86,7 @@ def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
     else:
         lines.append("Previous: (none - initial backup)")
 
-    lines.append(f"Date: {backup['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"Date: {backup['timestamp'].strftime('%Y-%m-%d %H:%M:%S %z')}")
     lines.append("")
 
     current_files = extract_files(backup["path"])
@@ -179,7 +181,7 @@ def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
 
 def changelog_path_for(backup: dict) -> Path:
     """Get the changelog path for a backup."""
-    return BACKUP_DIR / backup["filename"].replace(".tar.gz", ".changelog")
+    return BACKUP_DIR / (backup["filename"].removesuffix(".tar.gz") + ".changelog")
 
 
 def generate_for_backup(backup: dict, backups_list: list[dict]) -> Path:
@@ -191,10 +193,27 @@ def generate_for_backup(backup: dict, backups_list: list[dict]) -> Path:
             if i > 0:
                 previous = backups_list[i - 1]
             break
+    else:
+        raise ValueError(
+            f"Backup {backup['filename']} not found in the backup list — "
+            "cannot compute a predecessor"
+        )
 
     changelog_file = changelog_path_for(backup)
     content = generate_changelog(backup, previous)
-    changelog_file.write_text(content, encoding="utf-8")
+    tmp = changelog_file.with_suffix(".changelog.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, changelog_file)
+    except OSError as e:
+        print(f"WARN: failed to write changelog: {e}", file=sys.stderr)
+    finally:
+        if tmp.exists():
+            with contextlib.suppress(OSError):
+                tmp.unlink()
     return changelog_file
 
 
@@ -208,7 +227,15 @@ def main() -> int:
         action="store_true",
         help="Generate changelogs for all backups missing one",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing changelog file",
+    )
     args = parser.parse_args()
+
+    if args.generate_all and args.backup:
+        parser.error("--generate-all ignores a positional BACKUP; pick one")
 
     backups = get_backups()  # sorted oldest first
     if not backups:
@@ -220,7 +247,7 @@ def main() -> int:
         skipped = 0
         for backup in backups:
             cl_path = changelog_path_for(backup)
-            if cl_path.exists():
+            if cl_path.exists() and not args.force:
                 skipped += 1
                 continue
             print(f"Generating changelog for {backup['filename']}...", file=sys.stderr)

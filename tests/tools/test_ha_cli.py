@@ -39,6 +39,21 @@ class TestBuildParser:
         assert args.endpoint == "/api/"
         assert callable(args.func)
 
+    def test_has_edit_subcommand(self):
+        """L5: the edit subcommand is registered with a func callable."""
+        parser = build_parser()
+        args = parser.parse_args(["edit", "automations"])
+        assert args.command == "edit"
+        assert args.file == "automations"
+        assert callable(args.func)
+
+    def test_has_trace_subcommand(self):
+        """L5: the trace subcommand is registered."""
+        parser = build_parser()
+        args = parser.parse_args(["trace"])
+        assert args.command == "trace"
+        assert callable(args.func)
+
     def test_validate_accepts_config_flag(self):
         parser = build_parser()
         args = parser.parse_args(["validate", "--config", "/tmp/config"])

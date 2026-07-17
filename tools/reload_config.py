@@ -177,11 +177,14 @@ def reload_config(summary: bool = False) -> bool:
     core_ok = all(ok for _svc, ok, _err in results)
 
     if domain_services and core_ok:
+        # NOTE: requests.Session is shared across workers — safe per urllib3's
+        # thread-safe connection pool, but not guaranteed by requests' docs.
+        # If a future requests version breaks this, switch to per-worker sessions.
         with ThreadPoolExecutor() as executor:
             results.extend(
                 executor.map(
                     functools.partial(reload_service, client),
-                    domain_services,
+                    sorted(domain_services),
                 )
             )
     elif domain_services and not core_ok and not summary:

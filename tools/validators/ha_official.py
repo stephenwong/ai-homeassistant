@@ -175,7 +175,7 @@ class HAOfficialValidator(ValidatorBase):
                     or "Configuration check successful!" in line
                 ):
                     self.info.append(f"HA Check: {line}")
-                elif m := re.search(r"(\d+)\s+errors?\s+found", line, re.I):
+                elif m := re.search(r"(?:found\s+)?(\d+)\s+errors?\b", line, re.I):
                     if m.group(1) == "0":
                         self.info.append(f"HA Check: {line}")
                     else:

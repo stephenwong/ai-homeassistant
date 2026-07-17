@@ -30,17 +30,13 @@ class TestValidateYamlSyntax:
         assert validator.validate_yaml_syntax(f) is False
 
 
-class TestValidateFileEncoding:
-    def test_utf8_file(self, config_dir, validator):
-        f = config_dir / "test.yaml"
-        f.write_text("key: value", encoding="utf-8")
-        assert validator.validate_file_encoding(f) is True
-
-    def test_non_utf8_file(self, config_dir, validator):
-        f = config_dir / "test.yaml"
-        f.write_bytes(b"\xff\xfe\x00\x01invalid utf8")
-        assert validator.validate_file_encoding(f) is False
-        assert any("UTF-8" in e for e in validator.errors)
+class TestEmptyHomeAssistantSection:
+    def test_empty_homeassistant_section_no_warning(self, config_dir):
+        """L36: homeassistant: (parses to None) must NOT trigger a warning."""
+        (config_dir / "configuration.yaml").write_text("homeassistant:\n")
+        v = YAMLValidator(str(config_dir))
+        v.validate_all()
+        assert not any("homeassistant" in w.lower() for w in v.warnings)
 
 
 class TestValidateConfigurationStructure:
@@ -86,12 +82,13 @@ class TestValidateConfigurationStructure:
             "introduction" in w and "deprecated" in w for w in validator.warnings
         )
 
-    def test_configuration_homeassistant_not_dict(self, config_dir, validator):
+    def test_configuration_homeassistant_null_no_warning(self, config_dir, validator):
+        """L36: homeassistant: null (None) must NOT trigger a warning."""
         f = config_dir / "configuration.yaml"
         content = "homeassistant: null\n"
         f.write_text(content)
         validator.validate_configuration_structure(f, yaml.safe_load(content))
-        assert any("homeassistant" in w for w in validator.warnings)
+        assert not any("homeassistant" in w for w in validator.warnings)
 
 
 class TestValidateAutomationsStructure:
@@ -178,11 +175,18 @@ class TestValidateAll:
         )
         assert validator.validate_all() is True
 
-    def test_stops_on_encoding_error(self, config_dir, validator):
+    def test_fails_on_bad_processes_good_also(self, config_dir, validator):
+        """L37: validator collects errors from BOTH files — not just the first."""
+        (config_dir / "good.yaml").write_text("key: value\n")
+        (config_dir / "bad.yaml").write_text("key: value\n  bad: indent\n")
+        assert validator.validate_all() is False
+        assert any("YAML syntax error" in e for e in validator.errors)
+
+    def test_fails_on_encoding_error(self, config_dir, validator):
         (config_dir / "bad.yaml").write_bytes(b"\xff\xfe\x00\x01")
         assert validator.validate_all() is False
 
-    def test_stops_on_syntax_error(self, config_dir, validator):
+    def test_fails_on_syntax_error(self, config_dir, validator):
         (config_dir / "bad.yaml").write_text("key: value\n  bad: indent\n")
         assert validator.validate_all() is False
 

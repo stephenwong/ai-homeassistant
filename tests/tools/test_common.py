@@ -266,13 +266,23 @@ class TestIsTTY:
         assert _is_tty() is False
 
 
+class _ConcreteValidator(ValidatorBase):
+    """Concrete subclass for testing ValidatorBase functionality."""
+
+    def _validate(self) -> bool:
+        return True
+
+
 class TestValidatorBase:
     """Test ValidatorBase class."""
 
-    def test_template_missing_config_dir(self, tmp_path):
-        from tools.validators.base import ValidatorBase
+    def test_validatorbase_cannot_be_instantiated(self):
+        """L33: ValidatorBase is abstract — direct instantiation must fail."""
+        with pytest.raises(TypeError):
+            ValidatorBase("/tmp")
 
-        v = ValidatorBase(str(tmp_path / "missing"))
+    def test_template_missing_config_dir(self, tmp_path):
+        v = _ConcreteValidator(str(tmp_path / "missing"))
         assert v.validate_all() is False
         assert any("does not exist" in e for e in v.errors)
 
@@ -284,7 +294,7 @@ class TestValidatorBase:
         shutil.rmtree(self.temp_dir)
 
     def test_init_sets_defaults(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         assert v.config_dir == self.config_dir
         assert v.errors == []
         assert v.warnings == []
@@ -295,7 +305,7 @@ class TestValidatorBase:
         (self.config_dir / "test.yml").write_text("key: value")
         (self.config_dir / "test.txt").write_text("not yaml")
 
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         yaml_files = v.get_yaml_files()
         names = {f.name for f in yaml_files}
         assert "test.yaml" in names
@@ -306,7 +316,7 @@ class TestValidatorBase:
         test_file = self.config_dir / "test.yaml"
         test_file.write_text("key: value\nlist:\n  - item1\n  - item2\n")
 
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         data = v.load_yaml(test_file)
         assert data == {"key": "value", "list": ["item1", "item2"]}
 
@@ -314,12 +324,12 @@ class TestValidatorBase:
         test_file = self.config_dir / "test.yaml"
         test_file.write_text("secret: !secret my_password\n")
 
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         data = v.load_yaml(test_file)
         assert data == {"secret": "!secret my_password"}
 
     def test_check_automations_structure_valid(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         automations = [
             {
                 "alias": "Test",
@@ -331,26 +341,26 @@ class TestValidatorBase:
         assert len(v.errors) == 0
 
     def test_check_automations_structure_blueprint(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         automations = [
             {"alias": "Blueprint", "use_blueprint": {"path": "test.yaml"}},
         ]
         assert v.check_automations_structure(automations, "test") is True
 
     def test_check_automations_structure_not_dict(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         automations = ["not a dict"]
         assert v.check_automations_structure(automations, "test") is False
         assert any("must be a dictionary" in e for e in v.errors)
 
     def test_check_automations_structure_missing_trigger(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         automations = [{"alias": "Test", "action": {"service": "test"}}]
         assert v.check_automations_structure(automations, "test") is False
         assert any("trigger" in e for e in v.errors)
 
     def test_check_automations_structure_missing_action(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         automations = [
             {"alias": "Test", "trigger": {"platform": "state"}},
         ]
@@ -358,7 +368,7 @@ class TestValidatorBase:
         assert any("action" in e for e in v.errors)
 
     def test_check_automations_structure_missing_alias_warning(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         automations = [
             {"trigger": {"platform": "state"}, "action": {"service": "test"}},
         ]
@@ -366,35 +376,35 @@ class TestValidatorBase:
         assert any("alias" in w for w in v.warnings)
 
     def test_check_scripts_structure_valid(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         scripts = {"my_script": {"sequence": [{"service": "test"}]}}
         assert v.check_scripts_structure(scripts, "test") is True
 
     def test_check_scripts_structure_blueprint(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         scripts = {"my_script": {"use_blueprint": {"path": "test.yaml"}}}
         assert v.check_scripts_structure(scripts, "test") is True
 
     def test_check_scripts_structure_not_dict(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         scripts = {"my_script": "not a dict"}
         assert v.check_scripts_structure(scripts, "test") is False
         assert any("must be a dictionary" in e for e in v.errors)
 
     def test_check_scripts_structure_missing_sequence(self):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         scripts = {"my_script": {"alias": "Test"}}
         assert v.check_scripts_structure(scripts, "test") is False
         assert any("sequence" in e or "use_blueprint" in e for e in v.errors)
 
     def test_print_results_valid(self, capsys):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         v.print_results()
         captured = capsys.readouterr()
         assert "is valid!" in captured.out
 
     def test_print_results_with_errors(self, capsys):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         v.errors.append("Test error")
         v.print_results()
         captured = capsys.readouterr()
@@ -402,7 +412,7 @@ class TestValidatorBase:
         assert "validation failed" in captured.err
 
     def test_print_results_with_warnings_only(self, capsys):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         v.warnings.append("Test warning")
         v.print_results()
         captured = capsys.readouterr()
@@ -410,58 +420,132 @@ class TestValidatorBase:
         assert "with warnings" in captured.out
 
     def test_print_results_with_info(self, capsys):
-        v = ValidatorBase(str(self.config_dir))
+        v = _ConcreteValidator(str(self.config_dir))
         v.info.append("Test info")
         v.print_results()
         captured = capsys.readouterr()
         assert "Test info" in captured.err
 
 
+class _LazyValidator(ValidatorBase):
+    """Concrete subclass for TestLoadYamlChecked."""
+
+    def _validate(self) -> bool:
+        return True
+
+
 class TestLoadYamlChecked:
     """Tests for ValidatorBase.load_yaml_checked."""
 
     def test_valid_file_returns_data_and_ok(self, tmp_path):
-        from tools.common import ValidatorBase
-
         f = tmp_path / "good.yaml"
         f.write_text("key: value\n", encoding="utf-8")
-        v = ValidatorBase(str(tmp_path))
+        v = _LazyValidator(str(tmp_path))
         data, ok = v.load_yaml_checked(f)
         assert ok is True
         assert data == {"key": "value"}
         assert not v.errors
 
     def test_empty_file_returns_none_and_ok(self, tmp_path):
-        from tools.common import ValidatorBase
-
         f = tmp_path / "empty.yaml"
         f.write_text("", encoding="utf-8")
-        v = ValidatorBase(str(tmp_path))
+        v = _LazyValidator(str(tmp_path))
         data, ok = v.load_yaml_checked(f)
         assert ok is True
         assert data is None
         assert not v.errors
 
     def test_malformed_yaml_records_error_and_returns_false(self, tmp_path):
-        from tools.common import ValidatorBase
-
         f = tmp_path / "bad.yaml"
         f.write_text("key: [\n", encoding="utf-8")
-        v = ValidatorBase(str(tmp_path))
+        v = _LazyValidator(str(tmp_path))
         data, ok = v.load_yaml_checked(f)
         assert ok is False
         assert data is None
         assert any("bad.yaml" in e for e in v.errors)
 
     def test_nonexistent_file_records_error_and_returns_false(self, tmp_path):
-        from tools.common import ValidatorBase
-
         f = tmp_path / "nonexistent.yaml"
-        v = ValidatorBase(str(tmp_path))
+        v = _LazyValidator(str(tmp_path))
         data, ok = v.load_yaml_checked(f)
         assert ok is False
         assert data is None
         assert any("nonexistent.yaml" in e for e in v.errors)
+
+
+class TestArgparseTypes:
+    """TQ1: pin behavior of positive_int, non_negative_int, positive_float."""
+
+    def test_positive_int_accepts_valid(self):
+        from tools.common import positive_int
+
+        assert positive_int("5") == 5
+        assert isinstance(positive_int("5"), int)
+
+    def test_positive_int_rejects_zero(self):
+        from tools.common import positive_int
+
+        with pytest.raises((argparse.ArgumentTypeError, ValueError)):
+            positive_int("0")
+
+    def test_positive_int_rejects_negative(self):
+        from tools.common import positive_int
+
+        with pytest.raises((argparse.ArgumentTypeError, ValueError)):
+            positive_int("-1")
+
+    def test_positive_int_rejects_float_string(self):
+        from tools.common import positive_int
+
+        with pytest.raises((argparse.ArgumentTypeError, ValueError, TypeError)):
+            positive_int("3.5")
+
+    def test_positive_int_rejects_non_numeric(self):
+        from tools.common import positive_int
+
+        with pytest.raises((argparse.ArgumentTypeError, ValueError)):
+            positive_int("abc")
+
+    def test_non_negative_int_accepts_zero(self):
+        from tools.common import non_negative_int
+
+        assert non_negative_int("0") == 0
+        assert isinstance(non_negative_int("0"), int)
+
+    def test_non_negative_int_accepts_positive(self):
+        from tools.common import non_negative_int
+
+        assert non_negative_int("3") == 3
+
+    def test_non_negative_int_rejects_negative(self):
+        from tools.common import non_negative_int
+
+        with pytest.raises((argparse.ArgumentTypeError, ValueError)):
+            non_negative_int("-1")
+
+    def test_positive_float_accepts_valid(self):
+        from tools.common import positive_float
+
+        assert positive_float("3.14") == 3.14
+        assert isinstance(positive_float("3.14"), float)
+
+    def test_positive_float_rejects_zero(self):
+        from tools.common import positive_float
+
+        with pytest.raises((argparse.ArgumentTypeError, ValueError)):
+            positive_float("0")
+
+    def test_positive_float_rejects_negative(self):
+        from tools.common import positive_float
+
+        with pytest.raises((argparse.ArgumentTypeError, ValueError)):
+            positive_float("-0.5")
+
+    def test_positive_float_rejects_non_numeric(self):
+        from tools.common import positive_float
+
+        with pytest.raises((argparse.ArgumentTypeError, ValueError)):
+            positive_float("abc")
 
 
 class TestM5LoadEnvFile:

@@ -8,6 +8,7 @@ import pytest
 
 SHIM_MODULES = [
     "tools.duplicate_id_validator",
+    "tools.ha_config_validator",
     "tools.ha_official_validator",
     "tools.reference_validator",
     "tools.service_validator",

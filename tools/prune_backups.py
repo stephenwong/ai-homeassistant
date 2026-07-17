@@ -17,12 +17,12 @@ from pathlib import Path
 from typing import Any
 
 BACKUP_DIR = Path(__file__).parent.parent / "backups"
-BACKUP_PATTERN = re.compile(r"ha_config_(\d{8})_(\d{6})\.tar\.gz")
+_BACKUP_RE = re.compile(r"^ha_config_(\d{8})_(\d{6})\.tar\.gz$")
 
 
 def parse_backup_filename(filename: str) -> datetime | None:
     """Parse backup filename and return datetime object."""
-    match = BACKUP_PATTERN.match(filename)
+    match = _BACKUP_RE.match(filename)
     if not match:
         return None
 
@@ -48,7 +48,7 @@ def get_backups() -> list[dict]:
                 {"path": file, "filename": file.name, "timestamp": timestamp}
             )
 
-    return sorted(backups, key=lambda x: x["timestamp"])
+    return sorted(backups, key=lambda x: (x["timestamp"], x["filename"]))
 
 
 def group_by_retention_period(backups: list[dict], now: datetime) -> dict:
@@ -171,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     backups = get_backups()
 
     if not backups:
-        print(f"No backups found in {BACKUP_DIR}", file=sys.stderr)
+        print("(no backups found — nothing to prune)", file=sys.stderr)
         clean_orphaned_changelogs(dry_run=not apply_deletes)
         return 0
 
@@ -223,16 +223,25 @@ def main(argv: list[str] | None = None) -> int:
             for backup in to_delete:
                 try:
                     backup["path"].unlink()
+                except OSError as e:
+                    msg = f"failed to delete {backup['filename']}: {e}"
+                    print(f"⚠️ {msg}", file=sys.stderr)
+                    errors += 1
+                    continue
+                try:
                     changelog_name = (
                         backup["filename"].removesuffix(".tar.gz") + ".changelog"
                     )
                     changelog_path = BACKUP_DIR / changelog_name
                     if changelog_path.exists():
                         changelog_path.unlink()
-                    print(f"Deleted: {backup['filename']}")
                 except OSError as e:
-                    print(f"Error deleting {backup['filename']}: {e}", file=sys.stderr)
+                    print(
+                        f"⚠️ failed to delete changelog for {backup['filename']}: {e}",
+                        file=sys.stderr,
+                    )
                     errors += 1
+                print(f"Deleted: {backup['filename']}")
 
             if errors:
                 print(

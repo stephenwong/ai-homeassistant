@@ -1,6 +1,7 @@
 """Shared validator base classes for Home Assistant configuration tools."""
 
 import sys
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +38,7 @@ for _tag in _HA_TAGS:
     HAYamlLoader.add_constructor(_tag, _make_tag_constructor(_tag))
 
 
-class ValidatorBase:
+class ValidatorBase(ABC):
     """Base class for Home Assistant configuration validators."""
 
     validator_name = "Configuration"
@@ -167,9 +168,9 @@ class ValidatorBase:
             return False
         return self._validate()
 
+    @abstractmethod
     def _validate(self) -> bool:
-        """Subclass hook. Default: pass. Override instead of validate_all()."""
-        return True
+        """Subclass hook. Override instead of validate_all()."""
 
     def print_results(self):
         """Print validation results."""

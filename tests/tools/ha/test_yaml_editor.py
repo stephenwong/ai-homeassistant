@@ -699,3 +699,54 @@ class TestTypeGuard:
         editor = YAMLEditor(path)
         with pytest.raises(TypeError, match="expected a list"):
             editor.remove_automation("x")
+
+
+# ---------------------------------------------------------------------------
+# L15: Additional round-trip and error-propagation tests
+# ---------------------------------------------------------------------------
+
+
+def test_dump_to_round_trip(tmp_path):
+    """L15: dump_to(target) writes valid YAML re-readable by load()."""
+    from tools.ha.yaml_editor import YAMLEditor
+
+    src = tmp_path / "a.yaml"
+    dst = tmp_path / "b.yaml"
+    _write_yaml(src, "- alias: A\n  triggers: []\n  actions: []\n")
+    e = YAMLEditor(src)
+    e.load()
+    with open(dst, "w", encoding="utf-8") as f:
+        e.dump_to(e._data, f)
+    e2 = YAMLEditor(dst)
+    e2.load()
+    assert e2.find_automation("A") is not None
+
+
+def test_save_propagates_validator_exception(tmp_path):
+    """L15: if the validator raises, save() must propagate."""
+    from tools.ha.yaml_editor import YAMLEditor
+
+    path = tmp_path / "automations.yaml"
+    _write_yaml(path, "- alias: A\n")
+    e = YAMLEditor(path)
+    e.load()
+
+    def bad_validator(_p):
+        raise ValueError("bad")
+
+    with pytest.raises(ValueError, match="bad"):
+        e.save(validator=bad_validator)
+
+
+def test_unicode_alias_round_trip(tmp_path):
+    """L15: non-ASCII aliases must survive load -> save -> load."""
+    from tools.ha.yaml_editor import YAMLEditor
+
+    path = tmp_path / "automations.yaml"
+    _write_yaml(path, "- alias: ☕ Coffee ☕\n  triggers: []\n  actions: []\n")
+    e = YAMLEditor(path)
+    e.load()
+    e.save()
+    e2 = YAMLEditor(path)
+    e2.load()
+    assert e2.find_automation("☕ Coffee ☕") is not None

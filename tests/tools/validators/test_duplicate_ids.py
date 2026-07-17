@@ -169,7 +169,28 @@ class TestNoDuplicates:
         assert validator.validate_all() is False
         dup_errors = [e for e in validator.errors if "duplicate" in e.lower()]
         assert len(dup_errors) == 1
-        assert "3 times" in dup_errors[0]
+        assert "positions" in dup_errors[0]
+        assert "[0, 1, 2]" in dup_errors[0]
+        assert "A" in dup_errors[0] or "B" in dup_errors[0] or "C" in dup_errors[0]
+
+    def test_duplicate_id_error_lists_positions_and_aliases(
+        self, config_dir, validator
+    ):
+        """L46: the error must include positions and aliases, not just a count."""
+        automations = [
+            {"id": "dup", "alias": "First", "trigger": [], "action": []},
+            {"id": "dup", "alias": "Second", "trigger": [], "action": []},
+            {"id": "unique", "alias": "Unique", "trigger": [], "action": []},
+        ]
+        f = config_dir / "automations.yaml"
+        with open(f, "w") as fh:
+            yaml.dump(automations, fh)
+        assert validator.validate_all() is False
+        dup_errors = [e for e in validator.errors if "duplicate" in e.lower()]
+        assert len(dup_errors) == 1
+        assert "positions [0, 1]" in dup_errors[0]
+        assert "First" in dup_errors[0]
+        assert "Second" in dup_errors[0]
 
     def test_null_id_treated_as_missing(self, config_dir, validator):
         automations = [

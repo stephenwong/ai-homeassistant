@@ -133,9 +133,9 @@ class HAClient:
         """GET ``path`` and parse JSON. Returns None on non-JSON responses."""
         response = self.get(path, **kwargs)
         if response.status_code < 200 or response.status_code >= 300:
+            snippet = response.content[:200].decode("utf-8", errors="replace")
             raise HARequestError(
-                f"GET {path} returned HTTP {response.status_code}: "
-                f"{response.text[:200]}"
+                f"GET {path} returned HTTP {response.status_code}: {snippet}"
             )
         try:
             return response.json()
@@ -150,11 +150,11 @@ class HAClient:
     ) -> bool:
         """Call ``<domain>/<service>`` (e.g. ``automation``, ``reload``).
 
-        Returns ``True`` if HA responded with HTTP 200.
+        Returns ``True`` if HA responded with any 2xx status code.
         """
         path = f"/api/services/{domain}/{service}"
         response = self.post(path, json=data or {})
-        return response.status_code == 200
+        return 200 <= response.status_code < 300
 
 
 class HAWSClient:
@@ -216,7 +216,7 @@ class HAWSClient:
             ):
                 await self._authenticate(ws)
                 return await self._send_and_receive(ws, command_type, **params)
-        except (OSError, aiohttp.ClientError) as e:
+        except (OSError, aiohttp.ClientError, ValueError, TypeError, RuntimeError) as e:
             raise HARequestError(
                 f"cannot connect to HA WebSocket at {self._ws_url}: {e}"
             ) from e

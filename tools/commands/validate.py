@@ -9,7 +9,6 @@ import concurrent.futures
 import contextlib
 import hashlib
 import inspect
-import json
 import sys
 import time
 from dataclasses import dataclass
@@ -32,9 +31,9 @@ class ValidatorResult:
 
     description: str
     passed: bool
-    stdout: str
-    stderr: str
-    duration: float
+    stdout: str = ""
+    stderr: str = ""
+    duration: float = 0.0
     cached: bool = False
 
 
@@ -105,12 +104,11 @@ def _run_one(
                     return ValidatorResult(
                         description=description,
                         passed=bool(cached["passed"]),
-                        stdout="",
                         stderr="",
                         duration=cached.get("duration", 0.0),
                         cached=True,
                     )
-            except OSError, json.JSONDecodeError, ValueError:
+            except OSError, ValueError:
                 pass  # cache failures are non-fatal; fall through to real run
 
         # --- cache miss or forced — actually run the validator ---
@@ -126,12 +124,20 @@ def _run_one(
             stderr = "\n".join(detail_lines)
         except SystemExit as e:
             passed = e.code in (0, None)
-            stderr = f"Validator raised SystemExit({e.code!r})"
+            detail_lines = []
+            for err in getattr(instance, "errors", []):
+                detail_lines.append(f"ERROR: {err}")
+            for warn in getattr(instance, "warnings", []):
+                detail_lines.append(f"WARN: {warn}")
+            for info in getattr(instance, "info", []):
+                detail_lines.append(f"INFO: {info}")
+            stderr = (
+                "\n".join(detail_lines) or f"Validator raised SystemExit({e.code!r})"
+            )
         except Exception as e:
             return ValidatorResult(
                 description=description,
                 passed=False,
-                stdout="",
                 stderr=f"Failed to run validator: {e}",
                 duration=time.time() - start,
             )
@@ -148,7 +154,6 @@ def _run_one(
         return ValidatorResult(
             description=description,
             passed=passed,
-            stdout="",
             stderr=stderr,
             duration=duration,
         )
@@ -156,7 +161,6 @@ def _run_one(
         return ValidatorResult(
             description=description,
             passed=False,
-            stdout="",
             stderr=f"Validator orchestration failed: {e}",
             duration=time.time() - start,
         )
@@ -289,10 +293,6 @@ def run(args: argparse.Namespace) -> int:
                 print("-" * 50, file=sys.stderr)
                 print("Status: ❌ FAILED", file=sys.stderr)
                 print(f"Duration: {r.duration:.2f}s", file=sys.stderr)
-                if r.stdout.strip():
-                    print("\nOutput:", file=sys.stderr)
-                    for sline in r.stdout.strip().splitlines():
-                        print(f"  {sline}", file=sys.stderr)
                 if r.stderr.strip():
                     print("\nErrors:", file=sys.stderr)
                     for sline in r.stderr.strip().splitlines():

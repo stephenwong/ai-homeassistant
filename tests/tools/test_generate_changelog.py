@@ -392,3 +392,227 @@ class TestMain:
             assert result == 1
             captured = capsys.readouterr()
             assert "not found" in captured.err
+
+    def test_generate_all_with_positional_arg_errors(self, monkeypatch):
+        """L61: --generate-all + a positional must error, not silently ignore."""
+        from tools.generate_changelog import main
+
+        monkeypatch.setattr(
+            "sys.argv",
+            ["generate_changelog", "--generate-all", "some_backup.tar.gz"],
+        )
+        with (
+            pytest.raises(SystemExit) as exc,
+            patch("tools.generate_changelog.get_backups", return_value=[]),
+        ):
+            main()
+        assert exc.value.code == 2
+
+    def test_force_overwrites_existing_changelog(self, tmp_path, monkeypatch, capsys):
+        """L61: --force overwrites an existing .changelog."""
+        from tools.generate_changelog import main
+
+        tar_path = _make_tar(tmp_path, {"config/test.yaml": "content1\n"})
+        backups = [
+            {
+                "path": tar_path,
+                "filename": "ha_config_20260201_120000.tar.gz",
+                "timestamp": datetime(2026, 2, 1, 12, 0, 0),
+            },
+        ]
+        cl_path = tmp_path / "ha_config_20260201_120000.changelog"
+        cl_path.write_text("old content")
+
+        monkeypatch.setattr(
+            "sys.argv",
+            ["generate_changelog", "--generate-all", "--force"],
+        )
+        with (
+            patch("tools.generate_changelog.get_backups", return_value=backups),
+            patch("tools.generate_changelog.BACKUP_DIR", tmp_path),
+        ):
+            result = main()
+            assert result == 0
+            assert cl_path.read_text() != "old content"
+
+
+class TestL59AtomicWrite:
+    """L59: changelog write is atomic — no partial .changelog on failure."""
+
+    def test_changelog_write_is_atomic_on_failure(self, tmp_path, monkeypatch):
+        """L59: if write fails, no partial .changelog sticks (corruption-on-stick)."""
+        from tools.generate_changelog import generate_for_backup
+
+        tar_path = _make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
+        backup = {
+            "path": tar_path,
+            "filename": "ha_config_20260201_120000.tar.gz",
+            "timestamp": datetime(2026, 2, 1, 12, 0, 0),
+        }
+
+        # Pre-create a changelog to verify it survives a failure
+        cl_path = tmp_path / "ha_config_20260201_120000.changelog"
+        cl_path.write_text("original content")
+
+        import tools.generate_changelog as gcl
+
+        orig_os_replace = gcl.os.replace
+
+        def fail_on_replace(*a, **kw):
+            if a[0].suffix == ".tmp":
+                raise OSError("mock failure")
+            return orig_os_replace(*a, **kw)
+
+        monkeypatch.setattr(gcl.os, "replace", fail_on_replace)
+        with patch("tools.generate_changelog.BACKUP_DIR", tmp_path):
+            result = generate_for_backup(backup, [backup])
+        assert isinstance(result, Path)
+        # Original must survive intact
+        assert cl_path.read_text() == "original content"
+        # No .tmp file left behind
+        assert not (tmp_path / "ha_config_20260201_120000.changelog.tmp").exists()
+
+
+class TestL60ValueError:
+    """L60: unknown backup raises ValueError, not silent 'Initial backup'."""
+
+    def test_generate_for_unknown_backup_raises(self, tmp_path):
+        """L60: passing an unknown backup must raise, not silently print 'Initial'."""
+        from tools.generate_changelog import generate_for_backup
+
+        tar_path = _make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
+        backup = {
+            "path": tar_path,
+            "filename": "ha_config_20260201_120000.tar.gz",
+            "timestamp": datetime(2026, 2, 1, 12, 0, 0),
+        }
+        other_backup = {
+            "path": tar_path,
+            "filename": "nonexistent.tar.gz",
+            "timestamp": datetime(2026, 2, 1, 12, 0, 0),
+        }
+        with (
+            patch("tools.generate_changelog.BACKUP_DIR", tmp_path),
+            pytest.raises(ValueError, match="not found in the backup list"),
+        ):
+            generate_for_backup(other_backup, [backup])
+
+
+class TestL62Format:
+    """L62: Date header preserves tz offset, removesuffix anchors correctly."""
+
+    def test_date_header_with_timezone_offset_parsed(self, tmp_path):
+        """L62: a Date: header with %z offset must preserve tz on the datetime."""
+        from datetime import timedelta, timezone
+
+        from tools.generate_changelog import generate_changelog
+
+        tar_path = _make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
+        tz_aware = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone(timedelta(hours=11)))
+        backup = {
+            "path": tar_path,
+            "filename": "ha_config_20260201_120000.tar.gz",
+            "timestamp": tz_aware,
+        }
+        content = generate_changelog(backup, None)
+        assert "+1100" in content or "+11:00" in content
+
+    def test_removesuffix_handles_double_extension(self):
+        """L62: removesuffix anchors to the suffix exactly."""
+        from tools.generate_changelog import changelog_path_for
+
+        backup = {"filename": "ha_config_20260201_120000.tar.gz"}
+        result = changelog_path_for(backup)
+        assert result.name == "ha_config_20260201_120000.changelog"
+
+
+class TestL63Gaps:
+    """L63: test coverage gaps for generate_changelog."""
+
+    def test_write_encoding_round_trip_utf8(self, tmp_path):
+        """L63: write→read of the changelog preserves UTF-8."""
+        from tools.generate_changelog import generate_for_backup
+
+        content = "key: value\nemoji: 🔥\n"
+        tar_path = _make_tar(tmp_path, {"config/test.yaml": content})
+        backup = {
+            "path": tar_path,
+            "filename": "ha_config_20260201_120000.tar.gz",
+            "timestamp": datetime(2026, 2, 1, 12, 0, 0),
+        }
+        with patch("tools.generate_changelog.BACKUP_DIR", tmp_path):
+            cl_path = generate_for_backup(backup, [backup])
+        text = cl_path.read_text(encoding="utf-8")
+        assert "config/test.yaml" in text
+        assert "2 lines" in text
+
+    def test_extract_files_returns_none_on_missing_member(self, tmp_path):
+        """L63: extractfile() returning None must not crash extract_files."""
+        from tools.generate_changelog import extract_files
+
+        tar_path = tmp_path / "test.tar.gz"
+        with tarfile.open(tar_path, "w:gz") as tar:
+            info = tarfile.TarInfo(name="some_file.yaml")
+            info.size = 0
+            # Simulate a member that exists in the tar index but has no data
+            tar.addfile(info)
+
+        result = extract_files(tar_path)
+        assert isinstance(result, dict)
+
+    def test_idempotency_of_generated_content(self, tmp_path):
+        """L63: running generate twice on the same backup produces identical content."""
+        from tools.generate_changelog import generate_changelog
+
+        tar_path = _make_tar(tmp_path, {"config/test.yaml": "content\n"})
+        backup = {
+            "path": tar_path,
+            "filename": "ha_config_20260201_120000.tar.gz",
+            "timestamp": datetime(2026, 2, 1, 12, 0, 0),
+        }
+        prev = {
+            "path": tar_path,
+            "filename": "ha_config_20260101_120000.tar.gz",
+            "timestamp": datetime(2026, 1, 1, 12, 0, 0),
+        }
+        c1 = generate_changelog(backup, prev)
+        c2 = generate_changelog(backup, prev)
+        assert c1 == c2
+
+    def test_predecessor_ordering(self, tmp_path):
+        """L63: predecessor selection must use timestamp ordering."""
+        from tools.generate_changelog import generate_for_backup
+
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        tar1 = _make_tar(sub, {"config/test.yaml": "old\n"})
+        tar2 = _make_tar(tmp_path, {"config/test.yaml": "new\n"})
+
+        older = {
+            "path": tar1,
+            "filename": "ha_config_20260101_120000.tar.gz",
+            "timestamp": datetime(2026, 1, 1, 12, 0, 0),
+        }
+        newer = {
+            "path": tar2,
+            "filename": "ha_config_20260201_120000.tar.gz",
+            "timestamp": datetime(2026, 2, 1, 12, 0, 0),
+        }
+        backups = [older, newer]
+
+        with patch("tools.generate_changelog.BACKUP_DIR", tmp_path):
+            generate_for_backup(older, backups)
+            cl_path = tmp_path / "ha_config_20260101_120000.changelog"
+            content = cl_path.read_text()
+            assert "Initial backup" in content
+
+            generate_for_backup(newer, backups)
+            cl_path2 = tmp_path / "ha_config_20260201_120000.changelog"
+            content2 = cl_path2.read_text()
+            assert "Previous:" in content2
+            assert "20260101" in content2
+
+    def test_make_tar_uses_custom_name(self, tmp_path):
+        """L63: _make_tar creates archives with the given name."""
+        path = _make_tar(tmp_path, {"a.yaml": "x"})
+        assert path.name == "test.tar.gz"

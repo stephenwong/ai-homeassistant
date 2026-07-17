@@ -18,16 +18,6 @@ class YAMLValidator(ValidatorBase):
         _, ok = self.load_yaml_checked(file_path)
         return ok
 
-    def validate_file_encoding(self, file_path: Path) -> bool:
-        """Ensure file is UTF-8 encoded as required by Home Assistant."""
-        try:
-            with open(file_path, encoding="utf-8") as f:
-                f.read()
-            return True
-        except UnicodeDecodeError:
-            self.errors.append(f"{file_path}: File must be UTF-8 encoded")
-            return False
-
     def validate_configuration_structure(self, file_path: Path, data: Any) -> bool:
         """Validate basic Home Assistant configuration.yaml structure."""
         if file_path.name != "configuration.yaml":
@@ -40,7 +30,9 @@ class YAMLValidator(ValidatorBase):
         # Check for common configuration issues
         if "homeassistant" not in data:
             self.warnings.append(f"{file_path}: Missing 'homeassistant' section")
-        elif not isinstance(data.get("homeassistant"), dict):
+        elif data.get("homeassistant") is not None and not isinstance(
+            data.get("homeassistant"), dict
+        ):
             self.warnings.append(
                 f"{file_path}: 'homeassistant' section should be a dictionary"
             )

@@ -74,6 +74,47 @@ def test_normal_error_not_ignorable(validator):
     assert validator.is_ignorable_message(msg) is False
 
 
+class TestL53IgnorablePatterns:
+    """L53: pin each known-benign pattern so a regression surfaces."""
+
+    @pytest.mark.parametrize(
+        "pattern",
+        [
+            "Unable to install package foo",
+            "No solution found when resolving",
+            "Requirements are unsatisfiable",
+            "Requirements for package X",
+            "could not be loaded",
+        ],
+    )
+    def test_ignorable_message_covers_known_patterns(self, validator, pattern):
+        assert validator.is_ignorable_message(pattern) is True
+
+    def test_normal_error_not_ignorable(self, validator):
+        assert validator.is_ignorable_message("real config error") is False
+
+
+class TestL52ErrorCountRegex:
+    """L52: the regex must match several HA phrasings."""
+
+    @pytest.mark.parametrize(
+        "line,expected",
+        [
+            ("Found 3 errors in configuration", 3),
+            ("3 errors found", 3),
+            ("Found 3 errors", 3),
+            ("Configuration has 1 error", 1),
+        ],
+    )
+    def test_error_count_regex_matches_variants(self, validator, line, expected):
+        validator.parse_check_config_output(line + "\n", "")
+        # Should produce info for 0 errors, error for non-zero
+        if expected == 0:
+            assert any(str(expected) in i for i in validator.info)
+        else:
+            assert any(str(expected) in e for e in validator.errors)
+
+
 class TestIsIgnorableTracebackLine:
     def test_python_file_line_benign_context(self, validator):
         assert (

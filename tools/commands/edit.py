@@ -47,9 +47,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     parser.add_argument(
         "--set",
-        nargs="*",
+        nargs="+",
         metavar="KEY=VALUE",
-        help="Set top-level key=value pairs. Values are parsed as YAML.",
+        help="Set top-level KEY=VALUE pairs (at least one required). "
+        "Values are parsed as YAML.",
     )
     parser.add_argument(
         "--add",
@@ -122,6 +123,14 @@ def run(args: argparse.Namespace) -> int:
         print(f"❌ {error}", file=sys.stderr)
         return 1
 
+    if args.add is not None and args.alias is not None:
+        print(
+            f"❌ --add ignores the positional alias '{args.alias}' — "
+            "drop the alias or use --set instead",
+            file=sys.stderr,
+        )
+        return 1
+
     if args.alias is None and (args.set or args.remove):
         print("❌ alias required for --set or --remove", file=sys.stderr)
         return 1
@@ -167,6 +176,9 @@ def _detect_file_type(editor: YAMLEditor) -> str:
 
 def _run_show(editor: YAMLEditor, alias: str | None) -> int:
     data = editor.load()
+    if data is None:
+        print("(empty file)", file=sys.stderr)
+        return 0
     if isinstance(data, list):
         if alias is not None:
             idx = editor.find_automation(alias)
