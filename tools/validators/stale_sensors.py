@@ -14,6 +14,7 @@ from typing import Any
 
 from tools.common import HARequestError, get_env_int, load_env_file
 from tools.ha.client import HAClient
+from tools.validators._storage import load_storage_registry
 from tools.validators.base import ValidatorBase
 
 
@@ -85,7 +86,12 @@ class StaleSensorValidator(ValidatorBase):
         return True
 
     def _load_registry(self) -> dict[str, Any] | None:
-        """Load and parse the local entity registry with retry-on-failure."""
+        """Load and parse the local entity registry with retry-on-failure.
+
+        Wraps :func:`tools.validators._storage.load_storage_registry` with a
+        100ms retry loop (per ``AGENTS.md``: "Atomic writes to ``.storage/``
+        can cause transient ``JSONDecodeError``. Retry (100ms sleep)").
+        """
         registry_file = self.config_dir / ".storage" / "core.entity_registry"
         if not registry_file.exists():
             self.info.append(
@@ -96,12 +102,9 @@ class StaleSensorValidator(ValidatorBase):
 
         for attempt in range(2):
             try:
-                with open(registry_file, encoding="utf-8") as f:
-                    data = json.load(f)
-                    return {
-                        entity["entity_id"]: entity
-                        for entity in data.get("data", {}).get("entities", [])
-                    }
+                return load_storage_registry(
+                    registry_file, list_key="entities", key_field="entity_id"
+                )
             except (
                 OSError,
                 json.JSONDecodeError,

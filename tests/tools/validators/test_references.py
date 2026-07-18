@@ -1300,3 +1300,231 @@ class TestExtractEntityReferencesNesting:
         }
         refs = validator.extract_entity_references(data)
         assert {"light.a", "switch.b", "light.c", "fan.d"} <= refs
+
+
+class TestValidateFileReferencesHelpers:
+    """Direct unit tests for the four private check_* helpers split out of
+    validate_file_references. Pins per-block error/warning/info policy."""
+
+    @pytest.fixture
+    def validator(self, setup_config):
+        return ReferenceValidator(str(setup_config))
+
+    @pytest.fixture
+    def test_file(self, setup_config):
+        path = setup_config / "test.yaml"
+        path.write_text("entity_id: sensor.temperature\n")
+        return path
+
+    def test_check_entity_refs_known_entity_passes(self, validator, test_file):
+        assert (
+            validator._check_entity_refs(
+                test_file,
+                entity_refs={"sensor.temperature"},
+                entities=validator.load_entity_registry(),
+                config_entities=set(),
+                restore_entities=set(),
+            )
+            is True
+        )
+
+    def test_check_entity_refs_unknown_entity_fails(self, validator, test_file):
+        result = validator._check_entity_refs(
+            test_file,
+            entity_refs={"sensor.nonexistent"},
+            entities={},
+            config_entities=set(),
+            restore_entities=set(),
+        )
+        assert result is False
+        assert any("Unknown entity 'sensor.nonexistent'" in e for e in validator.errors)
+
+    def test_check_entity_refs_skips_uuid_format(self, validator, test_file):
+        """UUID-format refs are handled by _check_registry_uuid_refs, not here."""
+        result = validator._check_entity_refs(
+            test_file,
+            entity_refs={"88a52f17bf43cb276836f06ac5c07444"},
+            entities={},
+            config_entities=set(),
+            restore_entities=set(),
+        )
+        assert result is True
+
+    def test_check_entity_refs_config_defined_passes(self, validator, test_file):
+        result = validator._check_entity_refs(
+            test_file,
+            entity_refs={"pseudo.fake"},
+            entities={},
+            config_entities={"pseudo.fake"},
+            restore_entities=set(),
+        )
+        assert result is True
+
+    def test_check_entity_refs_in_restore_state_warns_and_fails(
+        self, validator, test_file
+    ):
+        """Entity not in registry but in restore_state: warns AND errors."""
+        result = validator._check_entity_refs(
+            test_file,
+            entity_refs={"sensor.ghost"},
+            entities={},
+            config_entities=set(),
+            restore_entities={"sensor.ghost"},
+        )
+        assert result is False
+        assert any("restore state" in w for w in validator.warnings)
+        assert any("Unknown entity 'sensor.ghost'" in e for e in validator.errors)
+
+    def test_check_entity_refs_disabled_warns_but_passes(self, validator, test_file):
+        """Disabled entity: warning appended, returns True (not an error)."""
+        entities = {"sensor.x": {"disabled_by": "user", "hidden_by": None}}
+        result = validator._check_entity_refs(
+            test_file,
+            entity_refs={"sensor.x"},
+            entities=entities,
+            config_entities=set(),
+            restore_entities=set(),
+        )
+        assert result is True
+        assert any("disabled entity 'sensor.x'" in w for w in validator.warnings)
+
+    def test_check_entity_refs_hidden_infos_but_passes(self, validator, test_file):
+        """Hidden entity: info appended, returns True (not an error)."""
+        entities = {"sensor.x": {"disabled_by": None, "hidden_by": "user"}}
+        result = validator._check_entity_refs(
+            test_file,
+            entity_refs={"sensor.x"},
+            entities=entities,
+            config_entities=set(),
+            restore_entities=set(),
+        )
+        assert result is True
+        assert any("hidden entity 'sensor.x'" in i for i in validator.info)
+
+    def test_check_registry_uuid_refs_known_uuid_passes(self, validator, test_file):
+        """UUID mapping present: passes; no errors."""
+        mapping = {"abc123": "sensor.known"}
+        entities = {"sensor.known": {"disabled_by": None}}
+        assert (
+            validator._check_registry_uuid_refs(
+                test_file,
+                registry_ids={"abc123"},
+                entity_id_mapping=mapping,
+                entities=entities,
+            )
+            is True
+        )
+
+    def test_check_registry_uuid_refs_unknown_uuid_fails(self, validator, test_file):
+        result = validator._check_registry_uuid_refs(
+            test_file,
+            registry_ids={"unknown_uuid"},
+            entity_id_mapping={},
+            entities={},
+        )
+        assert result is False
+        assert any(
+            "Unknown entity registry ID 'unknown_uuid'" in e for e in validator.errors
+        )
+
+    def test_check_registry_uuid_refs_mapped_to_disabled_warns(
+        self, validator, test_file
+    ):
+        """UUID maps to a disabled entity: warning, returns True."""
+        mapping = {"abc123": "sensor.disabled"}
+        entities = {"sensor.disabled": {"disabled_by": "user"}}
+        result = validator._check_registry_uuid_refs(
+            test_file,
+            registry_ids={"abc123"},
+            entity_id_mapping=mapping,
+            entities=entities,
+        )
+        assert result is True
+        assert any("disabled entity 'sensor.disabled'" in w for w in validator.warnings)
+
+    def test_check_device_refs_known_device_passes(self, validator, test_file):
+        devices = {"device_001": {"disabled_by": None}}
+        assert (
+            validator._check_device_refs(
+                test_file, device_refs={"device_001"}, devices=devices
+            )
+            is True
+        )
+
+    def test_check_device_refs_unknown_device_fails(self, validator, test_file):
+        result = validator._check_device_refs(
+            test_file, device_refs={"unknown_device"}, devices={}
+        )
+        assert result is False
+        assert any("Unknown device 'unknown_device'" in e for e in validator.errors)
+
+    def test_check_device_refs_disabled_warns_but_passes(self, validator, test_file):
+        devices = {"device_001": {"disabled_by": "user"}}
+        result = validator._check_device_refs(
+            test_file, device_refs={"device_001"}, devices=devices
+        )
+        assert result is True
+        assert any("disabled device 'device_001'" in w for w in validator.warnings)
+
+    def test_check_area_refs_unknown_area_warns(self, validator, test_file):
+        """Unknown area: warning only (never error). Returns None."""
+        result = validator._check_area_refs(
+            test_file, area_refs={"nonexistent_area"}, areas={}
+        )
+        assert result is None  # area check never fails validation
+        assert any("Unknown area 'nonexistent_area'" in w for w in validator.warnings)
+
+    def test_check_area_refs_known_area_no_warning(self, validator, test_file):
+        validator._check_area_refs(
+            test_file, area_refs={"kitchen"}, areas={"kitchen": {"name": "Kitchen"}}
+        )
+        assert not any("Unknown area" in w for w in validator.warnings)
+
+    def test_check_entity_refs_in_registry_and_restore_state_registry_wins(
+        self, validator, test_file
+    ):
+        """Entity in BOTH registry and restore_state: registry wins (no restore
+        warning, no error). Pins the original's `continue` short-circuit."""
+        entities = {"sensor.x": {"disabled_by": None, "hidden_by": None}}
+        result = validator._check_entity_refs(
+            test_file,
+            entity_refs={"sensor.x"},
+            entities=entities,
+            config_entities=set(),
+            restore_entities={"sensor.x"},
+        )
+        assert result is True
+        assert not any("restore state" in w for w in validator.warnings)
+        assert not any("Unknown entity" in e for e in validator.errors)
+
+    def test_check_registry_uuid_refs_mapped_to_deleted_entity_no_warning(
+        self, validator, test_file
+    ):
+        """UUID maps via entity_id_mapping but the target is not in `entities`
+        (deleted from registry). No warning, no error. Pins the equivalence
+        between the original `if ... in entities:` guard and the new `.get()`
+        simplification."""
+        mapping = {"abc123": "sensor.deleted"}
+        result = validator._check_registry_uuid_refs(
+            test_file,
+            registry_ids={"abc123"},
+            entity_id_mapping=mapping,
+            entities={},
+        )
+        assert result is True
+        assert not any("disabled" in w.lower() for w in validator.warnings)
+
+    def test_check_device_refs_mixed_known_unknown_disabled(self, validator, test_file):
+        """A single call with a known disabled device + an unknown device:
+        unknown -> error + return False; disabled -> warning. Both messages
+        must appear (order: iteration order of the set is undefined, so just
+        check membership)."""
+        devices = {"device_known": {"disabled_by": "user"}}
+        result = validator._check_device_refs(
+            test_file,
+            device_refs={"device_known", "device_unknown"},
+            devices=devices,
+        )
+        assert result is False
+        assert any("Unknown device 'device_unknown'" in e for e in validator.errors)
+        assert any("disabled device 'device_known'" in w for w in validator.warnings)

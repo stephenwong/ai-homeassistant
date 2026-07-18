@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from tools.common import add_summary_args, resolve_summary
+from tools.validators._storage import load_storage_registry
 from tools.validators._templates import is_jinja_template
 from tools.validators.base import ValidatorBase
 from tools.validators.entity_definitions import EntityDefinitionExtractor
@@ -98,6 +99,10 @@ class ReferenceValidator(ValidatorBase):
     ) -> dict[str, Any]:
         """Load and cache a HA registry JSON file.
 
+        Thin wrapper over :func:`tools.validators._storage.load_storage_registry`
+        that adds instance caching and routes missing/parse failures to the
+        appropriate diagnostics bucket.
+
         Args:
             filename: Relative path under storage_dir (e.g. 'core.entity_registry').
             list_key: Key in ``data.data[list_key]`` holding the items.
@@ -119,11 +124,9 @@ class ReferenceValidator(ValidatorBase):
             return {}
 
         try:
-            with open(registry_file, encoding="utf-8") as f:
-                data = json.load(f)
-            result = {
-                item[key_field]: item for item in data.get("data", {}).get(list_key, [])
-            }
+            result = load_storage_registry(
+                registry_file, list_key=list_key, key_field=key_field
+            )
         except (
             OSError,
             json.JSONDecodeError,
@@ -314,45 +317,31 @@ class ReferenceValidator(ValidatorBase):
 
         return entity_registry_ids
 
-    def validate_file_references(self, file_path: Path) -> bool:
-        """Validate all references in a single file."""
-        if file_path.name == "secrets.yaml":
-            return True  # Skip secrets file
+    def _check_entity_refs(
+        self,
+        file_path: Path,
+        entity_refs: set[str],
+        entities: dict[str, Any],
+        config_entities: set[str],
+        restore_entities: set[str],
+    ) -> bool:
+        """Validate normal-format entity references.
 
-        data, ok = self.load_yaml_checked(file_path)
-        if not ok:
-            return False
+        Skips UUID-format refs (handled by :meth:`_check_registry_uuid_refs`).
+        Unknown entities are errors; disabled entities are warnings; hidden
+        entities are info; entities found only in restore state get a
+        diagnostic warning but still fail validation.
 
-        if data is None:
-            return True  # Empty file is valid
-
-        # Extract references
-        entity_refs = self.extract_entity_references(data)
-        device_refs = self.extract_device_references(data)
-        area_refs = self.extract_area_references(data)
-        entity_registry_ids = self.extract_entity_registry_ids(data)
-
-        # Load registries
-        entities = self.load_entity_registry()
-        devices = self.load_device_registry()
-        areas = self.load_area_registry()
-        entity_id_mapping = {
-            e["id"]: e["entity_id"] for e in entities.values() if "id" in e
-        }
-
-        # Get config-defined entities and restore state for diagnostics
-        config_entities = self.get_config_defined_entities()
-        restore_entities = self.load_restore_state_entities()
-
+        Returns:
+            ``True`` when every entity ref resolves (registry, config, or
+            restore state-with-warning); ``False`` when any unknown entity
+            triggers an error.
+        """
         all_valid = True
-
-        # Validate entity references (normal entity_id format)
         for entity_id in entity_refs:
-            # Skip UUID-format entity IDs, they're handled separately
             if self.is_uuid_format(entity_id):
                 continue
 
-            # Check if entity exists in registry
             if entity_id in entities:
                 if entities[entity_id].get("disabled_by") is not None:
                     self.warnings.append(
@@ -364,11 +353,9 @@ class ReferenceValidator(ValidatorBase):
                     )
                 continue
 
-            # Check if entity is defined in config files
             if entity_id in config_entities:
                 continue
 
-            # Diagnostic: note if found in restore state (but still fail)
             if entity_id in restore_entities:
                 self.warnings.append(
                     f"{file_path}: Entity '{entity_id}' not in registry "
@@ -377,41 +364,138 @@ class ReferenceValidator(ValidatorBase):
 
             self.errors.append(f"{file_path}: Unknown entity '{entity_id}'")
             all_valid = False
+        return all_valid
 
-        # Validate entity registry ID references (UUID format)
-        for registry_id in entity_registry_ids:
+    def _check_registry_uuid_refs(
+        self,
+        file_path: Path,
+        registry_ids: set[str],
+        entity_id_mapping: dict[str, str],
+        entities: dict[str, Any],
+    ) -> bool:
+        """Validate entity-registry UUID references.
+
+        Each UUID must map to a known entity via *entity_id_mapping*. When
+        the mapped entity is disabled, a warning is appended (but the check
+        still passes — the UUID is valid).
+
+        Returns:
+            ``True`` when every UUID resolves; ``False`` when any unknown
+            UUID triggers an error.
+        """
+        all_valid = True
+        for registry_id in registry_ids:
             if registry_id not in entity_id_mapping:
                 self.errors.append(
                     f"{file_path}: Unknown entity registry ID '{registry_id}'"
                 )
                 all_valid = False
-            else:
-                # Check if the mapped entity is disabled
-                actual_entity_id = entity_id_mapping[registry_id]
-                if actual_entity_id in entities:
-                    entity_data = entities[actual_entity_id]
-                    if entity_data.get("disabled_by") is not None:
-                        self.warnings.append(
-                            f"{file_path}: Entity registry ID '{registry_id}' "
-                            f"references disabled entity '{actual_entity_id}'"
-                        )
+                continue
 
-        # Validate device references
+            actual_entity_id = entity_id_mapping[registry_id]
+            entity_data = entities.get(actual_entity_id, {})
+            if entity_data.get("disabled_by") is not None:
+                self.warnings.append(
+                    f"{file_path}: Entity registry ID '{registry_id}' "
+                    f"references disabled entity '{actual_entity_id}'"
+                )
+        return all_valid
+
+    def _check_device_refs(
+        self,
+        file_path: Path,
+        device_refs: set[str],
+        devices: dict[str, Any],
+    ) -> bool:
+        """Validate device references.
+
+        Unknown devices are errors; disabled devices are warnings (but still
+        pass — the device exists).
+
+        Returns:
+            ``True`` when every device ref resolves; ``False`` when any
+            unknown device triggers an error.
+        """
+        all_valid = True
         for device_id in device_refs:
             if device_id not in devices:
                 self.errors.append(f"{file_path}: Unknown device '{device_id}'")
                 all_valid = False
-            elif devices[device_id].get("disabled_by"):
+                continue
+
+            if devices[device_id].get("disabled_by"):
                 self.warnings.append(
                     f"{file_path}: References disabled device '{device_id}'"
                 )
+        return all_valid
 
-        # Validate area references
+    def _check_area_refs(
+        self,
+        file_path: Path,
+        area_refs: set[str],
+        areas: dict[str, Any],
+    ) -> None:
+        """Validate area references.
+
+        Unknown areas are warnings only (never errors) — area registry is
+        advisory and may be incomplete.
+
+        Returns:
+            ``None`` — area checks never fail validation.
+        """
         for area_id in area_refs:
             if area_id not in areas:
                 self.warnings.append(f"{file_path}: Unknown area '{area_id}'")
 
-        return all_valid
+    def validate_file_references(self, file_path: Path) -> bool:
+        """Validate all references in a single file.
+
+        Loads YAML, extracts entity/device/area/UUID references, then
+        delegates each ref-type check to its private helper. Returns
+        ``False`` if any check found an unknown entity/UUID/device; area-ref
+        unknowns are warnings only and never fail validation.
+        """
+        if file_path.name == "secrets.yaml":
+            return True
+
+        data, ok = self.load_yaml_checked(file_path)
+        if not ok:
+            return False
+
+        if data is None:
+            return True
+
+        entity_refs = self.extract_entity_references(data)
+        device_refs = self.extract_device_references(data)
+        area_refs = self.extract_area_references(data)
+        entity_registry_ids = self.extract_entity_registry_ids(data)
+
+        entities = self.load_entity_registry()
+        devices = self.load_device_registry()
+        areas = self.load_area_registry()
+        entity_id_mapping = {
+            e["id"]: e["entity_id"] for e in entities.values() if "id" in e
+        }
+        config_entities = self.get_config_defined_entities()
+        restore_entities = self.load_restore_state_entities()
+
+        entity_ok = self._check_entity_refs(
+            file_path,
+            entity_refs,
+            entities,
+            config_entities,
+            restore_entities,
+        )
+        uuid_ok = self._check_registry_uuid_refs(
+            file_path,
+            entity_registry_ids,
+            entity_id_mapping,
+            entities,
+        )
+        device_ok = self._check_device_refs(file_path, device_refs, devices)
+        self._check_area_refs(file_path, area_refs, areas)
+
+        return entity_ok and uuid_ok and device_ok
 
     def _validate(self) -> bool:
         """Validate all references in the config directory."""
