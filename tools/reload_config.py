@@ -58,7 +58,7 @@ def detect_changed_services(
                 p = Path(p_str)
                 if len(p.parts) == 2 and p.parts[0] == config_dir:
                     changed_files.add(p.name)
-    except FileNotFoundError, OSError, subprocess.TimeoutExpired:
+    except OSError, subprocess.TimeoutExpired:
         return None
 
     # Also check git status for untracked files not shown by git diff HEAD
@@ -91,7 +91,7 @@ def detect_changed_services(
                         i += 2
                         continue
                 i += 1
-    except FileNotFoundError, OSError, subprocess.TimeoutExpired:
+    except OSError, subprocess.TimeoutExpired:
         pass
 
     services: set[str] = set()

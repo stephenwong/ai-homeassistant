@@ -8,6 +8,7 @@ import sys
 from tools.common import (
     HARequestError,
     add_output_shape_args,
+    add_summary_args,
     resolve_max_chars,
     resolve_summary,
 )
@@ -40,16 +41,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Pretty-print JSON output with indent=2 (default: compact)",
     )
-    parser.add_argument(
-        "--summary",
-        action="store_true",
-        help="Compact output; auto-detected when stdout is not a TTY",
-    )
-    parser.add_argument(
-        "--no-summary",
-        action="store_true",
-        help="Force verbose output even when stdout is piped",
-    )
+    add_summary_args(parser)
     parser.set_defaults(func=run)
 
 

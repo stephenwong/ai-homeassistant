@@ -575,30 +575,6 @@ evening_scene:
 
 
 class TestDictHelpers:
-    def test_find_script_true_when_key_exists(self, tmp_path):
-        from tools.ha.yaml_editor import YAMLEditor
-
-        path = tmp_path / "scripts.yaml"
-        _write_yaml(path, SCRIPTS_FIXTURE)
-        editor = YAMLEditor(path)
-        assert editor.find_script("morning_routine") is True
-
-    def test_find_script_false_when_key_missing(self, tmp_path):
-        from tools.ha.yaml_editor import YAMLEditor
-
-        path = tmp_path / "scripts.yaml"
-        _write_yaml(path, SCRIPTS_FIXTURE)
-        editor = YAMLEditor(path)
-        assert editor.find_script("nonexistent") is False
-
-    def test_find_script_false_for_list_data(self, tmp_path):
-        from tools.ha.yaml_editor import YAMLEditor
-
-        path = tmp_path / "automations.yaml"
-        _write_yaml(path, AUTOMATIONS_FIXTURE)
-        editor = YAMLEditor(path)
-        assert editor.find_script("anything") is False
-
     def test_add_script(self, tmp_path):
         from tools.ha.yaml_editor import YAMLEditor
 

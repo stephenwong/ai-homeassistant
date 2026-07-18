@@ -230,6 +230,30 @@ class TestAddOutputShapeArgs:
         assert not hasattr(ns, "max_chars")
 
 
+class TestAddSummaryArgs:
+    def test_registers_both_flags(self):
+        from tools.common import add_summary_args
+
+        p = argparse.ArgumentParser()
+        add_summary_args(p)
+        ns = p.parse_args(["--summary"])
+        assert ns.summary is True
+        assert ns.no_summary is False
+        ns2 = p.parse_args(["--no-summary"])
+        assert ns2.summary is False
+        assert ns2.no_summary is True
+
+    def test_both_flags_allowed_not_mutually_exclusive(self):
+        """Both flags can be set together (resolve_summary handles the conflict)."""
+        from tools.common import add_summary_args
+
+        p = argparse.ArgumentParser()
+        add_summary_args(p)
+        ns = p.parse_args(["--summary", "--no-summary"])
+        assert ns.summary is True
+        assert ns.no_summary is True
+
+
 class TestIsTTY:
     """Tests for _is_tty()."""
 
@@ -311,22 +335,6 @@ class TestValidatorBase:
         assert "test.yaml" in names
         assert "test.yml" in names
         assert "test.txt" not in names
-
-    def test_load_yaml(self):
-        test_file = self.config_dir / "test.yaml"
-        test_file.write_text("key: value\nlist:\n  - item1\n  - item2\n")
-
-        v = _ConcreteValidator(str(self.config_dir))
-        data = v.load_yaml(test_file)
-        assert data == {"key": "value", "list": ["item1", "item2"]}
-
-    def test_load_yaml_with_ha_tags(self):
-        test_file = self.config_dir / "test.yaml"
-        test_file.write_text("secret: !secret my_password\n")
-
-        v = _ConcreteValidator(str(self.config_dir))
-        data = v.load_yaml(test_file)
-        assert data == {"secret": "!secret my_password"}
 
     def test_check_automations_structure_valid(self):
         v = _ConcreteValidator(str(self.config_dir))

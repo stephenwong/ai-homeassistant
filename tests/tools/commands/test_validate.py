@@ -300,6 +300,22 @@ class TestRunOne:
             result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=True)
         assert result.passed is True
 
+    def test_system_exit_path_includes_diagnostic_lines(self, config_dir, monkeypatch):
+        """SystemExit path must surface errors/warnings/info like the success path."""
+        from tools.validators.yaml import YAMLValidator
+
+        def fake_validate(self):
+            self.errors.append("boom: bad entity")
+            self.warnings.append("warn: missing alias")
+            raise SystemExit(1)
+
+        monkeypatch.setattr(YAMLValidator, "validate_all", fake_validate)
+        monkeypatch.setattr(YAMLValidator, "file_deps", lambda self: [])
+        result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=True)
+        assert result.passed is False
+        assert "ERROR: boom: bad entity" in result.stderr
+        assert "WARN: warn: missing alias" in result.stderr
+
 
 class TestRunValidators:
     def test_returns_all_results(self, config_dir):

@@ -205,7 +205,7 @@ class TestHasTransformFlags:
     def test_flag_matrix(self, overrides, expected):
         from argparse import Namespace
 
-        from tools.common import _has_transform_flags
+        from tools.commands.curl import _has_transform_flags
 
         base = {
             "count": False,

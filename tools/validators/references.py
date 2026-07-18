@@ -309,15 +309,6 @@ class ReferenceValidator(ValidatorBase):
 
         return entity_registry_ids
 
-    def get_entity_registry_id_mapping(self) -> dict[str, str]:
-        """Get mapping from entity registry ID to entity_id."""
-        entities = self.load_entity_registry()
-        return {
-            entity_data["id"]: entity_data["entity_id"]
-            for entity_data in entities.values()
-            if "id" in entity_data
-        }
-
     def validate_file_references(self, file_path: Path) -> bool:
         """Validate all references in a single file."""
         if file_path.name == "secrets.yaml":
@@ -340,7 +331,9 @@ class ReferenceValidator(ValidatorBase):
         entities = self.load_entity_registry()
         devices = self.load_device_registry()
         areas = self.load_area_registry()
-        entity_id_mapping = self.get_entity_registry_id_mapping()
+        entity_id_mapping = {
+            e["id"]: e["entity_id"] for e in entities.values() if "id" in e
+        }
 
         # Get config-defined entities and restore state for diagnostics
         config_entities = self.get_config_defined_entities()

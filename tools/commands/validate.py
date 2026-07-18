@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from tools.cache import compute_hash, load_cache, save_cache
-from tools.common import resolve_summary
+from tools.common import add_summary_args, resolve_summary
 from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.references import ReferenceValidator
@@ -47,6 +47,18 @@ _VALIDATORS: list[tuple[type[Any], str]] = [
     (StaleSensorValidator, "Stale Sensor Validation"),
     (HAOfficialValidator, "Official Home Assistant Configuration Validation"),
 ]
+
+
+def _build_diagnostic_stderr(instance: Any) -> str:
+    """Build stderr from instance.errors/warnings/info for diagnostic output."""
+    lines: list[str] = []
+    for err in getattr(instance, "errors", []):
+        lines.append(f"ERROR: {err}")
+    for warn in getattr(instance, "warnings", []):
+        lines.append(f"WARN: {warn}")
+    for info in getattr(instance, "info", []):
+        lines.append(f"INFO: {info}")
+    return "\n".join(lines)
 
 
 def _run_one(
@@ -114,25 +126,12 @@ def _run_one(
         # --- cache miss or forced — actually run the validator ---
         try:
             passed = bool(instance.validate_all())
-            detail_lines: list[str] = []
-            for err in getattr(instance, "errors", []):
-                detail_lines.append(f"ERROR: {err}")
-            for warn in getattr(instance, "warnings", []):
-                detail_lines.append(f"WARN: {warn}")
-            for info in getattr(instance, "info", []):
-                detail_lines.append(f"INFO: {info}")
-            stderr = "\n".join(detail_lines)
+            stderr = _build_diagnostic_stderr(instance)
         except SystemExit as e:
             passed = e.code in (0, None)
-            detail_lines = []
-            for err in getattr(instance, "errors", []):
-                detail_lines.append(f"ERROR: {err}")
-            for warn in getattr(instance, "warnings", []):
-                detail_lines.append(f"WARN: {warn}")
-            for info in getattr(instance, "info", []):
-                detail_lines.append(f"INFO: {info}")
             stderr = (
-                "\n".join(detail_lines) or f"Validator raised SystemExit({e.code!r})"
+                _build_diagnostic_stderr(instance)
+                or f"Validator raised SystemExit({e.code!r})"
             )
         except Exception as e:
             return ValidatorResult(
@@ -206,16 +205,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Re-run all validators ignoring cached results (cache is refreshed).",
     )
-    parser.add_argument(
-        "--summary",
-        action="store_true",
-        help="Compact output; auto-detected when stdout is not a TTY",
-    )
-    parser.add_argument(
-        "--no-summary",
-        action="store_true",
-        help="Force verbose output even when stdout is piped",
-    )
+    add_summary_args(parser)
     parser.set_defaults(func=run)
 
 

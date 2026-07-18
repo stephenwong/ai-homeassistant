@@ -69,11 +69,6 @@ class ValidatorBase(ABC):
             yaml_files.extend(self.config_dir.glob(pattern))
         return yaml_files
 
-    def load_yaml(self, file_path: Path):
-        """Load a YAML file with HA-aware loader and UTF-8 encoding."""
-        with open(file_path, encoding="utf-8") as f:
-            return yaml.load(f, Loader=HAYamlLoader)
-
     def load_yaml_checked(self, file_path: Path) -> tuple[Any, bool]:
         """Load YAML, recording any error to ``self.errors``.
 

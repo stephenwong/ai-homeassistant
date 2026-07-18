@@ -21,14 +21,36 @@ import sys
 
 from tools.common import (
     HARequestError,
-    _has_transform_flags,
     add_output_shape_args,
+    add_summary_args,
     positive_int,
     resolve_max_chars,
     resolve_summary,
 )
 from tools.ha.client import HAClient
 from tools.output_shape import apply_output_shape, print_json
+
+
+def _has_transform_flags(args: argparse.Namespace) -> bool:
+    """Check if the curl command has any output-transforming flags active.
+
+    Used by the bare-endpoint guardrail to detect whether the user has
+    explicitly requested transformed output.  Returning True means the
+    guardrail should not fire.
+
+    Flags checked: count, keys, first, raw, pick, entity, domain,
+    max_chars.
+    """
+    return bool(
+        args.count
+        or args.keys
+        or args.first is not None
+        or args.raw
+        or bool(args.pick)
+        or bool(args.entity)
+        or bool(args.domain)
+        or args.max_chars is not None
+    )
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -129,17 +151,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Pretty-print JSON with indent=2 (default: compact)",
     )
 
-    # ---- summary / quiet mode ----
-    parser.add_argument(
-        "--summary",
-        action="store_true",
-        help="Compact output; auto-detected when stdout is not a TTY",
-    )
-    parser.add_argument(
-        "--no-summary",
-        action="store_true",
-        help="Force verbose output even when stdout is piped",
-    )
+    add_summary_args(parser)
 
     parser.set_defaults(func=run)
 

@@ -85,28 +85,6 @@ def _is_tty() -> bool:
         return False
 
 
-def _has_transform_flags(args: argparse.Namespace) -> bool:
-    """Check if the curl command has any output-transforming flags active.
-
-    Used by the bare-endpoint guardrail to detect whether the user has
-    explicitly requested transformed output.  Returning True means the
-    guardrail should not fire.
-
-    Flags checked: count, keys, first, raw, pick, entity, domain,
-    max_chars.
-    """
-    return bool(
-        args.count
-        or args.keys
-        or args.first is not None
-        or args.raw
-        or bool(args.pick)
-        or bool(args.entity)
-        or bool(args.domain)
-        or args.max_chars is not None
-    )
-
-
 def positive_int(value: str) -> int:
     """Argparse type: reject values < 1."""
     n = int(value)
@@ -208,6 +186,24 @@ def add_output_shape_args(
             type=non_negative_int,
             help="Truncate JSON above N chars (0 disables; default 8000 in summary)",
         )
+
+
+def add_summary_args(parser: argparse.ArgumentParser) -> None:
+    """Attach the standard --summary / --no-summary mutually-independent flags.
+
+    Both flags use ``store_true``; ``resolve_summary()`` handles the
+    both-set conflict at resolution time (warns + treats as --summary).
+    """
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Compact output; auto-detected when stdout is not a TTY",
+    )
+    parser.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Force verbose output even when stdout is piped",
+    )
 
 
 class HARequestError(Exception):

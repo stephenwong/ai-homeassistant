@@ -2,7 +2,7 @@
 
 import argparse
 
-from tools.common import positive_int, resolve_summary
+from tools.common import add_summary_args, positive_int, resolve_summary
 from tools.validators.stale_sensors import StaleSensorValidator
 
 
@@ -50,16 +50,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Exit with non-zero status code if stale sensors are found",
     )
-    parser.add_argument(
-        "--summary",
-        action="store_true",
-        help="Compact output; auto-detected when stdout is not a TTY",
-    )
-    parser.add_argument(
-        "--no-summary",
-        action="store_true",
-        help="Force verbose output even when stdout is piped",
-    )
+    add_summary_args(parser)
     parser.set_defaults(func=run)
 
 

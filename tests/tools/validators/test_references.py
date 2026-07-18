@@ -157,17 +157,6 @@ class TestExtractEntityRegistryIds:
         assert "aabbccddeeff00112233445566778899" in refs
 
 
-class TestGetEntityRegistryIdMapping:
-    def test_mapping(self, validator):
-        mapping = validator.get_entity_registry_id_mapping()
-        assert mapping == {
-            "88a52f17bf43cb276836f06ac5c07444": "binary_sensor.test_motion_battery",
-            "11223344556677889900aabbccddeeff": "sensor.disabled_sensor",
-            "aabbccddeeff00112233445566778899": "sensor.normal_sensor",
-            "complexsensoridfortest1234567890": "sensor.complex",
-        }
-
-
 class TestValidateEntityRegistryIds:
     def test_valid_uuid(self, config_dir, validator):
         automation_data = [

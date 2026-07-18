@@ -124,13 +124,6 @@ class YAMLEditor:
                 return i
         return None
 
-    def find_script(self, key: str) -> bool:
-        """Return True if a script key exists in a dict-based file."""
-        self._ensure_loaded()
-        if not isinstance(self._data, dict):
-            return False
-        return key in self._data
-
     def add_automation(self, automation: dict) -> None:
         """Append an automation dict to the list. Does NOT save.
 

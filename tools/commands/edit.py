@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAML, YAMLError
 
-from tools.common import resolve_summary
+from tools.common import add_summary_args, resolve_summary
 from tools.ha.yaml_editor import YAMLEditor
 
 _SAFE_YAML = YAML(typ="safe")
@@ -67,16 +67,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Suppress success messages.",
     )
-    parser.add_argument(
-        "--summary",
-        action="store_true",
-        help="Compact output; auto-detected when stdout is not a TTY",
-    )
-    parser.add_argument(
-        "--no-summary",
-        action="store_true",
-        help="Force verbose output even when stdout is piped",
-    )
+    add_summary_args(parser)
     parser.set_defaults(func=run)
 
 

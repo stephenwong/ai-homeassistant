@@ -2,7 +2,7 @@
 
 import argparse
 
-from tools.common import resolve_summary
+from tools.common import add_summary_args, resolve_summary
 from tools.reload_config import reload_config
 
 
@@ -12,16 +12,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "reload",
         help="Reload Home Assistant configuration via API.",
     )
-    parser.add_argument(
-        "--summary",
-        action="store_true",
-        help="Compact output; auto-detected when stdout is not a TTY",
-    )
-    parser.add_argument(
-        "--no-summary",
-        action="store_true",
-        help="Force verbose output even when stdout is piped",
-    )
+    add_summary_args(parser)
     parser.set_defaults(func=run)
 
 
