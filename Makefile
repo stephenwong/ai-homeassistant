@@ -162,12 +162,14 @@ format-yaml:
 	fi
 	@echo "$(GREEN)YAML formatting complete!$(NC)"
 
-# Run Python linting and format checks
+# Run Python linting, type checking, and format checks
 lint: check-setup
 	@echo "$(GREEN)Checking Python formatting...$(NC)"
 	@$(UV_RUN) ruff format --check $(TOOLS_PATH)/ tests/
 	@echo "$(GREEN)Running Python linter...$(NC)"
 	@$(UV_RUN) ruff check $(TOOLS_PATH)/ tests/
+	@echo "$(GREEN)Running mypy type checker...$(NC)"
+	@$(UV_RUN) mypy $(TOOLS_PATH)/ --exclude "tests/" --exclude "tools/_dev/"
 	@echo "$(GREEN)All lint checks passed!$(NC)"
 
 # Auto-fix Python lint and formatting issues

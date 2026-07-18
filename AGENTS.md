@@ -41,7 +41,7 @@ make backup         Timestamped backup (auto-changelog)
 make validate       Run all validators
 make reload         Reload HA config via API
 make status         Config status + validation summary
-make lint / lint-fix    Ruff format + check
+make lint / lint-fix    Ruff format + check, mypy type check
 make test-ssh       Test SSH connection
 make clean          Remove temp/cache
 ```
@@ -178,7 +178,7 @@ from tools.validators.entity_definitions import EntityDefinitionExtractor
 - **Debugging:** `home-assistant-debugging` skill
 - **Python changes:** **Always TDD** — write tests first, confirm red, then implement.
 - **After tests pass:** update `README.md`, this context file (`AGENTS.md`), and relevant skills to reflect any behavior, entity, or workflow changes.
-- **Before committing:** `make lint` (or `make lint-fix`)
+- **Before committing:** `make lint` (or `make lint-fix`; runs ruff + mypy)
 - **After concurrency/parallel/error-handling changes:** `code-review:code-review` as "State Machine Auditor"
 - **Rubber duck review:** invoke the `rubber-duck-review` skill when wanted (explicit, not automatic).
 - **Before finishing:** `reflect` skill to capture learnings.
