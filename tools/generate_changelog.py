@@ -8,15 +8,14 @@ Usage:
 """
 
 import argparse
-import contextlib
 import difflib
 import functools
-import os
 import sys
 import tarfile
 from pathlib import Path
 
-from tools.prune_backups import BACKUP_DIR, get_backups
+from tools.backup_common import BACKUP_DIR, get_backups, iter_tarball_file_members
+from tools.common import atomic_write_text
 
 # Files/directories to skip (noisy runtime state)
 SKIP_PATTERNS = [
@@ -57,20 +56,14 @@ def extract_files(backup_path: Path) -> dict[str, str]:
     """Extract interesting text files from a backup archive. Returns {name: content}."""
     files = {}
     try:
-        with tarfile.open(backup_path, "r:gz") as tar:
-            for member in tar.getmembers():
-                if not member.isfile():
-                    continue
-                if not should_include(member.name):
-                    continue
-                try:
-                    extracted = tar.extractfile(member)
-                    if extracted is None:
-                        continue
-                    with extracted:
-                        files[member.name] = extracted.read().decode("utf-8")
-                except UnicodeDecodeError:
-                    continue
+        for name, extracted in iter_tarball_file_members(backup_path):
+            if not should_include(name):
+                continue
+            try:
+                with extracted:
+                    files[name] = extracted.read().decode("utf-8")
+            except UnicodeDecodeError:
+                continue
     except (tarfile.TarError, OSError) as e:
         print(f"  Warning: Could not read {backup_path}: {e}", file=sys.stderr)
     return files
@@ -201,19 +194,7 @@ def generate_for_backup(backup: dict, backups_list: list[dict]) -> Path:
 
     changelog_file = changelog_path_for(backup)
     content = generate_changelog(backup, previous)
-    tmp = changelog_file.with_suffix(".changelog.tmp")
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, changelog_file)
-    except OSError as e:
-        print(f"WARN: failed to write changelog: {e}", file=sys.stderr)
-    finally:
-        if tmp.exists():
-            with contextlib.suppress(OSError):
-                tmp.unlink()
+    atomic_write_text(changelog_file, content)
     return changelog_file
 
 

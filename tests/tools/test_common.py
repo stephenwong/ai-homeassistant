@@ -580,3 +580,60 @@ class TestM5LoadEnvFile:
             assert os.environ["HA_URL"] == "http://from-file"
         finally:
             os.environ.pop("HA_URL", None)
+
+
+class TestAtomicWriteText:
+    """Tests for the shared atomic-write helper."""
+
+    def test_writes_content_to_path(self, tmp_path):
+        from tools.common import atomic_write_text
+
+        target = tmp_path / "out.json"
+        atomic_write_text(target, '{"key": "value"}')
+        assert target.read_text() == '{"key": "value"}'
+
+    def test_no_tmp_file_left_after_success(self, tmp_path):
+        from tools.common import atomic_write_text
+
+        target = tmp_path / "out.json"
+        atomic_write_text(target, "content")
+        assert not (tmp_path / "out.json.tmp").exists()
+
+    def test_overwrites_existing_file(self, tmp_path):
+        from tools.common import atomic_write_text
+
+        target = tmp_path / "out.json"
+        target.write_text("old")
+        atomic_write_text(target, "new")
+        assert target.read_text() == "new"
+
+    def test_original_survives_on_failure(self, tmp_path, monkeypatch):
+        from tools import common
+        from tools.common import atomic_write_text
+
+        target = tmp_path / "out.json"
+        target.write_text("original")
+
+        def fail_replace(*a, **kw):
+            raise OSError("mock failure")
+
+        monkeypatch.setattr(common.os, "replace", fail_replace)
+        atomic_write_text(target, "new content")
+
+        assert target.read_text() == "original"
+        assert not (tmp_path / "out.json.tmp").exists()
+
+    def test_warns_on_oserror(self, tmp_path, monkeypatch, capsys):
+        from tools import common
+        from tools.common import atomic_write_text
+
+        target = tmp_path / "out.json"
+
+        def fail_replace(*a, **kw):
+            raise OSError("mock failure")
+
+        monkeypatch.setattr(common.os, "replace", fail_replace)
+        atomic_write_text(target, "content")
+        captured = capsys.readouterr()
+        assert "WARN" in captured.err
+        assert str(target) in captured.err

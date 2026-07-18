@@ -454,16 +454,16 @@ class TestL59AtomicWrite:
         cl_path = tmp_path / "ha_config_20260201_120000.changelog"
         cl_path.write_text("original content")
 
-        import tools.generate_changelog as gcl
+        import tools.common as tcommon
 
-        orig_os_replace = gcl.os.replace
+        orig_replace = tcommon.os.replace
 
         def fail_on_replace(*a, **kw):
             if a[0].suffix == ".tmp":
                 raise OSError("mock failure")
-            return orig_os_replace(*a, **kw)
+            return orig_replace(*a, **kw)
 
-        monkeypatch.setattr(gcl.os, "replace", fail_on_replace)
+        monkeypatch.setattr(tcommon.os, "replace", fail_on_replace)
         with patch("tools.generate_changelog.BACKUP_DIR", tmp_path):
             result = generate_for_backup(backup, [backup])
         assert isinstance(result, Path)

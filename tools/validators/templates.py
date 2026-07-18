@@ -7,14 +7,13 @@ unreachable.
 """
 
 import argparse
-import re
 from typing import Any
 
 from tools.common import HARequestError
 from tools.ha.client import HAClient
+from tools.validators._templates import is_jinja_template
 from tools.validators.base import ValidatorBase
 
-_TEMPLATE_RE = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.DOTALL)
 _RUNTIME_NAMES = frozenset(
     {
         "trigger",
@@ -49,7 +48,7 @@ class TemplateValidator(ValidatorBase):
 
     @staticmethod
     def _is_template(s: str) -> bool:
-        return bool(isinstance(s, str) and _TEMPLATE_RE.search(s))
+        return isinstance(s, str) and is_jinja_template(s)
 
     @staticmethod
     def _balanced(s: str) -> bool:

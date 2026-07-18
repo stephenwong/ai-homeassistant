@@ -502,8 +502,8 @@ class TestL76Safety:
         """L76: invariant comment about extract+isfile must exist near extraction."""
         import inspect
 
-        import tools.search_backups
+        import tools.backup_common
 
-        src = inspect.getsource(tools.search_backups)
+        src = inspect.getsource(tools.backup_common)
         assert "extractfile" in src
         assert "isfile" in src

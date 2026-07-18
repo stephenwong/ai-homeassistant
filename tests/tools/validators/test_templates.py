@@ -535,3 +535,44 @@ class TestMain:
 
         monkeypatch.setattr("sys.argv", ["templates", "/nonexistent"])
         assert main() == 1
+
+
+class TestIsJinjaTemplate:
+    """Tests for the shared template-detection helper."""
+
+    def test_plain_string_not_template(self):
+        from tools.validators._templates import is_jinja_template
+
+        assert is_jinja_template("sensor.temperature") is False
+        assert is_jinja_template("normal text") is False
+        assert is_jinja_template("") is False
+
+    def test_double_brace_expression_is_template(self):
+        from tools.validators._templates import is_jinja_template
+
+        assert is_jinja_template("{{ states('sensor.temp') }}") is True
+        assert is_jinja_template("Value: {{ 25 + 5 }}") is True
+
+    def test_control_flow_is_template(self):
+        from tools.validators._templates import is_jinja_template
+
+        assert is_jinja_template("{% if true %}sensor.a{% endif %}") is True
+        assert is_jinja_template("{%- if x -%}sensor.a{%- endif -%}") is True
+
+    def test_multiline_template_detected(self):
+        from tools.validators._templates import is_jinja_template
+
+        multiline = "{{ states('sensor.x')\n+ states('sensor.y') }}"
+        assert is_jinja_template(multiline) is True
+
+    def test_ha_tag_not_template(self):
+        from tools.validators._templates import is_jinja_template
+
+        assert is_jinja_template("!secret api_key") is False
+        assert is_jinja_template("!input sensor_name") is False
+
+    def test_unpaired_braces_not_template(self):
+        from tools.validators._templates import is_jinja_template
+
+        assert is_jinja_template("}} {{") is False
+        assert is_jinja_template("foo }} bar {{ baz") is False

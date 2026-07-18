@@ -17,8 +17,8 @@ import tarfile
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
+from tools.backup_common import get_backups, iter_tarball_file_members
 from tools.common import get_env_int, non_negative_int
-from tools.prune_backups import get_backups
 
 
 def is_likely_unsafe_regex(pattern: str) -> bool:
@@ -40,68 +40,54 @@ def search_backup(
     """Search a single backup archive for a pattern. Returns (matches, unreadable)."""
     matches = []
     try:
-        with tarfile.open(backup["path"], "r:gz") as tar:
-            for member in tar:
-                if not member.isfile():
-                    continue
+        for display_name, extracted in iter_tarball_file_members(backup["path"]):
+            if yaml_only and not (
+                display_name.endswith(".yaml") or display_name.endswith(".yml")
+            ):
+                continue
 
-                display_name = member.name.removeprefix("./")
+            try:
+                with extracted:
+                    context_before: deque[str] = deque(maxlen=context_lines)
+                    pending_after: list[dict] = []
 
-                if yaml_only and not (
-                    display_name.endswith(".yaml") or display_name.endswith(".yml")
-                ):
-                    continue
+                    for line_num, raw_line in enumerate(extracted, start=1):
+                        line = raw_line.decode("utf-8").rstrip("\n")
 
-                try:
-                    extracted = tar.extractfile(member)
-                    if extracted is None:
-                        continue
-                except KeyError:
-                    continue
+                        if pending_after:
+                            remaining = []
+                            for pending_match in pending_after:
+                                pending_match["context_after"].append(line)
+                                pending_match["_remaining_after"] -= 1
+                                if pending_match["_remaining_after"] > 0:
+                                    remaining.append(pending_match)
+                            pending_after = remaining
 
-                try:
-                    with extracted:
-                        context_before: deque[str] = deque(maxlen=context_lines)
-                        pending_after: list[dict] = []
-
-                        for line_num, raw_line in enumerate(extracted, start=1):
-                            line = raw_line.decode("utf-8").rstrip("\n")
-
-                            if pending_after:
-                                remaining = []
-                                for pending_match in pending_after:
-                                    pending_match["context_after"].append(line)
-                                    pending_match["_remaining_after"] -= 1
-                                    if pending_match["_remaining_after"] > 0:
-                                        remaining.append(pending_match)
-                                pending_after = remaining
-
-                            if not pattern.search(line):
-                                if context_lines > 0:
-                                    context_before.append(line)
-                                continue
-
-                            match_entry = {
-                                "file": display_name,
-                                "line_num": line_num,
-                                "line": line,
-                            }
-                            if context_lines > 0:
-                                match_entry["context_before"] = list(context_before)
-                                match_entry["context_after"] = []
-                                match_entry["_remaining_after"] = context_lines
-                                pending_after.append(match_entry)
-
-                            matches.append(match_entry)
-
+                        if not pattern.search(line):
                             if context_lines > 0:
                                 context_before.append(line)
-                except UnicodeDecodeError:
-                    # Skip non-UTF8 files
-                    continue
+                            continue
 
-            for match in matches:
-                match.pop("_remaining_after", None)
+                        match_entry = {
+                            "file": display_name,
+                            "line_num": line_num,
+                            "line": line,
+                        }
+                        if context_lines > 0:
+                            match_entry["context_before"] = list(context_before)
+                            match_entry["context_after"] = []
+                            match_entry["_remaining_after"] = context_lines
+                            pending_after.append(match_entry)
+
+                        matches.append(match_entry)
+
+                        if context_lines > 0:
+                            context_before.append(line)
+            except UnicodeDecodeError:
+                continue
+
+        for match in matches:
+            match.pop("_remaining_after", None)
     except (tarfile.TarError, OSError) as e:
         print(f"  Warning: Could not read {backup['filename']}: {e}", file=sys.stderr)
         return [], True

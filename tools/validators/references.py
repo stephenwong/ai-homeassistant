@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from tools.common import resolve_summary
+from tools.validators._templates import is_jinja_template
 from tools.validators.base import ValidatorBase
 from tools.validators.entity_definitions import EntityDefinitionExtractor
 
@@ -183,16 +184,23 @@ class ReferenceValidator(ValidatorBase):
 
     def is_template(self, value: str) -> bool:
         """Check if value is a Jinja2 template expression."""
-        # Match template expressions like {{ ... }} or {% ... %}
-        return bool(re.search(r"\{\{.*?\}\}|\{%.*?%\}", value))
+        return is_jinja_template(value)
+
+    def _should_skip_id_validation(self, value: str) -> bool:
+        """True if value is an HA tag or Jinja template — skip device/area validation.
+
+        Distinct from ``should_skip_entity_validation``: entity refs also
+        skip UUIDs and special keywords ("all", "none"), but device/area
+        IDs legitimately use UUID format and don't have keyword aliases.
+        """
+        return value.startswith("!") or self.is_template(value)
 
     def should_skip_entity_validation(self, value: str) -> bool:
         """Check if entity reference should be skipped during validation."""
         return (
-            value.startswith("!")  # HA tags like !input, !secret
-            or self.is_uuid_format(value)  # UUID format (device-based)
-            or self.is_template(value)  # Template expressions
-            or value in self.SPECIAL_KEYWORDS  # Special keywords like "all", "none"
+            self._should_skip_id_validation(value)
+            or self.is_uuid_format(value)
+            or value in self.SPECIAL_KEYWORDS
         )
 
     def extract_entity_references(self, data: Any) -> set[str]:
@@ -261,15 +269,13 @@ class ReferenceValidator(ValidatorBase):
             for key, value in data.items():
                 if key in keys:
                     if isinstance(value, str):
-                        if not value.startswith("!") and not self.is_template(value):
+                        if not self._should_skip_id_validation(value):
                             refs.add(value)
                     elif isinstance(value, list):
                         for item in value:
-                            if (
-                                isinstance(item, str)
-                                and not item.startswith("!")
-                                and not self.is_template(item)
-                            ):
+                            if isinstance(
+                                item, str
+                            ) and not self._should_skip_id_validation(item):
                                 refs.add(item)
                 else:
                     refs.update(self._extract_id_references(value, keys))

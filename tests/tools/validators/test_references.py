@@ -291,6 +291,11 @@ class TestIsTemplate:
         assert v.is_template("{% if true %}sensor.a{% endif %}") is True
         assert v.is_template("{%- if x -%}sensor.a{%- endif -%}") is True
 
+    def test_multiline_template_detected_dotall(self, setup_config):
+        v = ReferenceValidator(str(setup_config))
+        multiline = "{{ states('sensor.x')\n+ states('sensor.y') }}"
+        assert v.is_template(multiline) is True
+
 
 class TestShouldSkipEntityValidation:
     def test_skips_ha_tags(self, validator):

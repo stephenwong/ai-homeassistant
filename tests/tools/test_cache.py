@@ -275,7 +275,7 @@ class TestM2AtomicSaveCache:
         def boom(*a, **kw):
             raise RuntimeError("disk full")
 
-        monkeypatch.setattr(cache_mod.json, "dump", boom)
+        monkeypatch.setattr(cache_mod.json, "dumps", boom)
         with pytest.raises(RuntimeError):
             save_cache(tmp_path, "TestValidator", "Test", "new", True, 0.5)
 

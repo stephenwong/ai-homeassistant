@@ -1,13 +1,13 @@
 """Validator result cache — skips re-validation when no relevant files changed."""
 
-import contextlib
 import hashlib
 import json
-import os
 import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+
+from tools.common import atomic_write_text
 
 CACHE_DIR_NAME = ".cache/validators"
 
@@ -159,17 +159,4 @@ def save_cache(
         "timestamp": datetime.now(UTC).isoformat(),
         "duration": round(duration, 4),
     }
-    path = cache_path(config_dir, name)
-    tmp = path.with_suffix(".json.tmp")
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-    except OSError as e:
-        print(f"WARN: failed to write cache {path}: {e}", file=sys.stderr)
-    finally:
-        if tmp.exists():
-            with contextlib.suppress(OSError):
-                tmp.unlink()
+    atomic_write_text(cache_path(config_dir, name), json.dumps(data))

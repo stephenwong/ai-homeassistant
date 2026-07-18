@@ -9,46 +9,15 @@ Retention rules:
 """
 
 import argparse
-import re
 import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from tools.backup_common import get_backups
+
 BACKUP_DIR = Path(__file__).parent.parent / "backups"
-_BACKUP_RE = re.compile(r"^ha_config_(\d{8})_(\d{6})\.tar\.gz$")
-
-
-def parse_backup_filename(filename: str) -> datetime | None:
-    """Parse backup filename and return datetime object."""
-    match = _BACKUP_RE.match(filename)
-    if not match:
-        return None
-
-    date_str = match.group(1)  # YYYYMMDD
-    time_str = match.group(2)  # HHMMSS
-
-    try:
-        return datetime.strptime(f"{date_str}_{time_str}", "%Y%m%d_%H%M%S").astimezone()
-    except ValueError:
-        return None
-
-
-def get_backups() -> list[dict]:
-    """Get all backup files with their timestamps."""
-    if not BACKUP_DIR.exists():
-        return []
-
-    backups = []
-    for file in BACKUP_DIR.glob("*.tar.gz"):
-        timestamp = parse_backup_filename(file.name)
-        if timestamp:
-            backups.append(
-                {"path": file, "filename": file.name, "timestamp": timestamp}
-            )
-
-    return sorted(backups, key=lambda x: (x["timestamp"], x["filename"]))
 
 
 def group_by_retention_period(backups: list[dict], now: datetime) -> dict:

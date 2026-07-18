@@ -3,12 +3,12 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+from tools.backup_common import parse_backup_filename
 from tools.prune_backups import (
     apply_retention,
     clean_orphaned_changelogs,
     format_size,
     group_by_retention_period,
-    parse_backup_filename,
 )
 
 
@@ -47,7 +47,7 @@ class TestGetBackups:
         (backup_dir / "ha_config_20260202_120000.tar.gz").write_text("data2")
         (backup_dir / "not_a_backup.txt").write_text("skip")
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             from tools.prune_backups import get_backups
 
             backups = get_backups()
@@ -60,13 +60,13 @@ class TestGetBackups:
         backup_dir = tmp_path / "backups"
         backup_dir.mkdir()
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             from tools.prune_backups import get_backups
 
             assert get_backups() == []
 
     def test_get_backups_nonexistent_dir(self, tmp_path):
-        with patch("tools.prune_backups.BACKUP_DIR", tmp_path / "nonexistent"):
+        with patch("tools.backup_common.BACKUP_DIR", tmp_path / "nonexistent"):
             from tools.prune_backups import get_backups
 
             assert get_backups() == []
@@ -316,7 +316,7 @@ class TestMain:
     def test_no_backups(self, tmp_path, capsys):
         backup_dir = tmp_path / "backups"
         backup_dir.mkdir()
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
             result = main([])
@@ -332,7 +332,7 @@ class TestMain:
         fname = f"ha_config_{now.strftime('%Y%m%d_%H%M%S')}.tar.gz"
         (backup_dir / fname).write_bytes(b"x" * 1024)
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
             result = main([])
@@ -348,7 +348,7 @@ class TestMain:
         fname = f"ha_config_{yesterday.strftime('%Y%m%d_%H%M%S')}.tar.gz"
         (backup_dir / fname).write_bytes(b"x" * 1024)
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
             result = main([])
@@ -370,7 +370,10 @@ class TestMain:
         # Also add a changelog for the first one
         (backup_dir / fname1.replace(".tar.gz", ".changelog")).write_text("old")
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with (
+            patch("tools.backup_common.BACKUP_DIR", backup_dir),
+            patch("tools.prune_backups.BACKUP_DIR", backup_dir),
+        ):
             from tools.prune_backups import main
 
             result = main(["--apply", "--min-keep", "1"])
@@ -396,7 +399,7 @@ class TestMain:
         (backup_dir / fname1.replace(".tar.gz", ".changelog")).write_text("old")
         (backup_dir / fname2.replace(".tar.gz", ".changelog")).write_text("kept")
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
             main([])
@@ -420,7 +423,10 @@ class TestMain:
         (backup_dir / fname1).write_bytes(b"x" * 512)
         (backup_dir / fname2).write_bytes(b"x" * 512)
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with (
+            patch("tools.backup_common.BACKUP_DIR", backup_dir),
+            patch("tools.prune_backups.BACKUP_DIR", backup_dir),
+        ):
             from tools.prune_backups import main
 
             result = main(["--apply", "--min-keep", "1"])
@@ -441,7 +447,7 @@ class TestMain:
         (backup_dir / fname1).write_bytes(b"x" * 512)
         (backup_dir / fname2).write_bytes(b"x" * 512)
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             from tools.prune_backups import main
 
             result = main(["--dry-run"])
@@ -466,7 +472,10 @@ class TestMain:
         orphan = backup_dir / "ha_config_20250101_120000.changelog"
         orphan.write_text("orphan")
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with (
+            patch("tools.backup_common.BACKUP_DIR", backup_dir),
+            patch("tools.prune_backups.BACKUP_DIR", backup_dir),
+        ):
             from tools.prune_backups import main
 
             main(["--apply", "--min-keep", "1"])
@@ -496,6 +505,7 @@ class TestMain:
             return orig_unlink(self, *a, **kw)
 
         with (
+            patch("tools.backup_common.BACKUP_DIR", backup_dir),
             patch("tools.prune_backups.BACKUP_DIR", backup_dir),
             patch.object(pathlib.Path, "unlink", _mock_unlink),
         ):
@@ -510,7 +520,7 @@ class TestL64Regex:
 
     def test_filename_regex_rejects_unmatched_suffix(self):
         """L64: ha_config_<digits>.tar.gz.bak must NOT match (regex end-anchored)."""
-        from tools.prune_backups import _BACKUP_RE
+        from tools.backup_common import _BACKUP_RE
 
         assert _BACKUP_RE.match("ha_config_20260201_120000.tar.gz") is not None
         assert _BACKUP_RE.match("ha_config_20260201_120000.tar.gz.bak") is None
@@ -529,7 +539,7 @@ class TestL65Sort:
         (backup_dir / "ha_config_20260201_120000.tar.gz").write_bytes(b"x")
         (backup_dir / "ha_config_20260201_120001.tar.gz").write_bytes(b"x")
 
-        monkeypatch.setattr("tools.prune_backups.BACKUP_DIR", backup_dir)
+        monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
         backups = get_backups()
         # Both should be sorted deterministically
         assert (
@@ -547,7 +557,7 @@ class TestL66Orphans:
 
         backup_dir = tmp_path / "backups"
         backup_dir.mkdir()
-        monkeypatch.setattr("tools.prune_backups.BACKUP_DIR", backup_dir)
+        monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
         result = main([])
         assert result == 0
         _, err = capsys.readouterr()
@@ -561,7 +571,6 @@ class TestL67RootPerms:
         self, tmp_path, monkeypatch, capsys
     ):
         """L67: deleting 3 of 5 must report success, not abort the batch."""
-        import tools.prune_backups as pb
         from tools.prune_backups import main
 
         backup_dir = tmp_path / "backups"
@@ -573,7 +582,8 @@ class TestL67RootPerms:
             ts = f"{date_str}_{120000 + i:06d}"
             (backup_dir / f"ha_config_{ts}.tar.gz").write_bytes(b"x" * 512)
 
-        monkeypatch.setattr(pb, "BACKUP_DIR", backup_dir)
+        monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
+        monkeypatch.setattr("tools.prune_backups.BACKUP_DIR", backup_dir)
 
         import pathlib
 
@@ -606,6 +616,7 @@ class TestL67RootPerms:
         (backup_dir / fname1).write_bytes(b"x" * 512)
         (backup_dir / fname2).write_bytes(b"x" * 512)
 
+        monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
         monkeypatch.setattr("tools.prune_backups.BACKUP_DIR", backup_dir)
 
         import pathlib
@@ -635,7 +646,7 @@ def test_missing_file_during_display_does_not_crash(tmp_path, monkeypatch):
 
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir()
-    monkeypatch.setattr(pb, "BACKUP_DIR", backup_dir)
+    monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
 
     vanished = "ha_config_20250101_000000.tar.gz"
     (backup_dir / vanished).write_bytes(b"x" * 1024)

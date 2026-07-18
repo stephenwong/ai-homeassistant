@@ -1,6 +1,7 @@
 """Shared utilities for HA configuration tools."""
 
 import argparse
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -204,6 +205,32 @@ def add_summary_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Force verbose output even when stdout is piped",
     )
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    """Write *content* to *path* atomically via temp file + ``os.replace``.
+
+    Writes to a sibling temp file (``<path>.tmp``), flushes, fsyncs, then
+    atomically renames into place. On ``OSError``, warns to stderr and
+    cleans up the temp file. Never raises ``OSError`` — caller treats the
+    write as best-effort.
+
+    The temp file is named ``path.with_suffix(path.suffix + ".tmp")``, which
+    preserves the extension (e.g. ``foo.json`` → ``foo.json.tmp``).
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except OSError as e:
+        print(f"WARN: failed to write {path}: {e}", file=sys.stderr)
+    finally:
+        if tmp.exists():
+            with contextlib.suppress(OSError):
+                tmp.unlink()
 
 
 class HARequestError(Exception):

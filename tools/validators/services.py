@@ -12,6 +12,7 @@ from typing import Any
 
 from tools.common import HARequestError
 from tools.ha.client import HAClient
+from tools.validators._templates import is_jinja_template
 from tools.validators.base import ValidatorBase
 
 _SERVICE_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
@@ -44,11 +45,7 @@ class ServiceValidator(ValidatorBase):
 
     @staticmethod
     def _looks_dynamic(value: str) -> bool:
-        return (
-            value.startswith("!")
-            or ("{{" in value and "}}" in value)
-            or ("{%" in value and "%}" in value)
-        )
+        return value.startswith("!") or is_jinja_template(value)
 
     @classmethod
     def _extract_services(
