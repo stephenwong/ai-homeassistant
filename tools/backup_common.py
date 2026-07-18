@@ -10,6 +10,7 @@ import tarfile
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
+from typing import IO
 
 BACKUP_DIR = Path(__file__).parent.parent / "backups"
 _BACKUP_RE = re.compile(r"^ha_config_(\d{8})_(\d{6})\.tar\.gz$")
@@ -46,7 +47,7 @@ def get_backups() -> list[dict]:
     return sorted(backups, key=lambda x: (x["timestamp"], x["filename"]))
 
 
-def iter_tarball_file_members(path: Path) -> Iterator[tuple[str, object]]:
+def iter_tarball_file_members(path: Path) -> Iterator[tuple[str, IO[bytes]]]:
     """Yield ``(normalized_name, file_obj)`` for each regular file in a gzipped tarball.
 
     Skips non-file members (directories, symlinks) and members where
