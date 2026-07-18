@@ -150,29 +150,89 @@ def _truncate_list(data: list, max_chars: int):
 def _cap_dict(data: dict, max_chars: int):
     """Drop largest-value keys until the compact serialization fits.
 
-    Mirrors ``trace._cap_trace_dict``: rank keys by serialized value length,
-    drop the largest first, attach a marker describing what was removed.
+    Thin wrapper over :func:`truncate_dict_by_key_size` with the flat-dict
+    defaults (top-level keys are candidates, default marker field names).
     """
+    return truncate_dict_by_key_size(data, max_chars)
+
+
+def truncate_dict_by_key_size(
+    data: dict,
+    max_chars: int,
+    *,
+    target_key: str | None = None,
+    dropped_key_name: str = "dropped_keys",
+    kept_key_name: str = "kept_keys",
+    preserve_min: int = 0,
+) -> dict:
+    """Drop largest-value keys from a (sub)dict until the compact serialization fits.
+
+    Greedy-fit: ranks candidate keys by serialized value length (largest first),
+    drops them one at a time, and returns as soon as the candidate fits within
+    *max_chars*. Always attaches a marker dict describing what was removed.
+
+    Args:
+        data: The dict to fit. When *target_key* is None, candidates are the
+            top-level keys of *data* and the marker is attached at the top level.
+            When *target_key* is set (e.g. ``"trace"``), candidates are the keys
+            of ``data[target_key]``; the result preserves all other top-level
+            fields and replaces ``data[target_key]`` with the trimmed sub-dict.
+        max_chars: Maximum compact-JSON char budget.
+        target_key: Optional sub-dict key whose entries are the drop candidates.
+        dropped_key_name: Marker field name listing dropped candidate keys.
+        kept_key_name: Marker field name listing surviving candidate keys.
+        preserve_min: Always keep at least this many candidates (default 0).
+
+    Returns:
+        A new dict (does not mutate *data*). If *data* already fits, it is
+        returned unchanged. If even the empty-candidate marker exceeds
+        *max_chars*, the marker is returned anyway (same degradation as the
+        list path — preferable to silently dropping the whole response).
+    """
+    serialized = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+    if len(serialized) <= max_chars:
+        return data
+
+    if target_key is None:
+        target = data
+    else:
+        target = data.get(target_key)
+        if not isinstance(target, dict) or len(target) <= preserve_min:
+            return data
+    if len(target) <= preserve_min:
+        return data
+
     keys_by_size = sorted(
-        data.keys(),
+        target.keys(),
         key=lambda k: len(
-            json.dumps(data[k], separators=(",", ":"), ensure_ascii=False)
+            json.dumps(target[k], separators=(",", ":"), ensure_ascii=False)
         ),
         reverse=True,
     )
-    remaining = dict(data)
+
+    remaining = dict(target)
     dropped: list[str] = []
+
+    def build_candidate() -> dict:
+        marker = {
+            "_truncated": True,
+            dropped_key_name: list(dropped),
+            kept_key_name: list(remaining.keys()),
+        }
+        if target_key is None:
+            return {**remaining, **marker}
+        return {**data, target_key: remaining, **marker}
+
     for k in keys_by_size:
+        if len(remaining) <= preserve_min:
+            break
         dropped.append(k)
         del remaining[k]
-        candidate = {
-            **remaining,
-            "_truncated": True,
-            "dropped_keys": dropped,
-            "kept_keys": list(remaining.keys()),
-        }
-        serialized = json.dumps(candidate, separators=(",", ":"), ensure_ascii=False)
-        if len(serialized) <= max_chars:
+        candidate = build_candidate()
+        if (
+            len(json.dumps(candidate, separators=(",", ":"), ensure_ascii=False))
+            <= max_chars
+        ):
             return candidate
-    marker = {"_truncated": True, "dropped_keys": dropped, "kept_keys": []}
-    return marker
+
+    return build_candidate()

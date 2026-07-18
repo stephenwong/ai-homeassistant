@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """YAML syntax validator for Home Assistant configuration files."""
 
-import argparse
 from pathlib import Path
 from typing import Any
 
@@ -103,22 +102,9 @@ class YAMLValidator(ValidatorBase):
 
 def main() -> int:
     """Run YAML syntax validation from command line."""
-    parser = argparse.ArgumentParser(
-        description="Validate YAML syntax for Home Assistant configuration files."
+    return YAMLValidator.run_cli(
+        "Validate YAML syntax for Home Assistant configuration files."
     )
-    parser.add_argument(
-        "config_dir",
-        nargs="?",
-        default="config",
-        help="Path to the config directory (default: config)",
-    )
-    args = parser.parse_args()
-
-    validator = YAMLValidator(args.config_dir)
-    is_valid = validator.validate_all()
-    validator.print_results()
-
-    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":

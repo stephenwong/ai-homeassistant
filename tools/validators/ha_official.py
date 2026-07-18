@@ -5,7 +5,6 @@ This leverages Home Assistant's own validation tools for the most
 accurate results.
 """
 
-import argparse
 import re
 import subprocess
 import sys
@@ -237,24 +236,9 @@ class HAOfficialValidator(ValidatorBase):
 
 def main() -> int:
     """Run Home Assistant configuration validation from command line."""
-    parser = argparse.ArgumentParser(
-        description=(
-            "Validate Home Assistant configuration using the official HA package."
-        )
+    return HAOfficialValidator.run_cli(
+        "Validate Home Assistant configuration using the official HA package."
     )
-    parser.add_argument(
-        "config_dir",
-        nargs="?",
-        default="config",
-        help="Path to the config directory (default: config)",
-    )
-    args = parser.parse_args()
-
-    validator = HAOfficialValidator(args.config_dir)
-    is_valid = validator.validate_all()
-    validator.print_results()
-
-    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":

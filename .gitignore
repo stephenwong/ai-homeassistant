@@ -94,7 +94,7 @@ htmlcov/
 graphify-out/
 
 # Working docs (local planning/notes, not committed)
-working_docs/
+working-docs/
 
 # Documentation builds
 docs/_build/

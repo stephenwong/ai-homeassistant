@@ -1,7 +1,6 @@
 """``trace`` subcommand: fetch Home Assistant automation traces via WebSocket."""
 
 import argparse
-import json
 import re
 import sys
 
@@ -13,7 +12,11 @@ from tools.common import (
     resolve_summary,
 )
 from tools.ha.client import HAClient, HAWSClient
-from tools.output_shape import apply_output_shape, print_json
+from tools.output_shape import (
+    apply_output_shape,
+    print_json,
+    truncate_dict_by_key_size,
+)
 
 _ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 
@@ -156,10 +159,12 @@ def run(args: argparse.Namespace) -> int:
         if max_chars is not None:
             data = _cap_trace_dict(data, max_chars)
             if data.get("_truncated") is True:
-                total = data["dropped_steps"] + data["kept_steps"]
+                dropped = len(data["dropped_steps"])
+                kept = len(data["kept_steps"])
+                total = dropped + kept
                 print(
                     f"# trace truncated to ~{max_chars} chars "
-                    f"(dropped {data['dropped_steps']}/{total} steps)",
+                    f"(dropped {dropped}/{total} steps)",
                     file=sys.stderr,
                 )
 
@@ -224,57 +229,16 @@ def _prune_trace_entries(trace: dict) -> dict:
 def _cap_trace_dict(data: dict, max_chars: int) -> dict:
     """Drop largest trace step keys until serialized dict fits within *max_chars*.
 
-    Appends top-level fields ``_truncated``, ``dropped_steps``, ``kept_steps``
-    when steps are removed.  Preserves at least one step and all top-level
-    fields (``item_id``, ``state``, ``last_step``, etc.).
-
-    Mutates nothing — returns a *new* dict (or the same reference when no
-    truncation is needed).
+    Thin wrapper over :func:`truncate_dict_by_key_size` configured for the
+    trace use case: candidate keys live under ``data["trace"]``, top-level
+    fields are preserved, the marker uses ``dropped_steps`` / ``kept_steps``
+    field names, and at least one step is always kept.
     """
-    serialized = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
-    if len(serialized) <= max_chars:
-        return data
-
-    trace = data.get("trace")
-    if not isinstance(trace, dict) or len(trace) < 2:
-        return data
-
-    # Sort step keys by serialized size, largest first.
-    step_sizes: list[tuple[str, int]] = sorted(
-        (
-            (k, len(json.dumps({k: v}, separators=(",", ":"), ensure_ascii=False)))
-            for k, v in trace.items()
-        ),
-        key=lambda x: -x[1],
+    return truncate_dict_by_key_size(
+        data,
+        max_chars,
+        target_key="trace",
+        dropped_key_name="dropped_steps",
+        kept_key_name="kept_steps",
+        preserve_min=1,
     )
-
-    original_count = len(trace)
-    remaining = dict(trace)
-
-    for step_key, _ in step_sizes:
-        if len(remaining) <= 1:
-            break
-        del remaining[step_key]
-        dropped_so_far = original_count - len(remaining)
-        trial = {
-            **data,
-            "trace": remaining,
-            "_truncated": True,
-            "dropped_steps": dropped_so_far,
-            "kept_steps": len(remaining),
-        }
-        trial_ser = json.dumps(trial, separators=(",", ":"), ensure_ascii=False)
-        if len(trial_ser) <= max_chars:
-            break
-
-    dropped = original_count - len(remaining)
-    if dropped > 0:
-        data = {
-            **data,
-            "trace": remaining,
-            "_truncated": True,
-            "dropped_steps": dropped,
-            "kept_steps": len(remaining),
-        }
-
-    return data

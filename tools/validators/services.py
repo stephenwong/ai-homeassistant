@@ -6,7 +6,6 @@ correspond to loaded services on the Home Assistant instance. Degrades to a
 format-only check when the HA API is unreachable.
 """
 
-import argparse
 import re
 from typing import Any
 
@@ -144,20 +143,7 @@ class ServiceValidator(ValidatorBase):
 
 def main() -> int:
     """Validate service references from the command line."""
-    parser = argparse.ArgumentParser(
-        description="Validate service references in HA config."
-    )
-    parser.add_argument(
-        "config_dir",
-        nargs="?",
-        default="config",
-        help="Path to the config directory (default: config)",
-    )
-    args = parser.parse_args()
-    v = ServiceValidator(args.config_dir)
-    is_valid = v.validate_all()
-    v.print_results()
-    return 0 if is_valid else 1
+    return ServiceValidator.run_cli("Validate service references in HA config.")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,6 @@ surfaces failures. Degrades to a brace-balance check when the HA API is
 unreachable.
 """
 
-import argparse
 from typing import Any
 
 from tools.common import HARequestError
@@ -140,20 +139,9 @@ class TemplateValidator(ValidatorBase):
 
 def main() -> int:
     """Lint Jinja2 templates from the command line."""
-    parser = argparse.ArgumentParser(
-        description="Lint Jinja2 templates in HA config via the render API."
+    return TemplateValidator.run_cli(
+        "Lint Jinja2 templates in HA config via the render API."
     )
-    parser.add_argument(
-        "config_dir",
-        nargs="?",
-        default="config",
-        help="Path to the config directory (default: config)",
-    )
-    args = parser.parse_args()
-    v = TemplateValidator(args.config_dir)
-    is_valid = v.validate_all()
-    v.print_results()
-    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":

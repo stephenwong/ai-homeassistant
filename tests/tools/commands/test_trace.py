@@ -621,8 +621,8 @@ class TestSummaryModeSingle:
             len(serialized) <= 2100
         )  # small tolerance — 1 step + markers exceeds 2000 for BIG_TRACE
         assert result.get("_truncated") is True
-        assert result.get("dropped_steps", 0) >= 1
-        assert result.get("kept_steps", 0) >= 1
+        assert len(result.get("dropped_steps", [])) >= 1
+        assert len(result.get("kept_steps", [])) >= 1
 
     def test_single_entity_max_chars_stderr_warning(self, mock_client, capsys):
         """stderr warns when --max-chars forces truncation of a single-entity trace."""

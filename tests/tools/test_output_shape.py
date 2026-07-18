@@ -308,3 +308,154 @@ class TestOrdering:
         )
         assert isinstance(result, list)
         assert result[-1].get("_truncated") is True
+
+
+class TestTruncateDictByKeySize:
+    """Direct tests for the unified truncation helper."""
+
+    def test_no_truncation_when_already_fits(self):
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {"a": 1, "b": 2}
+        assert truncate_dict_by_key_size(data, max_chars=500) is data
+
+    def test_flat_dict_default_marker_uses_dropped_keys_kept_keys(self):
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {"small": "x", "big1": "v" * 500, "big2": "w" * 500}
+        out = truncate_dict_by_key_size(data, max_chars=80)
+        assert out.get("_truncated") is True
+        assert "dropped_keys" in out
+        assert "kept_keys" in out
+
+    def test_flat_dict_dropped_keys_absent_from_result(self):
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {"small": "x", "big1": "v" * 500, "big2": "w" * 500}
+        out = truncate_dict_by_key_size(data, max_chars=80)
+        for k in out.get("dropped_keys", []):
+            assert k not in out
+
+    def test_flat_dict_kept_keys_matches_actual_keys(self):
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {"small": "x", "big1": "v" * 500, "big2": "w" * 500}
+        out = truncate_dict_by_key_size(data, max_chars=80)
+        actual = set(out.keys()) - {"_truncated", "dropped_keys", "kept_keys"}
+        assert set(out["kept_keys"]) == actual
+
+    def test_nested_target_preserves_top_level_fields(self):
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {
+            "item_id": "abc",
+            "state": "on",
+            "trace": {
+                f"step/{i}": {"changed_variables": {"x": "y" * 200}} for i in range(5)
+            },
+        }
+        out = truncate_dict_by_key_size(
+            data,
+            max_chars=400,
+            target_key="trace",
+            dropped_key_name="dropped_steps",
+            kept_key_name="kept_steps",
+            preserve_min=1,
+        )
+        assert out["item_id"] == "abc"
+        assert out["state"] == "on"
+        assert isinstance(out["trace"], dict)
+        assert len(out["trace"]) >= 1
+
+    def test_nested_target_marker_uses_custom_field_names(self):
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {
+            "item_id": "abc",
+            "trace": {f"step/{i}": {"x": "y" * 200} for i in range(5)},
+        }
+        out = truncate_dict_by_key_size(
+            data,
+            max_chars=300,
+            target_key="trace",
+            dropped_key_name="dropped_steps",
+            kept_key_name="kept_steps",
+            preserve_min=1,
+        )
+        assert out.get("_truncated") is True
+        assert "dropped_steps" in out
+        assert "kept_steps" in out
+        assert "dropped_keys" not in out
+        assert "kept_keys" not in out
+
+    def test_nested_target_bails_when_subdict_missing(self):
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {"item_id": "abc"}
+        out = truncate_dict_by_key_size(
+            data,
+            max_chars=10,
+            target_key="trace",
+            preserve_min=1,
+        )
+        assert out is data
+
+    def test_nested_target_bails_when_subdict_too_small(self):
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {"item_id": "abc", "trace": {"only_one": "x" * 1000}}
+        out = truncate_dict_by_key_size(
+            data,
+            max_chars=10,
+            target_key="trace",
+            preserve_min=1,
+        )
+        assert out is data
+
+    def test_preserve_min_prevents_dropping_below_threshold(self):
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {k: "v" * 100 for k in "abcde"}
+        out = truncate_dict_by_key_size(data, max_chars=50, preserve_min=3)
+        actual_keys = set(out.keys()) - {"_truncated", "dropped_keys", "kept_keys"}
+        assert len(actual_keys) >= 3
+
+    def test_result_compact_serialization_fits_max_chars(self):
+        import json
+
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {"small": "x", **{f"big{i}": "v" * 200 for i in range(10)}}
+        out = truncate_dict_by_key_size(data, max_chars=150)
+        serialized = json.dumps(out, separators=(",", ":"))
+        assert len(serialized) <= 150
+
+    def test_does_not_mutate_input(self):
+        import copy
+
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {"small": "x", "big1": "v" * 500, "big2": "w" * 500}
+        snapshot = copy.deepcopy(data)
+        truncate_dict_by_key_size(data, max_chars=80)
+        assert data == snapshot
+
+    def test_nested_target_does_not_mutate_input(self):
+        import copy
+
+        from tools.output_shape import truncate_dict_by_key_size
+
+        data = {
+            "item_id": "abc",
+            "trace": {f"step/{i}": {"x": "y" * 200} for i in range(5)},
+        }
+        snapshot = copy.deepcopy(data)
+        truncate_dict_by_key_size(
+            data,
+            max_chars=300,
+            target_key="trace",
+            dropped_key_name="dropped_steps",
+            kept_key_name="kept_steps",
+            preserve_min=1,
+        )
+        assert data == snapshot

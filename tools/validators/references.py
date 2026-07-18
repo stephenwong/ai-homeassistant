@@ -4,14 +4,13 @@
 Validates that all entity references in configuration files actually exist.
 """
 
-import argparse
 import json
 import re
 import sys
 from pathlib import Path
 from typing import Any, TypedDict
 
-from tools.common import resolve_summary
+from tools.common import add_summary_args, resolve_summary
 from tools.validators._templates import is_jinja_template
 from tools.validators.base import ValidatorBase
 from tools.validators.entity_definitions import EntityDefinitionExtractor
@@ -496,41 +495,26 @@ class ReferenceValidator(ValidatorBase):
             print(file=sys.stderr)
 
 
-def main() -> int:
-    """Run entity and device reference validation from command line."""
-    parser = argparse.ArgumentParser(
-        description="Validate entity and device references in Home Assistant config."
-    )
-    parser.add_argument(
-        "config_dir",
-        nargs="?",
-        default="config",
-        help="Path to the config directory (default: config)",
-    )
-    parser.add_argument(
-        "--summary",
-        action="store_true",
-        help="Compact output; auto-detected when stdout is not a TTY",
-    )
-    parser.add_argument(
-        "--no-summary",
-        action="store_true",
-        help="Force verbose output even when stdout is piped",
-    )
+def _add_reference_args(parser):
+    add_summary_args(parser)
     parser.add_argument(
         "--quiet",
         action="store_true",
         help="Suppress output on success",
     )
-    args = parser.parse_args()
 
-    summary = resolve_summary(args)
 
-    validator = ReferenceValidator(args.config_dir, summary=summary, quiet=args.quiet)
-    is_valid = validator.validate_all()
-    validator.print_results()
+def _reference_kwargs(args):
+    return {"summary": resolve_summary(args), "quiet": args.quiet}
 
-    return 0 if is_valid else 1
+
+def main() -> int:
+    """Run entity and device reference validation from command line."""
+    return ReferenceValidator.run_cli(
+        "Validate entity and device references in Home Assistant config.",
+        add_args=_add_reference_args,
+        build_validator_kwargs=_reference_kwargs,
+    )
 
 
 if __name__ == "__main__":

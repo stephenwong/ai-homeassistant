@@ -6,7 +6,6 @@ virtual platforms using the local core.entity_registry, and identifies sensors
 whose last update or radio check-in exceeds the configured threshold.
 """
 
-import argparse
 import json
 import os
 import time
@@ -318,20 +317,10 @@ class StaleSensorValidator(ValidatorBase):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Verify active HA sensors are reporting updates."
+    """Verify active HA sensors are reporting updates."""
+    return StaleSensorValidator.run_cli(
+        "Verify active HA sensors are reporting updates."
     )
-    parser.add_argument(
-        "config_dir",
-        nargs="?",
-        default="config",
-        help="Path to the config directory (default: config)",
-    )
-    args = parser.parse_args()
-    v = StaleSensorValidator(args.config_dir)
-    is_valid = v.validate_all()
-    v.print_results()
-    return 0 if is_valid else 1
 
 
 if __name__ == "__main__":

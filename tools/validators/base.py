@@ -196,3 +196,48 @@ class ValidatorBase(ABC):
             print(f"\u2705 {self.validator_name} is valid (with warnings)")
         else:
             print(f"\u274c {self.validator_name} validation failed", file=sys.stderr)
+
+    @classmethod
+    def run_cli(
+        cls,
+        description: str,
+        *,
+        add_args=None,
+        build_validator_kwargs=None,
+    ) -> int:
+        """Run a validator from CLI arguments and return an exit code.
+
+        Encapsulates the standard validator-script contract: argparse setup,
+        construct, ``validate_all()``, ``print_results()``, return ``0`` or ``1``.
+
+        Args:
+            description: ``argparse`` description shown in ``--help``.
+            add_args: Optional callback ``f(parser) -> None`` to register extra
+                arguments (e.g. ``--summary``, ``--quiet``) before ``parse_args``.
+            build_validator_kwargs: Optional callback ``f(args) -> dict`` that
+                translates parsed args into validator constructor kwargs
+                (e.g. ``{"summary": resolve_summary(args), "quiet": args.quiet}``).
+                When omitted, no kwargs are passed.
+
+        Returns:
+            ``0`` when validation passed, ``1`` when it failed.
+        """
+        import argparse
+
+        parser = argparse.ArgumentParser(description=description)
+        parser.add_argument(
+            "config_dir",
+            nargs="?",
+            default="config",
+            help="Path to the config directory (default: config)",
+        )
+        if add_args is not None:
+            add_args(parser)
+        args = parser.parse_args()
+        kwargs = (
+            build_validator_kwargs(args) if build_validator_kwargs is not None else {}
+        )
+        validator = cls(args.config_dir, **kwargs)
+        is_valid = validator.validate_all()
+        validator.print_results()
+        return 0 if is_valid else 1

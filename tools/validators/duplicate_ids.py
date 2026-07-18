@@ -6,8 +6,6 @@ triggering and UI customization) and missing ``id`` fields.
 Also checks scripts.yaml for duplicate top-level keys (M10b).
 """
 
-import argparse
-
 import yaml
 
 from tools.validators.base import ValidatorBase
@@ -133,21 +131,7 @@ class DuplicateIDValidator(ValidatorBase):
 
 def main() -> int:
     """Run duplicate automation ID validation from command line."""
-    parser = argparse.ArgumentParser(
-        description="Detect duplicate and missing automation IDs."
-    )
-    parser.add_argument(
-        "config_dir",
-        nargs="?",
-        default="config",
-        help="Path to the config directory (default: config)",
-    )
-    args = parser.parse_args()
-
-    validator = DuplicateIDValidator(args.config_dir)
-    is_valid = validator.validate_all()
-    validator.print_results()
-    return 0 if is_valid else 1
+    return DuplicateIDValidator.run_cli("Detect duplicate and missing automation IDs.")
 
 
 if __name__ == "__main__":
