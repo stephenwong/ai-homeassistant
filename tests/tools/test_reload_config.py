@@ -236,10 +236,12 @@ class TestReloadConfig:
 
     def test_from_env_token_error_includes_hint(self, capsys):
         """Token-related errors print the 'create a token' hint."""
+        from tools.common import MissingTokenError
+
         with (
             patch(
                 "tools.reload_config.HAClient.from_env",
-                side_effect=HARequestError("HA_TOKEN not found"),
+                side_effect=MissingTokenError("HA_TOKEN not found"),
             ),
             patch(
                 "tools.reload_config.detect_changed_services",
@@ -505,3 +507,142 @@ class TestL70ErrorDetail:
         assert ok is False
         _, err = capsys.readouterr()
         assert "Bad config syntax" in err
+
+
+class TestClassifyChangedFiles:
+    """Direct unit tests for _classify_changed_files (pure logic, no git)."""
+
+    def test_automations_yaml_maps_to_automation_reload(self):
+        from tools.reload_config import _classify_changed_files
+
+        assert _classify_changed_files({"automations.yaml"}) == {"automation/reload"}
+
+    def test_unknown_yaml_falls_back_to_core_config(self):
+        from tools.reload_config import _classify_changed_files
+
+        assert _classify_changed_files({"unknown.yaml"}) == {
+            "homeassistant/reload_core_config"
+        }
+
+    def test_non_yaml_file_ignored(self):
+        from tools.reload_config import _classify_changed_files
+
+        assert _classify_changed_files({"readme.md", "image.png"}) == set()
+
+    def test_mixed_set_returns_union(self):
+        from tools.reload_config import _classify_changed_files
+
+        result = _classify_changed_files(
+            {
+                "automations.yaml",
+                "scripts.yaml",
+                "notes.txt",
+            }
+        )
+        assert result == {"automation/reload", "script/reload"}
+
+    def test_empty_set_returns_empty(self):
+        from tools.reload_config import _classify_changed_files
+
+        assert _classify_changed_files(set()) == set()
+
+
+class TestRunGitDiff:
+    """Direct unit tests for _run_git_diff."""
+
+    def test_returns_basenames_for_diff_paths(self):
+        from unittest.mock import MagicMock, patch
+
+        from tools.reload_config import _run_git_diff
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="config/automations.yaml\0config/scripts.yaml\0",
+            )
+            result = _run_git_diff("config", git_timeout=10)
+        assert result == {"automations.yaml", "scripts.yaml"}
+
+    def test_subdir_file_filtered_out(self):
+        from unittest.mock import MagicMock, patch
+
+        from tools.reload_config import _run_git_diff
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="config/blueprints/foo.yaml\0",
+            )
+            assert _run_git_diff("config", git_timeout=10) == set()
+
+    def test_git_nonzero_returns_none(self):
+        from unittest.mock import MagicMock, patch
+
+        from tools.reload_config import _run_git_diff
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="")
+            assert _run_git_diff("config", git_timeout=10) is None
+
+
+class TestRunGitStatusUntracked:
+    """Direct unit tests for _run_git_status_untracked."""
+
+    def test_untracked_yaml_picked_up(self):
+        from unittest.mock import MagicMock, patch
+
+        from tools.reload_config import _run_git_status_untracked
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="?? config/automations.yaml\0",
+            )
+            result = _run_git_status_untracked("config", git_timeout=10)
+        assert result == {"automations.yaml"}
+
+    def test_git_failure_returns_empty_set(self):
+        from unittest.mock import patch
+
+        from tools.reload_config import _run_git_status_untracked
+
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            assert _run_git_status_untracked("config", git_timeout=10) == set()
+
+
+class TestMissingTokenHelpHint:
+    """Pin the help-hint behavior now that it's type-driven (not string-matched)."""
+
+    def test_missing_token_prints_help_hint(self, capsys, monkeypatch):
+        from tools import reload_config
+        from tools.common import MissingTokenError
+
+        def _raise():
+            raise MissingTokenError("HA_TOKEN not found")
+
+        monkeypatch.setattr("tools.reload_config.HAClient.from_env", _raise)
+        monkeypatch.setattr(
+            "tools.reload_config.detect_changed_services", lambda **kw: set()
+        )
+        result = reload_config.reload_config(summary=False)
+        captured = capsys.readouterr()
+        assert "Create a .env file" in captured.err
+        assert "HA_TOKEN=your_long_lived_access_token" in captured.err
+        assert result is False
+
+    def test_other_harequest_error_does_not_print_help_hint(self, capsys, monkeypatch):
+        from tools import reload_config
+        from tools.common import HARequestError
+
+        def _raise():
+            raise HARequestError("network unreachable")
+
+        monkeypatch.setattr("tools.reload_config.HAClient.from_env", _raise)
+        monkeypatch.setattr(
+            "tools.reload_config.detect_changed_services", lambda **kw: set()
+        )
+        result = reload_config.reload_config(summary=False)
+        captured = capsys.readouterr()
+        assert "Create a .env file" not in captured.err
+        assert "network unreachable" in captured.err
+        assert result is False

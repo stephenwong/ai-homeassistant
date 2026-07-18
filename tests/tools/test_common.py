@@ -637,3 +637,24 @@ class TestAtomicWriteText:
         captured = capsys.readouterr()
         assert "WARN" in captured.err
         assert str(target) in captured.err
+
+
+class TestFailStderr:
+    """Pin the fail_stderr helper."""
+
+    def test_prints_emoji_message_to_stderr(self, capsys):
+        from tools.common import fail_stderr
+
+        result = fail_stderr("network unreachable")
+        captured = capsys.readouterr()
+        assert result == 1
+        assert "\u274c network unreachable" in captured.err
+        assert captured.out == ""
+
+    def test_empty_message_still_prints_emoji(self, capsys):
+        from tools.common import fail_stderr
+
+        result = fail_stderr("")
+        captured = capsys.readouterr()
+        assert result == 1
+        assert captured.err.startswith("\u274c")

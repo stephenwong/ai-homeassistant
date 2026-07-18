@@ -13,8 +13,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from tools.common import HARequestError, get_env_int
+from tools.common import HARequestError, MissingTokenError, get_env_int
 from tools.ha.client import HAClient
+
+_REPO_ROOT = Path(__file__).parent.parent
 
 FILE_TO_SERVICE = {
     "automations.yaml": "automation/reload",
@@ -31,6 +33,79 @@ SERVICE_LABELS = {
 }
 
 
+def _run_git_diff(config_dir: str, git_timeout: int) -> set[str] | None:
+    """Run ``git diff HEAD --name-only -z`` and return changed basenames.
+
+    Returns ``None`` if git is unavailable or fails.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "diff", "HEAD", "--name-only", "-z", "--", config_dir],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=git_timeout,
+        )
+        if r.returncode != 0:
+            return None
+        changed: set[str] = set()
+        for p_str in r.stdout.split("\0"):
+            p_str = p_str.strip()
+            if p_str:
+                p = Path(p_str)
+                if len(p.parts) == 2 and p.parts[0] == config_dir:
+                    changed.add(p.name)
+        return changed
+    except OSError, subprocess.TimeoutExpired:
+        return None
+
+
+def _run_git_status_untracked(config_dir: str, git_timeout: int) -> set[str]:
+    """Run ``git status -z`` and return untracked/renamed basenames.
+
+    Best-effort (errors silently return empty set).
+    """
+    changed: set[str] = set()
+    try:
+        r = subprocess.run(
+            ["git", "status", "-z", "--", config_dir],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=git_timeout,
+        )
+        if r.returncode == 0:
+            tokens = r.stdout.split("\0")
+            i = 0
+            while i < len(tokens):
+                token = tokens[i].strip()
+                if not token:
+                    i += 1
+                    continue
+                if len(token) > 3 and token[2] == " ":
+                    status = token[:2]
+                    path = token[3:].strip()
+                    p = Path(path)
+                    if len(p.parts) == 2 and p.parts[0] == config_dir:
+                        changed.add(p.name)
+                    if status[0] in ("R", "C"):
+                        i += 2
+                        continue
+                i += 1
+    except OSError, subprocess.TimeoutExpired:
+        pass
+    return changed
+
+
+def _classify_changed_files(filenames: set[str]) -> set[str]:
+    """Map changed YAML file basenames to HA reload services."""
+    services: set[str] = set()
+    for fname in filenames:
+        if fname.endswith((".yaml", ".yml")):
+            services.add(FILE_TO_SERVICE.get(fname, "homeassistant/reload_core_config"))
+    return services
+
+
 def detect_changed_services(
     config_dir="config", git_timeout: int = 10
 ) -> set[str] | None:
@@ -39,66 +114,11 @@ def detect_changed_services(
     Returns a set of service strings (e.g. {"automation/reload"}),
     an empty set if nothing changed, or None if git is unavailable/fails.
     """
-    repo_root = Path(__file__).parent.parent
-    changed_files: set[str] = set()
-
-    try:
-        r = subprocess.run(
-            ["git", "diff", "HEAD", "--name-only", "-z", "--", config_dir],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            timeout=git_timeout,
-        )
-        if r.returncode != 0:
-            return None
-        for p_str in r.stdout.split("\0"):
-            p_str = p_str.strip()
-            if p_str:
-                p = Path(p_str)
-                if len(p.parts) == 2 and p.parts[0] == config_dir:
-                    changed_files.add(p.name)
-    except OSError, subprocess.TimeoutExpired:
+    diff_files = _run_git_diff(config_dir, git_timeout)
+    if diff_files is None:
         return None
-
-    # Also check git status for untracked files not shown by git diff HEAD
-    # Using -z (NUL-delimited) for robust path handling (spaces, special chars)
-    try:
-        r2 = subprocess.run(
-            ["git", "status", "-z", "--", config_dir],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            timeout=git_timeout,
-        )
-        if r2.returncode == 0:
-            tokens = r2.stdout.split("\0")
-            i = 0
-            while i < len(tokens):
-                token = tokens[i].strip()
-                if not token:
-                    i += 1
-                    continue
-                # Status entries have format "XY path" (min 4 chars: XY + space + path)
-                if len(token) > 3 and token[2] == " ":
-                    status = token[:2]
-                    path = token[3:].strip()
-                    p = Path(path)
-                    if len(p.parts) == 2 and p.parts[0] == config_dir:
-                        changed_files.add(p.name)
-                    # Renames/copies: format "R  NEW\0OLD\0" — skip the next (old) token
-                    if status[0] in ("R", "C"):
-                        i += 2
-                        continue
-                i += 1
-    except OSError, subprocess.TimeoutExpired:
-        pass
-
-    services: set[str] = set()
-    for fname in changed_files:
-        if fname.endswith((".yaml", ".yml")):
-            services.add(FILE_TO_SERVICE.get(fname, "homeassistant/reload_core_config"))
-    return services
+    untracked_files = _run_git_status_untracked(config_dir, git_timeout)
+    return _classify_changed_files(diff_files | untracked_files)
 
 
 def reload_service(client: HAClient, service: str) -> tuple[str, bool, str | None]:
@@ -135,14 +155,16 @@ def reload_config(summary: bool = False) -> bool:
 
     try:
         client = HAClient.from_env()
+    except MissingTokenError as e:
+        print(f"\u274c Error: {e}", file=sys.stderr)
+        print(
+            "   Create a .env file with: HA_TOKEN=your_long_lived_access_token",
+            file=sys.stderr,
+        )
+        print("   Get your token from Home Assistant Profile page", file=sys.stderr)
+        return False
     except HARequestError as e:
-        print(f"❌ Error: {e}", file=sys.stderr)
-        if "HA_TOKEN" in str(e):
-            print(
-                "   Create a .env file with: HA_TOKEN=your_long_lived_access_token",
-                file=sys.stderr,
-            )
-            print("   Get your token from Home Assistant Profile page", file=sys.stderr)
+        print(f"\u274c Error: {e}", file=sys.stderr)
         return False
 
     # Override client timeout with the reload-specific value (typically longer

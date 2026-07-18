@@ -15,6 +15,7 @@ import requests
 from tools.common import (
     DEFAULT_HA_URL,
     HARequestError,
+    MissingTokenError,
     get_env_int,
     load_env_file,
     validate_ha_url,
@@ -22,12 +23,19 @@ from tools.common import (
 
 
 def _validate_connection(url: str, token: str) -> str:
-    """Validate URL format and token presence; return stripped URL."""
+    """Validate URL format and token presence; return stripped URL.
+
+    Raises:
+        HARequestError: URL is malformed.
+        MissingTokenError: Token is empty (also a HARequestError subclass).
+    """
     error = validate_ha_url(url)
     if error:
         raise HARequestError(error)
     if not token:
-        raise HARequestError("HA_TOKEN not found. Set it in .env or the environment.")
+        raise MissingTokenError(
+            "HA_TOKEN not found. Set it in .env or the environment."
+        )
     return url.rstrip("/")
 
 

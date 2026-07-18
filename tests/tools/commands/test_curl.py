@@ -1275,3 +1275,172 @@ class TestMaxCharsInteractions:
         mock_client.get.return_value = resp
         args = make_args(endpoint="/api/states")
         assert curl_cmd.run(args) == 0
+
+
+class TestValidateArgs:
+    """Direct unit tests for the extracted _validate_args helper.
+
+    Pins the conflict checks and endpoint/method normalization that were
+    previously inlined in run().
+    """
+
+    def _args(self, **overrides):
+        defaults = dict(
+            method="GET",
+            raw=False,
+            pretty=False,
+            pick=None,
+            count=False,
+            keys=False,
+            first=None,
+            entity=None,
+            domain=None,
+            endpoint=None,
+            no_guard=False,
+            max_chars=None,
+        )
+        defaults.update(overrides)
+        return Namespace(**defaults)
+
+    def test_raw_and_pretty_returns_1(self):
+        from tools.commands.curl import _validate_args
+
+        args = self._args(raw=True, pretty=True)
+        assert _validate_args(args, summary=False) == 1
+
+    def test_pick_with_count_returns_1(self):
+        from tools.commands.curl import _validate_args
+
+        args = self._args(pick="state", count=True)
+        assert _validate_args(args, summary=False) == 1
+
+    def test_entity_sets_endpoint_and_forces_get(self):
+        from tools.commands.curl import _validate_args
+
+        args = self._args(entity="sensor.foo")
+        result = _validate_args(args, summary=False)
+        assert result != 1
+        method, endpoint = result
+        assert method == "GET"
+        assert endpoint == "/api/states/sensor.foo"
+
+    def test_entity_with_invalid_id_returns_1(self):
+        from tools.commands.curl import _validate_args
+
+        args = self._args(entity="not-an-entity-id")
+        assert _validate_args(args, summary=False) == 1
+
+    def test_domain_with_entity_returns_1(self):
+        from tools.commands.curl import _validate_args
+
+        args = self._args(entity="sensor.foo", domain="light")
+        assert _validate_args(args, summary=False) == 1
+
+    def test_missing_endpoint_returns_1(self):
+        from tools.commands.curl import _validate_args
+
+        args = self._args()
+        assert _validate_args(args, summary=False) == 1
+
+    def test_explicit_endpoint_passthrough(self):
+        from tools.commands.curl import _validate_args
+
+        args = self._args(endpoint="/api/services")
+        method, endpoint = _validate_args(args, summary=False)
+        assert method == "GET"
+        assert endpoint == "/api/services"
+
+
+class TestExecuteRequest:
+    """Direct unit tests for the dispatch-table _execute_request."""
+
+    def _client(self):
+        client = MagicMock()
+        client.get.return_value = MagicMock(ok=True, status_code=200)
+        client.post.return_value = MagicMock(ok=True, status_code=200)
+        client.put.return_value = MagicMock(ok=True, status_code=200)
+        client.delete.return_value = MagicMock(ok=True, status_code=200)
+        client.patch.return_value = MagicMock(ok=True, status_code=200)
+        return client
+
+    def test_get_calls_client_get(self):
+        from tools.commands.curl import _execute_request
+
+        client = self._client()
+        _execute_request(client, "GET", "/api/states", None)
+        client.get.assert_called_once_with("/api/states")
+
+    def test_post_calls_client_post_with_json(self):
+        from tools.commands.curl import _execute_request
+
+        client = self._client()
+        _execute_request(client, "POST", "/api/services/x/y", {"foo": 1})
+        client.post.assert_called_once_with("/api/services/x/y", json={"foo": 1})
+
+    def test_delete_passes_json_kwarg(self):
+        from tools.commands.curl import _execute_request
+
+        client = self._client()
+        _execute_request(client, "DELETE", "/api/x", None)
+        client.delete.assert_called_once_with("/api/x", json=None)
+
+    def test_unknown_method_returns_1(self):
+        from tools.commands.curl import _execute_request
+
+        client = self._client()
+        assert _execute_request(client, "HEAD", "/api/x", None) == 1
+
+    def test_harequesterror_returns_1(self, capsys):
+        from tools.commands.curl import _execute_request
+        from tools.common import HARequestError
+
+        client = MagicMock()
+        client.get.side_effect = HARequestError("boom")
+        assert _execute_request(client, "GET", "/api/x", None) == 1
+        assert "boom" in capsys.readouterr().err
+
+
+class TestEmitOutput:
+    """Direct unit tests for the extracted _emit_output helper."""
+
+    def test_count_handler_prints_length_and_returns_0(self, capsys):
+        from tools.commands.curl import _emit_output
+
+        args = Namespace(
+            count=True,
+            keys=False,
+            raw=False,
+            first=None,
+            pick=None,
+            domain=None,
+            entity=None,
+            no_guard=False,
+            max_chars=None,
+            pretty=False,
+            method="GET",
+            endpoint="/api/any",
+        )
+        result = _emit_output(args, [1, 2, 3], "[1,2,3]", True, summary=False)
+        assert result == 0
+        assert capsys.readouterr().out.strip() == "3"
+
+    def test_raw_handler_prints_raw_text(self, capsys):
+        from tools.commands.curl import _emit_output
+
+        args = Namespace(
+            count=False,
+            keys=False,
+            raw=True,
+            first=None,
+            pick=None,
+            domain=None,
+            entity=None,
+            no_guard=False,
+            max_chars=None,
+            pretty=False,
+            method="GET",
+            endpoint="/api/any",
+        )
+        result = _emit_output(args, None, "raw text here", False, summary=False)
+        assert result == 0
+        assert capsys.readouterr().out == "raw text here"

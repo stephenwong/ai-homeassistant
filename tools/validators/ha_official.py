@@ -12,6 +12,28 @@ import sys
 from tools.common import get_env_int
 from tools.validators.base import ValidatorBase
 
+_BENIGN_PACKAGE_INSTALL_MARKERS = (
+    "unable to install package",
+    "no solution found when resolving",
+    "requirements are unsatisfiable",
+    "requirements for",
+)
+
+_IGNORABLE_STDOUT_SUBSTRINGS = (
+    "turbojpeg",
+    "libturbojpeg",
+    "Camera snapshot performance will be sub-optimal",
+    "Unable to locate turbojpeg library",
+    "TurboJPEGSingleton",
+    "selector']['reorder']",
+    "Traceback (most recent call last):",
+    "Unable to install package",
+    "No solution found when resolving",
+    "requirements are unsatisfiable",
+    "Requirements for",
+    "could not be loaded",
+)
+
 
 class HAOfficialValidator(ValidatorBase):
     """Validates Home Assistant configuration using the official HA package.
@@ -91,16 +113,9 @@ class HAOfficialValidator(ValidatorBase):
             self.errors.append(f"Failed to run Home Assistant config check: {e}")
             return False
 
-    _BENIGN_PACKAGE_MARKERS = (
-        "unable to install package",
-        "no solution found when resolving",
-        "requirements are unsatisfiable",
-        "requirements for",
-    )
-
     def _has_benign_package_context(self, stdout: str, stderr: str) -> bool:
         blob = (stdout + "\n" + stderr).lower()
-        return any(m in blob for m in self._BENIGN_PACKAGE_MARKERS)
+        return any(m in blob for m in _BENIGN_PACKAGE_INSTALL_MARKERS)
 
     def is_ignorable_message(self, line: str) -> bool:
         """Check if a message can be safely ignored (non-critical warnings).
@@ -108,28 +123,8 @@ class HAOfficialValidator(ValidatorBase):
         RuntimeError/^^^ suppression is handled contextually in
         parse_check_config_output (M12) — not here.
         """
-        ignorable_patterns = [
-            # TurboJPEG library warnings — not needed for config validation
-            "turbojpeg",
-            "libturbojpeg",
-            "Camera snapshot performance will be sub-optimal",
-            "Unable to locate turbojpeg library",
-            "TurboJPEGSingleton",
-            # Blueprint selector warnings for newer HA features
-            "selector']['reorder']",
-            # Python traceback header — not an error by itself
-            "Traceback (most recent call last):",
-            # Package installation failures in local validation environment.
-            # Not config errors — integration packages are installed at runtime
-            # on the real HA server.
-            "Unable to install package",
-            "No solution found when resolving",
-            "requirements are unsatisfiable",
-            "Requirements for",
-            "could not be loaded",
-        ]
         line_lower = line.lower()
-        return any(pattern.lower() in line_lower for pattern in ignorable_patterns)
+        return any(s.lower() in line_lower for s in _IGNORABLE_STDOUT_SUBSTRINGS)
 
     def is_ignorable_traceback_line(
         self, line: str, *, benign_ctx: bool = False
@@ -149,78 +144,75 @@ class HAOfficialValidator(ValidatorBase):
     def parse_check_config_output(self, stdout: str, stderr: str):
         """Parse Home Assistant check_config output."""
         benign_ctx = self._has_benign_package_context(stdout, stderr)
+        self._parse_stdout(stdout, benign_ctx=benign_ctx)
+        self._parse_stderr(stderr)
 
-        # Parse stdout
-        if stdout:
-            for line in stdout.split("\n"):
-                line = line.strip()
-                if not line:
+    def _parse_stdout(self, stdout: str, *, benign_ctx: bool) -> None:
+        """Classify each stdout line into self.info / self.errors / self.warnings.
+
+        Skips ignorable lines and (when *benign_ctx*) benign-traceback lines.
+        """
+        if not stdout:
+            return
+        for line in stdout.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if self.is_ignorable_message(line):
+                continue
+            if benign_ctx:
+                if "runtimeerror:" in line.lower() or line.strip() == "^^^":
                     continue
-
-                # Skip ignorable messages (turbojpeg, Traceback header, etc.)
-                if self.is_ignorable_message(line):
+                if self.is_ignorable_traceback_line(line, benign_ctx=True):
                     continue
+            self._classify_stdout_line(line)
 
-                # M12: scope RuntimeError/^^^ suppression to benign context.
-                if benign_ctx:
-                    if "runtimeerror:" in line.lower() or line.strip() == "^^^":
-                        continue
-                    if self.is_ignorable_traceback_line(line, benign_ctx=True):
-                        continue
+    def _classify_stdout_line(self, line: str) -> None:
+        """Route a single (non-ignorable) stdout line to the right bucket."""
+        if (
+            "Testing configuration at" in line
+            or "Configuration check successful!" in line
+        ):
+            self.info.append(f"HA Check: {line}")
+        elif m := re.search(r"(?:found\s+)?(\d+)\s+errors?\b", line, re.I):
+            if m.group(1) == "0":
+                self.info.append(f"HA Check: {line}")
+            else:
+                self.errors.append(f"HA Check: {line}")
+        elif re.match(r"^\W*(ERROR|Error|RuntimeError)\b", line):
+            self.errors.append(f"HA Check: {line}")
+        elif re.match(r"^\W*(WARNING|Warning)\b", line):
+            self.warnings.append(f"HA Check: {line}")
+        else:
+            if line and not line.startswith("INFO:"):
+                self.info.append(f"HA Check: {line}")
 
-                # Look for specific patterns
-                if (
-                    "Testing configuration at" in line
-                    or "Configuration check successful!" in line
-                ):
-                    self.info.append(f"HA Check: {line}")
-                elif m := re.search(r"(?:found\s+)?(\d+)\s+errors?\b", line, re.I):
-                    if m.group(1) == "0":
-                        self.info.append(f"HA Check: {line}")
-                    else:
-                        self.errors.append(f"HA Check: {line}")
-                elif re.match(r"^\W*(ERROR|Error|RuntimeError)\b", line):
-                    self.errors.append(f"HA Check: {line}")
-                elif re.match(r"^\W*(WARNING|Warning)\b", line):
-                    self.warnings.append(f"HA Check: {line}")
-                else:
-                    # Include other informational lines
-                    if line and not line.startswith("INFO:"):
-                        self.info.append(f"HA Check: {line}")
-
-        # Parse stderr for actual errors
-        if stderr:
-            # M11: severity indicators that mark a line as a real error regardless
-            # of any benign substring it also contains.
-            error_indicators = ("error", "fail", "fatal", "exception", "traceback")
-            benign_any = ["debug", "info:", "starting"]
-            benign_phrases = [
-                "voluptuous",
-                "setup of domain",
-                "setup of platform",
-                "loading",
-                "initialized",
-            ]
-
-            for line in stderr.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                line_lower = line.lower()
-
-                # Real-error lines survive even if they also mention a benign word.
-                if any(ind in line_lower for ind in error_indicators):
-                    self.errors.append(f"HA Error: {line}")
-                    continue
-
-                # Pure debug/info noise — suppress.
-                if any(x in line_lower for x in benign_any):
-                    continue
-                if any(x in line_lower for x in benign_phrases):
-                    continue
-
-                # Anything else is treated as an error (unchanged behaviour).
+    def _parse_stderr(self, stderr: str) -> None:
+        """Classify each stderr line. Real-error indicators override benign phrases."""
+        if not stderr:
+            return
+        error_indicators = ("error", "fail", "fatal", "exception", "traceback")
+        benign_any = ("debug", "info:", "starting")
+        benign_phrases = (
+            "voluptuous",
+            "setup of domain",
+            "setup of platform",
+            "loading",
+            "initialized",
+        )
+        for line in stderr.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            line_lower = line.lower()
+            if any(ind in line_lower for ind in error_indicators):
                 self.errors.append(f"HA Error: {line}")
+                continue
+            if any(x in line_lower for x in benign_any):
+                continue
+            if any(x in line_lower for x in benign_phrases):
+                continue
+            self.errors.append(f"HA Error: {line}")
 
     def _validate(self) -> bool:
         """Run complete validation using Home Assistant."""

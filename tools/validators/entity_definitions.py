@@ -17,6 +17,40 @@ from tools.validators.base import HAYamlLoader
 
 _OBJECT_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
+_INPUT_HELPER_DOMAINS = (
+    "input_boolean",
+    "input_number",
+    "input_text",
+    "input_select",
+    "input_datetime",
+    "input_button",
+    "timer",
+    "counter",
+    "schedule",
+)
+
+_PLATFORM_SENSOR_DOMAINS = ("sensor", "binary_sensor")
+
+_TEMPLATE_ENTITY_DOMAINS = (
+    "sensor",
+    "binary_sensor",
+    "switch",
+    "light",
+    "number",
+    "select",
+    "button",
+    "alarm_control_panel",
+    "cover",
+    "device_tracker",
+    "event",
+    "fan",
+    "image",
+    "lock",
+    "update",
+    "vacuum",
+    "weather",
+)
+
 
 class EntityDefinitionExtractor:
     """Extracts entity definitions from HA configuration and storage files.
@@ -54,6 +88,31 @@ class EntityDefinitionExtractor:
         slug = re.sub(r"[^a-z0-9_]+", "_", slug)
         slug = re.sub(r"_+", "_", slug)
         return slug.strip("_")
+
+    @classmethod
+    def _make_entity_id(
+        cls,
+        domain: str,
+        name: str,
+        *,
+        explicit_id: str | None = None,
+    ) -> str | None:
+        """Build an entity_id by slugifying *name* (or *explicit_id*)
+        and prefixing *domain*.
+
+        Args:
+            domain: HA entity domain (e.g. ``"automation"``, ``"scene"``).
+            name: Human-readable name to slugify.
+            explicit_id: Optional override; when truthy, slugified in place of
+                *name* (used for automation ``id`` fallback).
+
+        Returns:
+            ``f"{domain}.{slug}"`` when slugify yields a non-empty slug,
+            else ``None``.
+        """
+        source = explicit_id if explicit_id else name
+        object_id = cls._slugify_object_id(str(source))
+        return f"{domain}.{object_id}" if object_id else None
 
     @classmethod
     def _is_valid_object_id(cls, value: str) -> bool:
@@ -164,6 +223,15 @@ class EntityDefinitionExtractor:
         self._config_defined_entities = entities
         return self._config_defined_entities
 
+    def _load_yaml_glob(self, target: Path) -> list[tuple[Path, Any]]:
+        """Load every ``*.yaml`` under *target* (sorted),
+        returning ``(path, data)`` pairs."""
+        loaded: list[tuple[Path, Any]] = []
+        for f in sorted(target.glob("*.yaml")):
+            with open(f, encoding="utf-8") as fh:
+                loaded.append((f, yaml.load(fh, Loader=HAYamlLoader)))
+        return loaded
+
     def _resolve_include(self, tag_value: object):
         """Resolve a ``!include* <path>`` string to merged YAML data, or None.
 
@@ -186,52 +254,50 @@ class EntityDefinitionExtractor:
                         return yaml.load(f, Loader=HAYamlLoader)
                 return None
             if tag == "!include_dir_list":
-                items = []
-                for f in sorted(target.glob("*.yaml")):
-                    with open(f, encoding="utf-8") as fh:
-                        loaded = yaml.load(fh, Loader=HAYamlLoader)
-                    items.append(loaded)
-                return items
+                return [data for _path, data in self._load_yaml_glob(target)]
             if tag == "!include_dir_merge_list":
-                items = []
-                for f in sorted(target.glob("*.yaml")):
-                    with open(f, encoding="utf-8") as fh:
-                        loaded = yaml.load(fh, Loader=HAYamlLoader)
-                    if isinstance(loaded, list):
-                        items.extend(loaded)
+                items: list = []
+                for _path, data in self._load_yaml_glob(target):
+                    if isinstance(data, list):
+                        items.extend(data)
                 return items
             if tag == "!include_dir_named":
-                merged: dict = {}
-                for f in sorted(target.glob("*.yaml")):
-                    with open(f, encoding="utf-8") as fh:
-                        loaded = yaml.load(fh, Loader=HAYamlLoader)
-                    merged[f.stem] = loaded
-                return merged
+                return {path.stem: data for path, data in self._load_yaml_glob(target)}
             if tag == "!include_dir_merge_named":
-                merged = {}
-                for f in sorted(target.glob("*.yaml")):
-                    with open(f, encoding="utf-8") as fh:
-                        loaded = yaml.load(fh, Loader=HAYamlLoader)
-                    if isinstance(loaded, dict):
-                        merged.update(loaded)
+                merged: dict = {}
+                for _path, data in self._load_yaml_glob(target):
+                    if isinstance(data, dict):
+                        merged.update(data)
                 return merged
         except (OSError, yaml.YAMLError) as e:
             self._record_extraction_warning(target, e)
             return None
         return None
 
+    def _load_yaml_file(self, file: Path) -> Any | None:
+        """Open+parse a YAML file, recording extraction warnings on parse failure.
+
+        Returns the parsed YAML data on success, or ``None`` on failure (after
+        appending a warning via :meth:`_record_extraction_warning`). Callers
+        handle shape validation (``isinstance(data, list)`` etc.) and the
+        missing-file policy (caller-side ``if file.exists():`` guard) themselves
+        — this helper does NOT check existence, so a missing file raises
+        ``FileNotFoundError`` (a subclass of ``OSError``) and gets a warning.
+        """
+        try:
+            with open(file, encoding="utf-8") as f:
+                return yaml.load(f, Loader=HAYamlLoader)
+        except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
+            self._record_extraction_warning(file, e)
+            return None
+
     def _load_config_yaml(self) -> dict | None:
         """Load and parse configuration.yaml once; shared across extraction methods."""
         config_file = self.config_dir / "configuration.yaml"
         if not config_file.exists():
             return None
-        try:
-            with open(config_file, encoding="utf-8") as f:
-                data = yaml.load(f, Loader=HAYamlLoader)
-            return data if isinstance(data, dict) else None
-        except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
-            self._record_extraction_warning(config_file, e)
-            return None
+        data = self._load_yaml_file(config_file)
+        return data if isinstance(data, dict) else None
 
     def _record_extraction_warning(self, source: Path, error: Exception) -> None:
         """Record entity extraction errors without hiding them."""
@@ -253,17 +319,7 @@ class EntityDefinitionExtractor:
                     entities.add(f"group.{group_name}")
 
         # Extract input helpers
-        for input_type in [
-            "input_boolean",
-            "input_number",
-            "input_text",
-            "input_select",
-            "input_datetime",
-            "input_button",
-            "timer",
-            "counter",
-            "schedule",
-        ]:
+        for input_type in _INPUT_HELPER_DOMAINS:
             if input_type in config_data and isinstance(config_data[input_type], dict):
                 for name in config_data[input_type]:
                     if isinstance(name, str) and self._is_valid_object_id(name):
@@ -279,7 +335,7 @@ class EntityDefinitionExtractor:
                 entities.update(self._extract_template_entities(template_data))
 
         # Extract platform-based sensors/binary_sensors
-        for sensor_type in ["sensor", "binary_sensor"]:
+        for sensor_type in _PLATFORM_SENSOR_DOMAINS:
             if sensor_type in config_data:
                 sensor_data = config_data[sensor_type]
                 if isinstance(sensor_data, list):
@@ -315,25 +371,7 @@ class EntityDefinitionExtractor:
         if not isinstance(template_config, dict):
             return entities
 
-        for entity_type in [
-            "sensor",
-            "binary_sensor",
-            "switch",
-            "light",
-            "number",
-            "select",
-            "button",
-            "alarm_control_panel",
-            "cover",
-            "device_tracker",
-            "event",
-            "fan",
-            "image",
-            "lock",
-            "update",
-            "vacuum",
-            "weather",
-        ]:
+        for entity_type in _TEMPLATE_ENTITY_DOMAINS:
             if entity_type in template_config:
                 type_data = template_config[entity_type]
                 if isinstance(type_data, list):
@@ -381,33 +419,29 @@ class EntityDefinitionExtractor:
                     if isinstance(automation, dict):
                         alias = automation.get("alias", "")
                         if alias:
-                            object_id = self._slugify_object_id(str(alias))
-                            if object_id:
-                                entities.add(f"automation.{object_id}")
+                            entity_id = self._make_entity_id("automation", alias)
+                            if entity_id:
+                                entities.add(entity_id)
                 return entities
 
         automations_file = self.config_dir / "automations.yaml"
 
         if automations_file.exists():
-            try:
-                with open(automations_file, encoding="utf-8") as f:
-                    data = yaml.load(f, Loader=HAYamlLoader)
-                    if isinstance(data, list):
-                        for automation in data:
-                            if isinstance(automation, dict):
-                                alias = automation.get("alias", "")
-                                if alias:
-                                    object_id = self._slugify_object_id(str(alias))
-                                    if object_id:
-                                        entities.add(f"automation.{object_id}")
-                                elif automation.get("id"):
-                                    object_id = self._slugify_object_id(
-                                        str(automation["id"])
-                                    )
-                                    if object_id:
-                                        entities.add(f"automation.{object_id}")
-            except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
-                self._record_extraction_warning(automations_file, e)
+            data = self._load_yaml_file(automations_file)
+            if isinstance(data, list):
+                for automation in data:
+                    if isinstance(automation, dict):
+                        alias = automation.get("alias", "")
+                        if alias:
+                            entity_id = self._make_entity_id("automation", alias)
+                            if entity_id:
+                                entities.add(entity_id)
+                        elif automation.get("id"):
+                            entity_id = self._make_entity_id(
+                                "automation", "", explicit_id=automation.get("id")
+                            )
+                            if entity_id:
+                                entities.add(entity_id)
 
         return entities
 
@@ -429,17 +463,13 @@ class EntityDefinitionExtractor:
         scripts_file = self.config_dir / "scripts.yaml"
 
         if scripts_file.exists():
-            try:
-                with open(scripts_file, encoding="utf-8") as f:
-                    data = yaml.load(f, Loader=HAYamlLoader)
-                    if isinstance(data, dict):
-                        for script_name in data:
-                            if isinstance(
-                                script_name, str
-                            ) and self._is_valid_object_id(script_name):
-                                entities.add(f"script.{script_name}")
-            except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
-                self._record_extraction_warning(scripts_file, e)
+            data = self._load_yaml_file(scripts_file)
+            if isinstance(data, dict):
+                for script_name in data:
+                    if isinstance(script_name, str) and self._is_valid_object_id(
+                        script_name
+                    ):
+                        entities.add(f"script.{script_name}")
 
         return entities
 
@@ -459,27 +489,23 @@ class EntityDefinitionExtractor:
                     if isinstance(scene, dict):
                         name = scene.get("name", "")
                         if name:
-                            object_id = self._slugify_object_id(str(name))
-                            if object_id:
-                                entities.add(f"scene.{object_id}")
+                            entity_id = self._make_entity_id("scene", name)
+                            if entity_id:
+                                entities.add(entity_id)
                 return entities
 
         scenes_file = self.config_dir / "scenes.yaml"
 
         if scenes_file.exists():
-            try:
-                with open(scenes_file, encoding="utf-8") as f:
-                    data = yaml.load(f, Loader=HAYamlLoader)
-                    if isinstance(data, list):
-                        for scene in data:
-                            if isinstance(scene, dict):
-                                name = scene.get("name", "")
-                                if name:
-                                    object_id = self._slugify_object_id(str(name))
-                                    if object_id:
-                                        entities.add(f"scene.{object_id}")
-            except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
-                self._record_extraction_warning(scenes_file, e)
+            data = self._load_yaml_file(scenes_file)
+            if isinstance(data, list):
+                for scene in data:
+                    if isinstance(scene, dict):
+                        name = scene.get("name", "")
+                        if name:
+                            entity_id = self._make_entity_id("scene", name)
+                            if entity_id:
+                                entities.add(entity_id)
 
         return entities
 
@@ -499,9 +525,9 @@ class EntityDefinitionExtractor:
                     if isinstance(zone, dict):
                         name = zone.get("name", "")
                         if name:
-                            object_id = self._slugify_object_id(str(name))
-                            if object_id:
-                                entities.add(f"zone.{object_id}")
+                            entity_id = self._make_entity_id("zone", name)
+                            if entity_id:
+                                entities.add(entity_id)
 
         # Extract from storage (UI-configured zones)
         zone_storage = self.storage_dir / "core.zone"
@@ -514,9 +540,9 @@ class EntityDefinitionExtractor:
                         if isinstance(item, dict):
                             name = item.get("name", "")
                             if name:
-                                object_id = self._slugify_object_id(str(name))
-                                if object_id:
-                                    entities.add(f"zone.{object_id}")
+                                entity_id = self._make_entity_id("zone", name)
+                                if entity_id:
+                                    entities.add(entity_id)
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
                 self._record_extraction_warning(zone_storage, e)
 

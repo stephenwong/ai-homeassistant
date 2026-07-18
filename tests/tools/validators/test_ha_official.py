@@ -383,3 +383,83 @@ class TestTimeoutConfiguration:
         v = HAOfficialValidator(str(config_dir))
         assert v.validation_timeout == 120
         assert any("HA_VALIDATION_TIMEOUT" in warning for warning in v.warnings)
+
+
+class TestBenignPackageMarkers:
+    """Pin the two hoisted constant tuples — they serve different policies."""
+
+    def test_install_markers_are_strict_subset_of_ignorable(self):
+        from tools.validators.ha_official import (
+            _BENIGN_PACKAGE_INSTALL_MARKERS,
+            _IGNORABLE_STDOUT_SUBSTRINGS,
+        )
+
+        ignorable_lower = {s.lower() for s in _IGNORABLE_STDOUT_SUBSTRINGS}
+        for m in _BENIGN_PACKAGE_INSTALL_MARKERS:
+            assert m.lower() in ignorable_lower, (
+                f"{m!r} missing from _IGNORABLE_STDOUT_SUBSTRINGS"
+            )
+
+    def test_install_markers_count_matches_ha_known_set(self):
+        from tools.validators.ha_official import _BENIGN_PACKAGE_INSTALL_MARKERS
+
+        assert len(_BENIGN_PACKAGE_INSTALL_MARKERS) == 4
+
+
+class TestClassifyStdoutLine:
+    """Direct unit tests for the extracted _classify_stdout_line helper."""
+
+    def _validator(self, tmp_path):
+        return HAOfficialValidator(config_dir=str(tmp_path))
+
+    def test_zero_errors_count_goes_to_info(self, tmp_path):
+        v = self._validator(tmp_path)
+        v._classify_stdout_line("Found 0 errors")
+        assert v.info and not v.errors
+
+    def test_nonzero_errors_count_goes_to_errors(self, tmp_path):
+        v = self._validator(tmp_path)
+        v._classify_stdout_line("Found 2 errors")
+        assert v.errors and not v.info
+
+    def test_error_prefixed_line_goes_to_errors(self, tmp_path):
+        v = self._validator(tmp_path)
+        v._classify_stdout_line("ERROR: bad config")
+        assert v.errors
+
+    def test_warning_prefixed_line_goes_to_warnings(self, tmp_path):
+        v = self._validator(tmp_path)
+        v._classify_stdout_line("WARNING: deprecated")
+        assert v.warnings
+
+    def test_successful_check_goes_to_info(self, tmp_path):
+        v = self._validator(tmp_path)
+        v._classify_stdout_line("Configuration check successful!")
+        assert v.info
+
+    def test_info_prefixed_line_dropped(self, tmp_path):
+        v = self._validator(tmp_path)
+        v._classify_stdout_line("INFO: something")
+        assert not v.info and not v.errors and not v.warnings
+
+
+class TestParseStderr:
+    """Direct unit tests for the extracted _parse_stderr helper."""
+
+    def _validator(self, tmp_path):
+        return HAOfficialValidator(config_dir=str(tmp_path))
+
+    def test_error_indicator_line_routed_to_errors(self, tmp_path):
+        v = self._validator(tmp_path)
+        v._parse_stderr("error: missing field")
+        assert any("missing field" in e for e in v.errors)
+
+    def test_benign_debug_line_suppressed(self, tmp_path):
+        v = self._validator(tmp_path)
+        v._parse_stderr("DEBUG: verbose noise")
+        assert not v.errors
+
+    def test_unknown_line_treated_as_error(self, tmp_path):
+        v = self._validator(tmp_path)
+        v._parse_stderr("something unusual happened")
+        assert v.errors

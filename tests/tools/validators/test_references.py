@@ -1528,3 +1528,40 @@ class TestValidateFileReferencesHelpers:
         assert result is False
         assert any("Unknown device 'device_unknown'" in e for e in validator.errors)
         assert any("disabled device 'device_known'" in w for w in validator.warnings)
+
+
+class TestRegistrySpec:
+    """Direct unit tests for the RegistrySpec NamedTuple and the three
+    module-level spec constants."""
+
+    def test_spec_fields_match_named_tuple_shape(self):
+        from tools.validators.references import RegistrySpec
+
+        spec = RegistrySpec(
+            filename="core.entity_registry",
+            list_key="entities",
+            key_field="entity_id",
+            cache_attr="_entities",
+            missing_bucket="errors",
+            label="Entity registry",
+        )
+        assert spec.filename == "core.entity_registry"
+        assert spec.cache_attr == "_entities"
+
+    def test_entity_spec_uses_errors_bucket(self):
+        from tools.validators.references import _ENTITY_REGISTRY_SPEC
+
+        assert _ENTITY_REGISTRY_SPEC.missing_bucket == "errors"
+        assert _ENTITY_REGISTRY_SPEC.cache_attr == "_entities"
+        assert _ENTITY_REGISTRY_SPEC.key_field == "entity_id"
+
+    def test_device_spec_uses_id_key_field(self):
+        from tools.validators.references import _DEVICE_REGISTRY_SPEC
+
+        assert _DEVICE_REGISTRY_SPEC.key_field == "id"
+        assert _DEVICE_REGISTRY_SPEC.list_key == "devices"
+
+    def test_area_spec_uses_warnings_bucket(self):
+        from tools.validators.references import _AREA_REGISTRY_SPEC
+
+        assert _AREA_REGISTRY_SPEC.missing_bucket == "warnings"

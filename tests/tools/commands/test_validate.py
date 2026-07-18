@@ -714,3 +714,145 @@ class TestAddParser:
         validate.add_parser(subparsers)
         args = parser.parse_args(["validate", "--no-summary"])
         assert args.no_summary is True
+
+
+class TestFormatResultLine:
+    """Direct unit tests for _format_result_line."""
+
+    def _result(self, **kw):
+        defaults = dict(
+            description="YAML Syntax Validation",
+            passed=True,
+            stdout="",
+            stderr="",
+            duration=1.5,
+            cached=False,
+        )
+        defaults.update(kw)
+        return ValidatorResult(**defaults)
+
+    def test_summary_mode_pass_with_duration(self):
+        from tools.commands.validate import _format_result_line
+
+        r = self._result(passed=True, duration=2.5, cached=False)
+        assert (
+            _format_result_line(r, summary=True, quiet=False)
+            == "PASS YAML Syntax Validation (2.50s)"
+        )
+
+    def test_summary_mode_pass_cached(self):
+        from tools.commands.validate import _format_result_line
+
+        r = self._result(passed=True, duration=0.0, cached=True)
+        assert (
+            _format_result_line(r, summary=True, quiet=False)
+            == "PASS YAML Syntax Validation C"
+        )
+
+    def test_summary_mode_fail(self):
+        from tools.commands.validate import _format_result_line
+
+        r = self._result(passed=False, duration=3.0)
+        assert (
+            _format_result_line(r, summary=True, quiet=False)
+            == "FAIL YAML Syntax Validation (3.00s)"
+        )
+
+    def test_verbose_mode_pass(self):
+        from tools.commands.validate import _format_result_line
+
+        r = self._result(passed=True, duration=1.25, cached=False)
+        line = _format_result_line(r, summary=False, quiet=False)
+        assert "\u2705" in line
+        assert "PASSED" in line
+        assert "(1.25s)" in line
+
+    def test_verbose_mode_pass_cached(self):
+        from tools.commands.validate import _format_result_line
+
+        r = self._result(passed=True, duration=0.0, cached=True)
+        line = _format_result_line(r, summary=False, quiet=False)
+        assert " (cached)" in line
+
+    def test_quiet_suppresses_passing_line(self):
+        from tools.commands.validate import _format_result_line
+
+        r = self._result(passed=True)
+        assert _format_result_line(r, summary=False, quiet=True) is None
+
+    def test_quiet_does_not_suppress_failing_line(self):
+        from tools.commands.validate import _format_result_line
+
+        r = self._result(passed=False)
+        assert _format_result_line(r, summary=False, quiet=True) is not None
+
+
+class TestPrintIntro:
+    """Direct unit tests for _print_intro."""
+
+    def test_verbose_prints_banner(self, capsys):
+        from tools.commands.validate import _print_intro
+
+        _print_intro(force=False, quiet=False, summary=False)
+        err = capsys.readouterr().err
+        assert "Running Home Assistant Configuration Validation Tests" in err
+        assert "Running all validators in parallel" in err
+
+    def test_verbose_force_prints_cache_ignored_message(self, capsys):
+        from tools.commands.validate import _print_intro
+
+        _print_intro(force=True, quiet=False, summary=False)
+        err = capsys.readouterr().err
+        assert "cache ignored" in err
+
+    def test_summary_mode_prints_nothing(self, capsys):
+        from tools.commands.validate import _print_intro
+
+        _print_intro(force=False, quiet=False, summary=True)
+        assert capsys.readouterr().err == ""
+
+    def test_quiet_mode_prints_nothing(self, capsys):
+        from tools.commands.validate import _print_intro
+
+        _print_intro(force=False, quiet=True, summary=False)
+        assert capsys.readouterr().err == ""
+
+
+class TestPrintSummaryBlock:
+    """Direct unit tests for _print_summary_block."""
+
+    def test_summary_pass_prints_passed_count(self, capsys):
+        from tools.commands.validate import _print_summary_block
+
+        results = [ValidatorResult(description="A", passed=True, duration=1.0)]
+        _print_summary_block(
+            results, all_passed=True, overall_duration=1.0, summary=True, quiet=False
+        )
+        out = capsys.readouterr().out
+        assert "PASSED 1/1" in out
+        assert "1.00s" in out
+
+    def test_summary_fail_prints_failed_count(self, capsys):
+        from tools.commands.validate import _print_summary_block
+
+        results = [
+            ValidatorResult(description="A", passed=True, duration=1.0),
+            ValidatorResult(description="B", passed=False, duration=2.0),
+        ]
+        _print_summary_block(
+            results, all_passed=False, overall_duration=3.0, summary=True, quiet=False
+        )
+        out = capsys.readouterr().out
+        assert "FAILED 1/2" in out
+
+    def test_verbose_mode_prints_test_summary_block_to_stderr(self, capsys):
+        from tools.commands.validate import _print_summary_block
+
+        results = [ValidatorResult(description="A", passed=True, duration=1.0)]
+        _print_summary_block(
+            results, all_passed=True, overall_duration=1.0, summary=False, quiet=False
+        )
+        err = capsys.readouterr().err
+        assert "TEST SUMMARY" in err
+        assert "Total tests: 1" in err
+        assert "All tests passed" in err

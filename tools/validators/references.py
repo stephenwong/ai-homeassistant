@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, NamedTuple, TypedDict
 
 from tools.common import add_summary_args, resolve_summary
 from tools.validators._storage import load_storage_registry
@@ -37,6 +37,50 @@ class DomainSummary(TypedDict):
     enabled: int
     disabled: int
     examples: list[str]
+
+
+class RegistrySpec(NamedTuple):
+    """Configuration for loading and caching a HA ``.storage/`` registry.
+
+    Bundles the six parameters ``ReferenceValidator._load_registry`` previously
+    took positionally, so call sites read as named specs rather than
+    positional argument lists.
+    """
+
+    filename: str
+    list_key: str
+    key_field: str
+    cache_attr: str
+    missing_bucket: str
+    label: str
+
+
+_ENTITY_REGISTRY_SPEC = RegistrySpec(
+    filename="core.entity_registry",
+    list_key="entities",
+    key_field="entity_id",
+    cache_attr="_entities",
+    missing_bucket="errors",
+    label="Entity registry",
+)
+
+_DEVICE_REGISTRY_SPEC = RegistrySpec(
+    filename="core.device_registry",
+    list_key="devices",
+    key_field="id",
+    cache_attr="_devices",
+    missing_bucket="errors",
+    label="Device registry",
+)
+
+_AREA_REGISTRY_SPEC = RegistrySpec(
+    filename="core.area_registry",
+    list_key="areas",
+    key_field="id",
+    cache_attr="_areas",
+    missing_bucket="warnings",
+    label="Area registry",
+)
 
 
 class ReferenceValidator(ValidatorBase):
@@ -88,44 +132,27 @@ class ReferenceValidator(ValidatorBase):
         """
         return self._definitions.get_config_defined_entities()
 
-    def _load_registry(
-        self,
-        filename: str,
-        list_key: str,
-        key_field: str,
-        cache_attr: str,
-        missing_bucket: str,
-        label: str,
-    ) -> dict[str, Any]:
+    def _load_registry(self, spec: RegistrySpec) -> dict[str, Any]:
         """Load and cache a HA registry JSON file.
 
         Thin wrapper over :func:`tools.validators._storage.load_storage_registry`
         that adds instance caching and routes missing/parse failures to the
         appropriate diagnostics bucket.
-
-        Args:
-            filename: Relative path under storage_dir (e.g. 'core.entity_registry').
-            list_key: Key in ``data.data[list_key]`` holding the items.
-            key_field: Item field to use as the result-dict key.
-            cache_attr: Instance attribute name for caching (e.g. '_entities').
-            missing_bucket: 'errors' or 'warnings' — which bucket to use for
-                missing/parse-failure messages.
-            label: Human-readable label for error messages (e.g. 'Entity registry').
         """
-        cached = getattr(self, cache_attr)
+        cached = getattr(self, spec.cache_attr)
         if cached is not None:
             return cached
-        registry_file = self.storage_dir / filename
-        bucket = getattr(self, missing_bucket)
+        registry_file = self.storage_dir / spec.filename
+        bucket = getattr(self, spec.missing_bucket)
 
         if not registry_file.exists():
-            bucket.append(f"{label} not found: {registry_file}")
-            setattr(self, cache_attr, {})
+            bucket.append(f"{spec.label} not found: {registry_file}")
+            setattr(self, spec.cache_attr, {})
             return {}
 
         try:
             result = load_storage_registry(
-                registry_file, list_key=list_key, key_field=key_field
+                registry_file, list_key=spec.list_key, key_field=spec.key_field
             )
         except (
             OSError,
@@ -135,45 +162,24 @@ class ReferenceValidator(ValidatorBase):
             ValueError,
             AttributeError,
         ) as e:
-            bucket.append(f"Failed to load {label.lower()}: {e}")
-            setattr(self, cache_attr, {})
+            bucket.append(f"Failed to load {spec.label.lower()}: {e}")
+            setattr(self, spec.cache_attr, {})
             return {}
 
-        setattr(self, cache_attr, result)
+        setattr(self, spec.cache_attr, result)
         return result
 
     def load_entity_registry(self) -> dict[str, Any]:
         """Load and cache entity registry."""
-        return self._load_registry(
-            "core.entity_registry",
-            "entities",
-            "entity_id",
-            "_entities",
-            "errors",
-            "Entity registry",
-        )
+        return self._load_registry(_ENTITY_REGISTRY_SPEC)
 
     def load_device_registry(self) -> dict[str, Any]:
         """Load and cache device registry."""
-        return self._load_registry(
-            "core.device_registry",
-            "devices",
-            "id",
-            "_devices",
-            "errors",
-            "Device registry",
-        )
+        return self._load_registry(_DEVICE_REGISTRY_SPEC)
 
     def load_area_registry(self) -> dict[str, Any]:
         """Load and cache area registry."""
-        return self._load_registry(
-            "core.area_registry",
-            "areas",
-            "id",
-            "_areas",
-            "warnings",
-            "Area registry",
-        )
+        return self._load_registry(_AREA_REGISTRY_SPEC)
 
     _UUID_RE = re.compile(
         r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"

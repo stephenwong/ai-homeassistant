@@ -48,36 +48,33 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(func=run)
 
 
-def run(args: argparse.Namespace) -> int:
-    """Entry point for the ``trace`` subcommand. Returns exit code."""
-    summary = resolve_summary(args)
-
+def _validate_args(args: argparse.Namespace, summary: bool) -> int | None:
+    """Validate CLI args. Returns ``1`` on error, ``None`` otherwise."""
     if args.entity_id is not None and not _ENTITY_RE.fullmatch(args.entity_id):
         print(f"\u274c Invalid entity_id: {args.entity_id!r}", file=sys.stderr)
         return 1
-
-    # Validate --first early, before any API call.
     if args.first is not None and args.first < 1:
         print("\u274c --first must be >= 1", file=sys.stderr)
         return 1
-
     if args.entity_id and args.first is not None and not summary:
         print(
             "\u26a0\ufe0f  --first is ignored when fetching a single automation trace",
             file=sys.stderr,
         )
+    return None
 
-    try:
-        client = HAWSClient.from_env()
-    except HARequestError as e:
-        print(f"\u274c {e}", file=sys.stderr)
-        return 1
 
+def _fetch_data(
+    ws_client: HAWSClient,
+    args: argparse.Namespace,
+    summary: bool,
+) -> tuple[dict | list | None, int | None]:
+    """Fetch trace data via WebSocket (and optionally REST for single-entity).
+
+    Returns ``(data, None)`` on success, ``(None, 1)`` on error.
+    """
     try:
         if args.entity_id:
-            # Resolve entity_id → automation id via state attributes.
-            # Falls back to slug-strip if the REST endpoint is unreachable
-            # (unconfigured, offline, etc.).
             try:
                 rest_client = HAClient.from_env()
                 state = rest_client.get_json(f"/api/states/{args.entity_id}")
@@ -86,33 +83,30 @@ def run(args: argparse.Namespace) -> int:
                 ) or args.entity_id.split(".", 1)[1]
             except HARequestError:
                 item_id = args.entity_id.split(".", 1)[1]
-            traces = client.command("trace/list", domain="automation", item_id=item_id)
-            # Defensive client-side filter in case the server doesn't
-            # support item_id-based filtering (or the mock doesn't).
+            traces = ws_client.command(
+                "trace/list", domain="automation", item_id=item_id
+            )
             matching = [t for t in traces if t.get("item_id") == item_id]
             if not matching:
                 print(
                     f"\u274c No traces found for {args.entity_id}",
                     file=sys.stderr,
                 )
-                return 1
-            # Sort by timestamp start (most recent first) — list may not be ordered.
+                return None, 1
             matching.sort(
                 key=lambda t: t.get("timestamp", {}).get("start", ""),
                 reverse=True,
             )
             latest = matching[0]
-            data = client.command(
+            data = ws_client.command(
                 "trace/get",
                 domain="automation",
                 item_id=latest["item_id"],
                 run_id=latest["run_id"],
             )
         else:
-            data = client.command("trace/list", domain="automation")
-            # Summary-mode projection: compact fields for non-TTY agents.
+            data = ws_client.command("trace/list", domain="automation")
             if summary and not args.pretty:
-                # Project to compact fields first.
                 compact = [
                     {
                         "item_id": t.get("item_id"),
@@ -122,7 +116,6 @@ def run(args: argparse.Namespace) -> int:
                     }
                     for t in data
                 ]
-                # Sort newest-first, then dedupe by item_id keeping most-recent.
                 compact.sort(
                     key=lambda x: x.get("timestamp") or "",
                     reverse=True,
@@ -135,57 +128,84 @@ def run(args: argparse.Namespace) -> int:
                     if iid not in seen:
                         seen[iid] = entry
                 data = list(seen.values())
-                # Add runs field only when there's actual duplication.
                 for entry in data:
                     n = run_counts.get(entry.get("item_id") or "", 1)
                     if n > 1:
                         entry["runs"] = n
     except HARequestError as e:
         print(f"\u274c {e}", file=sys.stderr)
-        return 1
+        return None, 1
+    return data, None
 
-    # Summary-mode single-entity: drop verbose fields (config is redundant,
-    # blueprint_inputs rarely needed).  Respects --pretty override.
-    if args.entity_id and summary and not args.pretty and isinstance(data, dict):
+
+def _shape_single_entity_data(
+    data: dict,
+    args: argparse.Namespace,
+    summary: bool,
+) -> dict:
+    """Apply summary-mode stripping, max-chars cap, and pick to single-entity data."""
+    if summary and not args.pretty:
         data = {
             k: v for k, v in data.items() if k not in ("config", "blueprint_inputs")
         }
         if isinstance(data.get("trace"), dict):
             data["trace"] = _prune_trace_entries(data["trace"])
 
-    # Single-entity dict cap: drop largest trace step keys to fit --max-chars.
-    if args.entity_id and isinstance(data, dict):
-        max_chars = resolve_max_chars(args, summary)
-        if max_chars is not None:
-            data = _cap_trace_dict(data, max_chars)
-            if data.get("_truncated") is True:
-                dropped = len(data["dropped_steps"])
-                kept = len(data["kept_steps"])
-                total = dropped + kept
-                print(
-                    f"# trace truncated to ~{max_chars} chars "
-                    f"(dropped {dropped}/{total} steps)",
-                    file=sys.stderr,
-                )
+    max_chars = resolve_max_chars(args, summary)
+    if max_chars is not None:
+        data = _cap_trace_dict(data, max_chars)
+        if data.get("_truncated") is True:
+            dropped = len(data["dropped_steps"])
+            kept = len(data["kept_steps"])
+            total = dropped + kept
+            print(
+                f"# trace truncated to ~{max_chars} chars "
+                f"(dropped {dropped}/{total} steps)",
+                file=sys.stderr,
+            )
 
-    # Apply output shaping (--first, --pick, --max-chars).
-    if not args.entity_id:
-        # List mode: full output shaping.
-        # NOTE: single-entity mode returns a dict; apply_output_shape does not
-        # truncate dicts (only lists). --max-chars for single-entity is handled
-        # above by _cap_trace_dict.
-        data = apply_output_shape(
-            data,
-            first=args.first,
-            pick=args.pick,
-            max_chars=resolve_max_chars(args, summary),
-        )
+    data = apply_output_shape(data, pick=args.pick)
+    return data
+
+
+def _shape_list_data(
+    data: list,
+    args: argparse.Namespace,
+    summary: bool,
+) -> list:
+    """Apply output shaping (--first, --pick, --max-chars) to list data."""
+    return apply_output_shape(
+        data,
+        first=args.first,
+        pick=args.pick,
+        max_chars=resolve_max_chars(args, summary),
+    )
+
+
+def run(args: argparse.Namespace) -> int:
+    """Entry point for the ``trace`` subcommand. Returns exit code."""
+    summary = resolve_summary(args)
+
+    err = _validate_args(args, summary)
+    if err is not None:
+        return err
+
+    try:
+        ws_client = HAWSClient.from_env()
+    except HARequestError as e:
+        print(f"\u274c {e}", file=sys.stderr)
+        return 1
+
+    data, exit_code = _fetch_data(ws_client, args, summary)
+    if exit_code is not None:
+        return exit_code
+
+    if args.entity_id and isinstance(data, dict):
+        data = _shape_single_entity_data(data, args, summary)
     else:
-        # Single-entity dict: only --pick applies (--max-chars handled above).
-        data = apply_output_shape(data, pick=args.pick)
+        data = _shape_list_data(data, args, summary)
 
     print_json(data, pretty=args.pretty)
-
     return 0
 
 

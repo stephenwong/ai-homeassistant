@@ -392,3 +392,132 @@ def test_resolves_include_dir_merge_list_for_automation(tmp_path):
     entities = ext.get_config_defined_entities()
     assert "automation.from_a" in entities
     assert "automation.from_b" in entities
+
+
+class TestMakeEntityId:
+    """Direct unit tests for EntityDefinitionExtractor._make_entity_id."""
+
+    def test_returns_domain_dot_slug_for_simple_name(self):
+        assert (
+            EntityDefinitionExtractor._make_entity_id("scene", "Living Room")
+            == "scene.living_room"
+        )
+
+    def test_returns_none_for_empty_name(self):
+        assert EntityDefinitionExtractor._make_entity_id("scene", "") is None
+
+    def test_returns_none_for_punctuation_only_name(self):
+        assert EntityDefinitionExtractor._make_entity_id("scene", "!!!") is None
+
+    def test_explicit_id_overrides_name(self):
+        assert (
+            EntityDefinitionExtractor._make_entity_id(
+                "automation", "Friendly Name", explicit_id="custom_id"
+            )
+            == "automation.custom_id"
+        )
+
+    def test_explicit_id_falsy_falls_back_to_name(self):
+        assert (
+            EntityDefinitionExtractor._make_entity_id(
+                "automation", "Friendly Name", explicit_id=None
+            )
+            == "automation.friendly_name"
+        )
+
+
+class TestLoadYamlGlob:
+    """Direct unit tests for EntityDefinitionExtractor._load_yaml_glob."""
+
+    def test_returns_sorted_path_data_pairs(self, tmp_path):
+        (tmp_path / "b.yaml").write_text("foo: 1\n")
+        (tmp_path / "a.yaml").write_text("bar: 2\n")
+        ext = EntityDefinitionExtractor(tmp_path, tmp_path, [], [])
+        result = ext._load_yaml_glob(tmp_path)
+        assert [p.name for p, _d in result] == ["a.yaml", "b.yaml"]
+        assert result[0][1] == {"bar": 2}
+        assert result[1][1] == {"foo": 1}
+
+    def test_skips_non_yaml_files(self, tmp_path):
+        (tmp_path / "ignore.txt").write_text("nope\n")
+        (tmp_path / "keep.yaml").write_text("x: 1\n")
+        ext = EntityDefinitionExtractor(tmp_path, tmp_path, [], [])
+        result = ext._load_yaml_glob(tmp_path)
+        assert len(result) == 1
+        assert result[0][0].name == "keep.yaml"
+
+    def test_empty_dir_returns_empty_list(self, tmp_path):
+        ext = EntityDefinitionExtractor(tmp_path, tmp_path, [], [])
+        assert ext._load_yaml_glob(tmp_path) == []
+
+
+class TestLoadYamlFile:
+    """Direct unit tests for EntityDefinitionExtractor._load_yaml_file."""
+
+    def test_parses_valid_yaml(self, tmp_path):
+        f = tmp_path / "f.yaml"
+        f.write_text("foo: 1\nbar: [2, 3]\n")
+        warnings: list[str] = []
+        ext = EntityDefinitionExtractor(tmp_path, tmp_path, warnings, [])
+        assert ext._load_yaml_file(f) == {"foo": 1, "bar": [2, 3]}
+        assert warnings == []
+
+    def test_records_warning_on_malformed_yaml(self, tmp_path):
+        f = tmp_path / "f.yaml"
+        f.write_text("foo: [unterminated\n")
+        warnings: list[str] = []
+        ext = EntityDefinitionExtractor(tmp_path, tmp_path, warnings, [])
+        assert ext._load_yaml_file(f) is None
+        assert len(warnings) == 1
+
+    def test_records_warning_on_missing_file(self, tmp_path):
+        warnings: list[str] = []
+        ext = EntityDefinitionExtractor(tmp_path, tmp_path, warnings, [])
+        assert ext._load_yaml_file(tmp_path / "nonexistent.yaml") is None
+        assert len(warnings) == 1
+
+
+def test_input_helper_domain_constants_match_ha_set():
+    """Pin the canonical HA input-helper set so a HA-release update is loud."""
+    from tools.validators.entity_definitions import _INPUT_HELPER_DOMAINS
+
+    assert set(_INPUT_HELPER_DOMAINS) == {
+        "input_boolean",
+        "input_number",
+        "input_text",
+        "input_select",
+        "input_datetime",
+        "input_button",
+        "timer",
+        "counter",
+        "schedule",
+    }
+
+
+def test_template_entity_domain_constants_match_extracted_set():
+    """Pin the canonical HA template-entity set so a HA-release update is loud."""
+    from tools.validators.entity_definitions import _TEMPLATE_ENTITY_DOMAINS
+
+    assert "sensor" in _TEMPLATE_ENTITY_DOMAINS
+    assert "binary_sensor" in _TEMPLATE_ENTITY_DOMAINS
+    assert "weather" in _TEMPLATE_ENTITY_DOMAINS
+    assert len(_TEMPLATE_ENTITY_DOMAINS) == 17
+
+
+def test_automation_with_both_alias_and_id_uses_alias(tmp_path):
+    """Pin behavior: when both alias and id are present, alias wins."""
+    auto_file = tmp_path / "automations.yaml"
+    auto_file.write_text("- alias: Friendly Name\n  id: abc123\n")
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path, [], [])
+    result = ext._extract_automation_entities()
+    assert "automation.friendly_name" in result
+    assert "automation.abc123" not in result
+
+
+def test_missing_automations_yaml_is_silent_skip(tmp_path):
+    """No warning is appended when automations.yaml is absent."""
+    warnings: list[str] = []
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path, warnings, [])
+    result = ext._extract_automation_entities()
+    assert result == set()
+    assert warnings == []

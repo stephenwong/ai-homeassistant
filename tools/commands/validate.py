@@ -209,86 +209,76 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(func=run)
 
 
-def run(args: argparse.Namespace) -> int:
-    """Entry point for the ``validate`` subcommand. Returns exit code."""
-    config_dir = args.config
-    quiet = bool(getattr(args, "quiet", False))
-    force = bool(getattr(args, "force", False))
-
-    summary = resolve_summary(args)
-
-    if not quiet and not summary:
+def _print_intro(force: bool, quiet: bool, summary: bool) -> None:
+    """Print the banner and force-message to stderr (skipped in summary/quiet)."""
+    if quiet or summary:
+        return
+    print(
+        "\U0001f50d Running Home Assistant Configuration Validation Tests",
+        file=sys.stderr,
+    )
+    print("=" * 60, file=sys.stderr)
+    print(file=sys.stderr)
+    if force:
         print(
-            "🔍 Running Home Assistant Configuration Validation Tests", file=sys.stderr
+            "Re-running all validators (cache ignored, will be refreshed)...",
+            file=sys.stderr,
         )
-        print("=" * 60, file=sys.stderr)
-        print(file=sys.stderr)
-        if force:
-            print(
-                "Re-running all validators (cache ignored, will be refreshed)...",
-                file=sys.stderr,
-            )
-        else:
-            print("Running all validators in parallel...", file=sys.stderr)
-        print(file=sys.stderr)
+    else:
+        print("Running all validators in parallel...", file=sys.stderr)
+    print(file=sys.stderr)
 
-    overall_start = time.time()
-    results = run_validators(config_dir, quiet=quiet, force=force, summary=summary)
-    overall_duration = time.time() - overall_start
 
-    all_passed = True
+def _format_result_line(r: ValidatorResult, summary: bool, quiet: bool) -> str | None:
+    """Format one validator PASS/FAIL line.
+
+    Returns the formatted string, or ``None`` if quiet mode suppresses it.
+    """
+    if r.passed:
+        if summary:
+            if quiet:
+                return None
+            if r.cached:
+                return f"PASS {r.description} C"
+            return f"PASS {r.description} ({r.duration:.2f}s)"
+        suffix = " (cached)" if r.cached else f" ({r.duration:.2f}s)"
+        if quiet:
+            return None
+        return f"  \u2705 {r.description}: PASSED{suffix}"
+    if summary:
+        return f"FAIL {r.description} ({r.duration:.2f}s)"
+    return f"  \u274c {r.description}: FAILED ({r.duration:.2f}s)"
+
+
+def _print_failure_detail(results: list[ValidatorResult], summary: bool) -> None:
+    """Print detailed output for failed validators (to stderr)."""
     for r in results:
         if r.passed:
-            if summary:
-                if not quiet:
-                    if r.cached:
-                        print(f"PASS {r.description} C")
-                    else:
-                        print(f"PASS {r.description} ({r.duration:.2f}s)")
-            else:
-                suffix = " (cached)" if r.cached else f" ({r.duration:.2f}s)"
-                if not quiet:
-                    print(f"  ✅ {r.description}: PASSED{suffix}", file=sys.stderr)
-                    if r.stderr.strip():
-                        for line in r.stderr.strip().splitlines():
-                            if line:
-                                print(f"      {line}", file=sys.stderr)
+            continue
+        if summary:
+            for line in r.stderr.strip().splitlines():
+                if line:
+                    print(f"  {line}", file=sys.stderr)
         else:
-            if summary:
-                print(f"FAIL {r.description} ({r.duration:.2f}s)")
-            else:
-                print(
-                    f"  ❌ {r.description}: FAILED ({r.duration:.2f}s)", file=sys.stderr
-                )
-            all_passed = False
+            print(f"\n\U0001f4cb {r.description}", file=sys.stderr)
+            print("-" * 50, file=sys.stderr)
+            print("Status: \u274c FAILED", file=sys.stderr)
+            print(f"Duration: {r.duration:.2f}s", file=sys.stderr)
+            if r.stderr.strip():
+                print("\nErrors:", file=sys.stderr)
+                for sline in r.stderr.strip().splitlines():
+                    print(f"  {sline}", file=sys.stderr)
+            print(file=sys.stderr)
 
-    if not quiet and not summary:
-        print(file=sys.stderr)
-        print(
-            f"Total execution time: {overall_duration:.2f}s (parallel)", file=sys.stderr
-        )
-        print("=" * 60, file=sys.stderr)
 
-    # Print detailed output for failed validators.
-    if not all_passed:
-        for r in results:
-            if r.passed:
-                continue
-            if summary:
-                for line in r.stderr.strip().splitlines():
-                    if line:
-                        print(f"  {line}", file=sys.stderr)
-            else:
-                print(f"\n📋 {r.description}", file=sys.stderr)
-                print("-" * 50, file=sys.stderr)
-                print("Status: ❌ FAILED", file=sys.stderr)
-                print(f"Duration: {r.duration:.2f}s", file=sys.stderr)
-                if r.stderr.strip():
-                    print("\nErrors:", file=sys.stderr)
-                    for sline in r.stderr.strip().splitlines():
-                        print(f"  {sline}", file=sys.stderr)
-                print(file=sys.stderr)
-
+def _print_summary_block(
+    results: list[ValidatorResult],
+    all_passed: bool,
+    overall_duration: float,
+    summary: bool,
+    quiet: bool,
+) -> None:
+    """Print final summary stats (PASSED X/Y or TEST SUMMARY block)."""
     total = len(results)
     passed = sum(1 for r in results if r.passed)
     failed = total - passed
@@ -298,21 +288,61 @@ def run(args: argparse.Namespace) -> int:
         else:
             print(f"FAILED {passed}/{total} ({overall_duration:.2f}s)")
     elif not quiet:
-        print("\n📊 TEST SUMMARY", file=sys.stderr)
+        print(file=sys.stderr)
+        print(
+            f"Total execution time: {overall_duration:.2f}s (parallel)",
+            file=sys.stderr,
+        )
+        print("=" * 60, file=sys.stderr)
+        print("\n\U0001f4ca TEST SUMMARY", file=sys.stderr)
         print("=" * 30, file=sys.stderr)
         print(f"Total tests: {total}", file=sys.stderr)
         print(f"Passed: {passed}", file=sys.stderr)
         print(f"Failed: {failed}", file=sys.stderr)
         if failed == 0:
             print(
-                "\n🎉 All tests passed! Your Home Assistant configuration is valid.",
+                "\n\U0001f389 All tests passed! Your Home Assistant"
+                " configuration is valid.",
                 file=sys.stderr,
             )
         else:
             print(
-                f"\n⚠️  {failed} test(s) failed. Please review the errors above.",
+                f"\n\u26a0\ufe0f  {failed} test(s) failed."
+                " Please review the errors above.",
                 file=sys.stderr,
             )
         print(file=sys.stderr)
+
+
+def run(args: argparse.Namespace) -> int:
+    """Entry point for the ``validate`` subcommand. Returns exit code."""
+    config_dir = args.config
+    quiet = bool(getattr(args, "quiet", False))
+    force = bool(getattr(args, "force", False))
+    summary = resolve_summary(args)
+
+    _print_intro(force, quiet, summary)
+
+    overall_start = time.time()
+    results = run_validators(config_dir, quiet=quiet, force=force, summary=summary)
+    overall_duration = time.time() - overall_start
+
+    all_passed = True
+    for r in results:
+        line = _format_result_line(r, summary, quiet)
+        if line is not None:
+            target = sys.stdout if summary else sys.stderr
+            print(line, file=target)
+        if r.passed and not summary and not quiet and r.stderr.strip():
+            for sline in r.stderr.strip().splitlines():
+                if sline:
+                    print(f"      {sline}", file=sys.stderr)
+        if not r.passed:
+            all_passed = False
+
+    if not all_passed:
+        _print_failure_detail(results, summary)
+
+    _print_summary_block(results, all_passed, overall_duration, summary, quiet)
 
     return 0 if all_passed else 1

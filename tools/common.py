@@ -235,3 +235,18 @@ def atomic_write_text(path: Path, content: str) -> None:
 
 class HARequestError(Exception):
     """Raised when a Home Assistant REST API request fails."""
+
+
+class MissingTokenError(HARequestError):
+    """Raised when ``HA_TOKEN`` is not set in the environment or ``.env``.
+
+    Subclasses :class:`HARequestError` so existing ``except HARequestError``
+    catchers continue to work — only callers that want to distinguish the
+    token-missing case need the narrower type.
+    """
+
+
+def fail_stderr(msg: str) -> int:
+    """Print ``\u274c <msg>`` to stderr and return exit code 1."""
+    print(f"\u274c {msg}", file=sys.stderr)
+    return 1

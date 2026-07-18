@@ -18,11 +18,15 @@ import contextlib
 import json
 import re
 import sys
+from typing import Any
+
+import requests
 
 from tools.common import (
     HARequestError,
     add_output_shape_args,
     add_summary_args,
+    fail_stderr,
     positive_int,
     resolve_max_chars,
     resolve_summary,
@@ -32,15 +36,7 @@ from tools.output_shape import apply_output_shape, print_json
 
 
 def _has_transform_flags(args: argparse.Namespace) -> bool:
-    """Check if the curl command has any output-transforming flags active.
-
-    Used by the bare-endpoint guardrail to detect whether the user has
-    explicitly requested transformed output.  Returning True means the
-    guardrail should not fire.
-
-    Flags checked: count, keys, first, raw, pick, entity, domain,
-    max_chars.
-    """
+    """Check if the curl command has any output-transforming flags active."""
     return bool(
         args.count
         or args.keys
@@ -157,20 +153,18 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 # ====================================================================
-# run()
+# Helper functions
 # ====================================================================
 
 
-def run(args: argparse.Namespace) -> int:
-    """Execute a curl request.  Returns exit code (0 success, 1 error)."""
-    summary = resolve_summary(args)
+def _validate_args(args: argparse.Namespace, summary: bool) -> tuple[str, str] | int:
+    """Validate CLI args for curl: conflict checks, entity/domain, endpoint."""
     method = args.method
-    # 1. Conflict: --raw + --pretty (check before costly from_env())
+
     if args.raw and args.pretty:
         print("\u274c Cannot combine --raw with --pretty", file=sys.stderr)
         return 1
 
-    # 1b. Conflict: --pick with exclusive transforms (also before from_env)
     if args.pick and (args.count or args.keys or args.raw):
         print(
             "\u274c Cannot combine --pick with --count/--keys/--raw",
@@ -178,7 +172,6 @@ def run(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # 1c. Handle --entity (single-entity fetch)
     if args.entity:
         if not re.match(r"^[a-z0-9_]+\.[a-z0-9_]+$", args.entity):
             print(f"\u274c Invalid entity_id: {args.entity!r}", file=sys.stderr)
@@ -203,7 +196,6 @@ def run(args: argparse.Namespace) -> int:
         args.endpoint = f"/api/states/{args.entity}"
         method = "GET"
 
-    # 1d. Handle --domain (client-side list filter)
     if args.domain:
         if args.entity:
             print(
@@ -218,7 +210,6 @@ def run(args: argparse.Namespace) -> int:
             )
             return 1
 
-    # 1e. Ensure endpoint is set
     if not args.endpoint:
         print(
             "\u274c endpoint path is required (use --entity to fetch by id)",
@@ -226,16 +217,20 @@ def run(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # 2. Build client
+    return method, args.endpoint
+
+
+def _build_client() -> HAClient | int:
+    """Build an HAClient from env, returning 1 on error."""
     try:
-        client = HAClient.from_env()
+        return HAClient.from_env()
     except HARequestError as e:
-        print(f"\u274c {e}", file=sys.stderr)
-        return 1
+        return fail_stderr(str(e))
 
+
+def _parse_json_body(method: str, args: argparse.Namespace, summary: bool) -> Any | int:
+    """Parse --data JSON for body-applicable methods, returning 1 on error."""
     body_methods = {"POST", "PUT", "PATCH"}
-
-    # 3. Parse request body (only for body-applicable methods)
     json_data = None
     if method in body_methods:
         if args.data is not None:
@@ -246,50 +241,46 @@ def run(args: argparse.Namespace) -> int:
                 return 1
     elif args.data is not None and not summary:
         print(f"\u26a0\ufe0f  --data ignored for {method} requests", file=sys.stderr)
+    return json_data
 
-    # 4. Execute request
+
+def _execute_request(
+    client: HAClient,
+    method: str,
+    endpoint: str,
+    json_data: Any,
+) -> requests.Response | int:
+    """Dispatch the HTTP method to the matching HAClient method.
+
+    Returns the response on success, or ``1`` on ``HARequestError``.
+    """
+    method_dispatch = {
+        "GET": lambda: client.get(endpoint),
+        "POST": lambda: client.post(endpoint, json=json_data),
+        "PUT": lambda: client.put(endpoint, json=json_data),
+        "DELETE": lambda: client.delete(endpoint, json=json_data),
+        "PATCH": lambda: client.patch(endpoint, json=json_data),
+    }
+    handler = method_dispatch.get(method)
+    if handler is None:
+        return fail_stderr(f"Unknown HTTP method: {method}")
     try:
-        if method == "GET":
-            resp = client.get(args.endpoint)
-        elif method == "POST":
-            resp = client.post(args.endpoint, json=json_data)
-        elif method == "PUT":
-            resp = client.put(args.endpoint, json=json_data)
-        elif method == "DELETE":
-            resp = client.delete(args.endpoint, json=json_data)
-        elif method == "PATCH":
-            resp = client.patch(args.endpoint, json=json_data)
-        else:
-            print(f"\u274c Unknown HTTP method: {method}", file=sys.stderr)
-            return 1
+        return handler()
     except HARequestError as e:
-        print(f"\u274c {e}", file=sys.stderr)
-        return 1
+        return fail_stderr(str(e))
 
-    # 5. Check HTTP status
-    if not resp.ok:
-        print(
-            f"\u274c HTTP {resp.status_code}: {resp.text[:200]}",
-            file=sys.stderr,
-        )
-        return 1
 
-    # 6. Detect and parse JSON
-    content_type = resp.headers.get("content-type", "")
-    raw_text = resp.text
-    is_json = "application/json" in content_type or raw_text.strip().startswith(
-        ("{", "[")
-    )
-
-    data = None
-    if is_json:
-        with contextlib.suppress(ValueError, TypeError, json.JSONDecodeError):
-            data = resp.json()
-
-    # 7. Bare endpoint guardrail: instead of dumping all /api/states in summary
-    # mode, print the count and a hint pointing to --first / --pick / --entity.
+def _emit_output(
+    args: argparse.Namespace,
+    data: Any,
+    raw_text: str,
+    is_json: bool,
+    summary: bool,
+) -> int:
+    """Dispatch output processing based on CLI flags. Returns exit code."""
+    # 7. Bare endpoint guardrail
     if (
-        method == "GET"
+        args.method == "GET"
         and args.endpoint == "/api/states"
         and not _has_transform_flags(args)
         and not args.pretty
@@ -297,7 +288,6 @@ def run(args: argparse.Namespace) -> int:
         and not args.no_guard
     ):
         count_result = _handle_count(data, raw_text, is_json)
-        # _handle_count printed the count to stdout; now add a hint to stderr
         print(
             "Hint: use --first/--pick/--entity/--domain to narrow, "
             "or --no-guard to dump all",
@@ -308,6 +298,7 @@ def run(args: argparse.Namespace) -> int:
     # 8. Validate output flag against JSON-ness
     requires_json = args.keys or (args.first is not None) or bool(args.pick)
     if requires_json and data is None and not is_json:
+        content_type = ""
         flag = "keys" if args.keys else ("first" if args.first is not None else "pick")
         print(
             f"\u274c Cannot use --{flag} on non-JSON response "
@@ -358,7 +349,7 @@ def run(args: argparse.Namespace) -> int:
     if args.first is not None and not summary:
         _warn_first_overcount(data, args.first)
 
-    # 13-15. Apply shared output shaping (first → pick → max_chars)
+    # 13-15. Apply shared output shaping (first -> pick -> max_chars)
     data = apply_output_shape(
         data,
         first=args.first,
@@ -373,6 +364,55 @@ def run(args: argparse.Namespace) -> int:
         print(raw_text, end="")
 
     return 0
+
+
+# ====================================================================
+# run()
+# ====================================================================
+
+
+def run(args: argparse.Namespace) -> int:
+    """Execute a curl request.  Returns exit code (0 success, 1 error)."""
+    summary = resolve_summary(args)
+
+    method_endpoint_or_err = _validate_args(args, summary)
+    if isinstance(method_endpoint_or_err, int):
+        return method_endpoint_or_err
+    method, endpoint = method_endpoint_or_err
+
+    client_or_err = _build_client()
+    if isinstance(client_or_err, int):
+        return client_or_err
+    client = client_or_err
+
+    json_data_or_err = _parse_json_body(method, args, summary)
+    if isinstance(json_data_or_err, int):
+        return json_data_or_err
+    json_data = json_data_or_err
+
+    resp_or_err = _execute_request(client, method, endpoint, json_data)
+    if isinstance(resp_or_err, int):
+        return resp_or_err
+    resp = resp_or_err
+
+    if not resp.ok:
+        print(
+            f"\u274c HTTP {resp.status_code}: {resp.text[:200]}",
+            file=sys.stderr,
+        )
+        return 1
+
+    content_type = resp.headers.get("content-type", "")
+    raw_text = resp.text
+    is_json = "application/json" in content_type or raw_text.strip().startswith(
+        ("{", "[")
+    )
+    data = None
+    if is_json:
+        with contextlib.suppress(ValueError, TypeError, json.JSONDecodeError):
+            data = resp.json()
+
+    return _emit_output(args, data, raw_text, is_json, summary)
 
 
 # ====================================================================

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import requests
 
-from tools.common import HARequestError
+from tools.common import HARequestError, MissingTokenError
 from tools.ha.client import HAClient
 
 
@@ -26,8 +26,9 @@ class TestInit:
             HAClient("ftp://ha.local", "tok")
 
     def test_missing_token_raises(self):
-        with pytest.raises(HARequestError, match="HA_TOKEN"):
+        with pytest.raises(MissingTokenError, match="HA_TOKEN") as exc_info:
             HAClient("http://ha.local:8123", "")
+        assert isinstance(exc_info.value, HARequestError)
 
     def test_headers_format(self):
         c = HAClient("http://ha.local:8123", "abc123")
@@ -349,8 +350,9 @@ class TestHAWSInit:
     def test_missing_token_raises(self):
         from tools.ha.client import HAWSClient
 
-        with pytest.raises(HARequestError, match="HA_TOKEN"):
+        with pytest.raises(MissingTokenError, match="HA_TOKEN") as exc_info:
             HAWSClient("http://ha.local:8123", "")
+        assert isinstance(exc_info.value, HARequestError)
 
 
 class TestHAWSFromEnv:
@@ -371,8 +373,9 @@ class TestHAWSFromEnv:
         monkeypatch.delenv("HA_URL", raising=False)
         monkeypatch.delenv("HA_TOKEN", raising=False)
         monkeypatch.delenv("HA_REQUEST_TIMEOUT", raising=False)
-        with pytest.raises(HARequestError, match="HA_TOKEN"):
+        with pytest.raises(MissingTokenError, match="HA_TOKEN") as exc_info:
             HAWSClient.from_env()
+        assert isinstance(exc_info.value, HARequestError)
 
     def test_load_env_file_called_once(self, monkeypatch):
         from tools.ha.client import HAWSClient
