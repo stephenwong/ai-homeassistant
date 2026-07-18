@@ -202,8 +202,10 @@ def run(args: argparse.Namespace) -> int:
 
     if args.entity_id and isinstance(data, dict):
         data = _shape_single_entity_data(data, args, summary)
-    else:
+    elif isinstance(data, list):
         data = _shape_list_data(data, args, summary)
+    else:
+        data = data or []
 
     print_json(data, pretty=args.pretty)
     return 0
