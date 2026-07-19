@@ -111,7 +111,7 @@ class TestIsUUIDFormat:
 
 
 class TestCollectStringValues:
-    """W3.3: _collect_string_values normalises str/list/dict into a set."""
+    """_collect_string_values normalizes supported values into a set."""
 
     def test_str_passes_through_when_not_skipped(self, validator):
         result = validator._collect_string_values("light.kitchen", skip=lambda s: False)
@@ -142,7 +142,7 @@ class TestCollectStringValues:
 
 
 class TestDisabledHiddenPredicates:
-    """W3.4: disabled/hidden predicates use ``is not None`` uniformly."""
+    """Disabled and hidden predicates use ``is not None`` uniformly."""
 
     def test_is_disabled_none_is_false(self, validator):
         assert validator._is_disabled({"disabled_by": None}) is False
@@ -151,7 +151,7 @@ class TestDisabledHiddenPredicates:
         assert validator._is_disabled({"disabled_by": "user"}) is True
 
     def test_is_disabled_empty_string_is_true(self, validator):
-        """W3.4: empty string is treated as disabled by the ``is not None`` predicate.
+        """An empty string is treated as disabled by the ``is not None`` predicate.
         This matches the entity-branch behavior (``is not None``),
         not the old device-branch truthy check which was the outlier."""
         assert validator._is_disabled({"disabled_by": ""}) is True
@@ -160,7 +160,7 @@ class TestDisabledHiddenPredicates:
         assert validator._is_hidden({"hidden_by": None}) is False
 
     def test_is_hidden_empty_string_is_true(self, validator):
-        """W3.4: empty string is treated as hidden by the ``is not None`` predicate."""
+        """An empty string is treated as hidden by the ``is not None`` predicate."""
         assert validator._is_hidden({"hidden_by": ""}) is True
 
     def test_is_hidden_handles_missing_key(self, validator):
@@ -616,6 +616,18 @@ class TestGetConfigDefinedEntities:
 
 
 class TestLoadRegistries:
+    def test_unexpected_attribute_error_propagates(self, setup_config):
+        """Unexpected loader bugs must not be hidden as registry diagnostics."""
+        v = ReferenceValidator(str(setup_config))
+        with (
+            patch(
+                "tools.validators.references.load_storage_registry",
+                side_effect=AttributeError("unexpected loader bug"),
+            ),
+            pytest.raises(AttributeError, match="unexpected loader bug"),
+        ):
+            v.load_entity_registry()
+
     def test_load_entity_registry(self, setup_config):
         v = ReferenceValidator(str(setup_config))
         entities = v.load_entity_registry()
@@ -827,7 +839,7 @@ class TestExtractEntityReferences:
         assert "sensor.temperature" in refs
 
     def test_extracts_scene_entities_dict_keys(self, setup_config):
-        """Scene entities dict keys are entity references (H4 fix)."""
+        """Scene entities dict keys are treated as entity references."""
         v = ReferenceValidator(str(setup_config))
         data = {
             "entities": {
@@ -1006,7 +1018,7 @@ class TestPrintResults:
 
 
 class TestReferenceValidatorMain:
-    """Cover lines 509-524: main() function."""
+    """Exercise the reference-validator command entry point."""
 
     def test_main_valid(self, setup_config, monkeypatch):
         from tools.validators.references import main
@@ -1025,7 +1037,7 @@ class TestReferenceValidatorMain:
 
 
 class TestCoverageExtras:
-    """Coverage Phase 0: remaining uncovered branches in references.py."""
+    """Exercise reference-validator dependency and cache branches."""
 
     def test_file_deps(self, setup_config):
         v = ReferenceValidator(str(setup_config))
@@ -1245,29 +1257,9 @@ class TestCoverageExtras:
         captured = capsys.readouterr()
         assert captured.out == ""
 
-    def test_print_results_summary_errors_only(self, setup_config, capsys):
-        v = ReferenceValidator(str(setup_config), summary=True)
-        v.errors.append("Error one")
-        v.print_results()
-        captured = capsys.readouterr()
-        assert "FAIL" in captured.out
-        assert "Error one" in captured.err
-
-    def test_print_results_summary_warnings_only(self, setup_config, capsys):
-        v = ReferenceValidator(str(setup_config), summary=True)
-        v.warnings.append("Notify only")
-        v.print_results()
-        captured = capsys.readouterr()
-        assert "PASS" in captured.out
-        assert "with warnings" in captured.out
-        assert "Notify only" in captured.err
-
-
-# ── Batch 11: L39-L44 ─────────────────────────────────────────────────────
-
 
 def test_disabled_device_referenced_warns(validator, config_dir):
-    """L39: a reference to a disabled device must warn."""
+    """A reference to a disabled device emits a warning."""
     test_file = config_dir / "test_disabled_device.yaml"
     test_file.write_text("device_id: disabled_device_id_123456789012\n")
     assert validator.validate_file_references(test_file) is True
@@ -1275,7 +1267,7 @@ def test_disabled_device_referenced_warns(validator, config_dir):
 
 
 def test_hidden_entity_referenced_emits_info(validator, config_dir):
-    """L40: a hidden entity reference must produce an info note."""
+    """A reference to a hidden entity emits an informational note."""
     # The existing config_dir fixture doesn't have a hidden entity.
     # Write a new file referencing an entity that we mark as hidden.
     test_file = config_dir / "test_hidden_entity.yaml"
@@ -1306,12 +1298,12 @@ def test_hidden_entity_referenced_emits_info(validator, config_dir):
     ],
 )
 def test_is_uuid_format_accepts_canonical_forms(validator, uuid_val):
-    """L41: both naked (32 hex) and dashed (8-4-4-4-12) UUIDs must match."""
+    """Both naked and dashed canonical UUID forms are accepted."""
     assert validator.is_uuid_format(uuid_val) is True
 
 
 def test_references_main_accepts_quiet(monkeypatch, tmp_path):
-    """L42: main() must accept --quiet without error."""
+    """The command entry point accepts --quiet without error."""
     from tools.validators.references import main
 
     (tmp_path / ".storage").mkdir(exist_ok=True)
@@ -1321,7 +1313,7 @@ def test_references_main_accepts_quiet(monkeypatch, tmp_path):
 
 
 class TestDottedStatesForm:
-    """W3.5: dotted-form ``states.X.Y`` must trigger template extraction."""
+    """Dotted-form ``states.X.Y`` triggers template extraction."""
 
     def test_dotted_states_form_detected(self, validator):
         """A bare ``states.light.kitchen`` (no parens) must be detected
@@ -1332,7 +1324,7 @@ class TestDottedStatesForm:
 
 
 class TestExtractEntityReferencesNesting:
-    """L44-gap: choose/repeat/parallel nesting must be traversed."""
+    """Nested choose/repeat/parallel structures are traversed."""
 
     def test_extracts_entities_from_choose_parallel_nested(self, validator):
         data = {

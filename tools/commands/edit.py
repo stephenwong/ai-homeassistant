@@ -260,37 +260,49 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str], quiet: bool) -> int
             )
         updates[key] = _parse_value(value.strip())
 
-    try:
-        _dispatch_by_filetype(
+    return _run_mutation(
+        editor,
+        lambda: _dispatch_by_filetype(
             editor,
             alias,
             on_dict=lambda ed, al: ed.update_script(al, updates),
             on_list=lambda ed, al: ed.update_automation(al, updates),
-        )
+        ),
+        f"Updated '{alias}': {list(updates.keys())}",
+        quiet,
+    )
+
+
+def _run_mutation(
+    editor: YAMLEditor,
+    operation: Callable[[], object],
+    success_message: str,
+    quiet: bool,
+) -> int:
+    """Execute, save, and report a mutating edit operation."""
+    try:
+        operation()
     except (ValueError, TypeError) as e:
         return fail_stderr(str(e))
 
     editor.save()
     if not quiet:
-        print(f"Updated '{alias}': {list(updates.keys())}")
+        print(success_message)
     return 0
 
 
 def _run_remove(editor: YAMLEditor, alias: str, quiet: bool) -> int:
-    try:
-        _dispatch_by_filetype(
+    return _run_mutation(
+        editor,
+        lambda: _dispatch_by_filetype(
             editor,
             alias,
             on_dict=lambda ed, al: ed.remove_script(al),
             on_list=lambda ed, al: ed.remove_automation(al),
-        )
-    except (ValueError, TypeError) as e:
-        return fail_stderr(str(e))
-
-    editor.save()
-    if not quiet:
-        print(f"Removed: {alias}")
-    return 0
+        ),
+        f"Removed: {alias}",
+        quiet,
+    )
 
 
 def _parse_value(raw: str):

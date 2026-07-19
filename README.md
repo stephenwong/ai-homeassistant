@@ -441,6 +441,8 @@ Renders every template string (`{{ }}` / `{% %}`) against HA's `/api/template` e
 ### ⏳ 6. Stale Sensor Validation
 Queries the Home Assistant API for sensors stuck in stale states — common with battery-powered Zigbee devices that drop offline while reporting their last-known value. Detects staleness by comparing `last_updated`/`last_changed` timestamps against the current time with a configurable threshold. Default (`HA_STALE_FAIL=0`): passes with warnings. Set `HA_STALE_FAIL=1` or pass `--fail-on-stale` to fail on stale sensors. Automatically skipped in CI.
 
+Malformed timestamps are reported as diagnostics; unexpected timestamp-parser failures propagate for visibility.
+
 ### 🏛️ 7. Official HA Validation
 Uses Home Assistant's own `check_config`. **"Successful config (partial)"** is the normal local result — some integration packages can't install locally due to version pin differences, but this is expected and doesn't indicate a real config problem.
 

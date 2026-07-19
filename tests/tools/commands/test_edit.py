@@ -188,10 +188,10 @@ class TestRunShow:
         assert result == 1
         assert "not found" in capsys.readouterr().err.lower()
 
-    # ── L16: empty file diagnostic ─────────────────────────────────────
+    # Empty-file diagnostics
 
     def test_show_empty_file_emits_diagnostic(self, tmp_path, capsys):
-        """L16: --show on an empty file must print '(empty file)' to stderr."""
+        """--show on an empty file reports the empty-file diagnostic on stderr."""
         _write_file(tmp_path, "automations", "")
         rc = run(self._args(tmp_path))
         assert rc == 0
@@ -528,7 +528,7 @@ delete:
         assert result == 1
         assert "not found" in capsys.readouterr().err.lower()
 
-    # ── --add / --set error branches (covers 197-202, 213-217, 243-247) ──
+    # --add and --set error branches
 
     def test_add_invalid_json_returns_error(self, tmp_path, capsys):
         result = run(self._ns(config=str(tmp_path), add="{not json"))
@@ -555,7 +555,7 @@ delete:
         assert result == 1
         assert "key=value" in capsys.readouterr().err.lower()
 
-    # ── TypeError handlers (covers 226-228, 260-262, 279-281) ──────────
+    # TypeError handlers
 
     def test_add_type_error_returns_error(self, tmp_path, capsys, monkeypatch):
         _write_file(tmp_path, "automations", "[]")
@@ -588,7 +588,7 @@ delete:
         assert result == 1
         assert "boom" in capsys.readouterr().err
 
-    # ── ValueError on duplicate script key (covers 229-231) ─────────────
+    # Duplicate script-key validation
 
     def test_add_duplicate_script_key_returns_error(self, tmp_path, capsys):
         _write_file(tmp_path, "scripts", "morning:\n  sequence: []\n")
@@ -602,7 +602,7 @@ delete:
         assert result == 1
         assert "already exists" in capsys.readouterr().err.lower()
 
-    # ── Path traversal guard (covers 87-88, 116-118) ──────────────────
+    # Path traversal guard
 
     def test_path_traversal_rejected(self, tmp_path, capsys):
         result = run(
@@ -611,10 +611,10 @@ delete:
         assert result == 1
         assert "inside config directory" in capsys.readouterr().err.lower()
 
-    # ── L17: --set requires at least one KEY=VALUE ─────────────────────
+    # --set argument validation
 
     def test_set_with_no_values_rejected(self, tmp_path, capsys):
-        """L17: --set with no KEY=VALUE pairs must be rejected."""
+        """--set with no KEY=VALUE pairs must be rejected."""
         parser, subparsers = make_parser()
         from tools.commands.edit import add_parser
 
@@ -622,10 +622,10 @@ delete:
         with pytest.raises(SystemExit):
             parser.parse_args(["edit", "automations", "X", "--set"])
 
-    # ── L18: --add with positional alias is ambiguous ─────────────────
+    # --add argument validation
 
     def test_add_with_positional_alias_rejected(self, tmp_path, capsys):
-        """L18: --add + a positional alias must be rejected as ambiguous."""
+        """--add with a positional alias must be rejected as ambiguous."""
         _write_file(
             tmp_path,
             "automations",
@@ -645,7 +645,7 @@ delete:
         assert rc == 1
         assert "ignores the positional alias" in capsys.readouterr().err.lower()
 
-    # ── Success prints (covers 235, 285) ──────────────────────────────
+    # Success output
 
     @patch("tools.common._is_tty", return_value=True)
     def test_add_prints_success_when_verbose(self, mock_is_tty, tmp_path, capsys):
@@ -664,8 +664,8 @@ delete:
         assert "Removed:" in capsys.readouterr().out
 
 
-class TestM8ParseValue:
-    """M8: pin YAML-based value coercion for --set KEY=VALUE."""
+class TestParseValue:
+    """YAML-based value coercion for --set KEY=VALUE."""
 
     @pytest.mark.parametrize(
         "raw, expected",
@@ -699,8 +699,8 @@ class TestM8ParseValue:
         assert _parse_value("[1, 2") == "[1, 2"
 
 
-class TestM7RunSetQuiet:
-    """M7: --set in quiet/summary mode must not print Updated: to stdout."""
+class TestRunSetOutput:
+    """--set output honors quiet mode and reports successful updates."""
 
     def test_run_set_suppresses_output_when_quiet(self, tmp_path, capsys):
         autos = tmp_path / "automations.yaml"
@@ -743,11 +743,11 @@ class TestM7RunSetQuiet:
         assert "Updated" in captured.out
 
 
-# ── L21: round-trip comment preservation (the YAMLEditor value prop) ──
+# Round-trip comment preservation
 
 
 def test_edit_round_trip_preserves_comments(tmp_path):
-    """L21: load -> save via the edit command must preserve YAML comments."""
+    """Loading and saving through edit preserves YAML comments."""
     auto = tmp_path / "automations.yaml"
     original = (
         "# top-level comment\n"

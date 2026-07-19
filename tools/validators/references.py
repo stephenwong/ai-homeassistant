@@ -161,7 +161,6 @@ class ReferenceValidator(ValidatorBase):
             KeyError,
             TypeError,
             ValueError,
-            AttributeError,
         ) as e:
             bucket.append(f"Failed to load {spec.label.lower()}: {e}")
             setattr(self, spec.cache_attr, {})
@@ -252,10 +251,6 @@ class ReferenceValidator(ValidatorBase):
                 elif key in ["device_id", "device_ids", "area_id", "area_ids"]:
                     pass
 
-                # Service data might contain entity references
-                elif key == "data" and isinstance(value, dict):
-                    entities.update(self.extract_entity_references(value))
-
                 # Templates might contain entity references
                 elif isinstance(value, str) and is_jinja_template(value):
                     entities.update(self.extract_entities_from_template(value))
@@ -281,52 +276,49 @@ class ReferenceValidator(ValidatorBase):
 
         return entities
 
-    def _extract_id_references(self, data: Any, keys: set[str]) -> set[str]:
+    def _extract_id_references(
+        self,
+        data: Any,
+        keys: set[str],
+        *,
+        skip: Callable[[str], bool],
+    ) -> set[str]:
         """Extract references for any of *keys* (e.g. {'device_id', 'device_ids'})."""
         refs: set[str] = set()
         if isinstance(data, dict):
             for key, value in data.items():
                 if key in keys:
-                    refs.update(
-                        self._collect_string_values(
-                            value, skip=self._should_skip_id_validation
-                        )
-                    )
+                    refs.update(self._collect_string_values(value, skip=skip))
                 else:
-                    refs.update(self._extract_id_references(value, keys))
+                    refs.update(self._extract_id_references(value, keys, skip=skip))
         elif isinstance(data, list):
             for item in data:
-                refs.update(self._extract_id_references(item, keys))
+                refs.update(self._extract_id_references(item, keys, skip=skip))
         return refs
 
     def extract_device_references(self, data: Any) -> set[str]:
         """Extract device references from configuration data."""
-        return self._extract_id_references(data, {"device_id", "device_ids"})
+        return self._extract_id_references(
+            data,
+            {"device_id", "device_ids"},
+            skip=self._should_skip_id_validation,
+        )
 
     def extract_area_references(self, data: Any) -> set[str]:
         """Extract area references from configuration data."""
-        return self._extract_id_references(data, {"area_id", "area_ids"})
+        return self._extract_id_references(
+            data,
+            {"area_id", "area_ids"},
+            skip=self._should_skip_id_validation,
+        )
 
     def extract_entity_registry_ids(self, data: Any) -> set[str]:
         """Extract entity registry UUID references from configuration data."""
-        entity_registry_ids = set()
-
-        if isinstance(data, dict):
-            for key, value in data.items():
-                if key in ("entity_id", "entity_ids"):
-                    entity_registry_ids.update(
-                        self._collect_string_values(
-                            value,
-                            skip=lambda s: not self.is_uuid_format(s),
-                        )
-                    )
-                else:
-                    entity_registry_ids.update(self.extract_entity_registry_ids(value))
-        elif isinstance(data, list):
-            for item in data:
-                entity_registry_ids.update(self.extract_entity_registry_ids(item))
-
-        return entity_registry_ids
+        return self._extract_id_references(
+            data,
+            {"entity_id", "entity_ids"},
+            skip=lambda s: not self.is_uuid_format(s),
+        )
 
     @staticmethod
     def _is_disabled(entity_data: dict) -> bool:

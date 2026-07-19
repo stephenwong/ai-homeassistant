@@ -197,6 +197,8 @@ from tools.validators.entity_definitions import EntityDefinitionExtractor
 - **Boolean/int collision:** `bool` subclasses `int`; `isinstance(val, (int,float))` matches `True`. Guard with `isinstance(val, bool)` first for epoch timestamps.
 - **Naive vs timezone-aware datetimes:** Enforce UTC via `dt.replace(tzinfo=timezone.utc)` if `dt.tzinfo is None`.
 - **Registry concurrency:** Atomic writes to `.storage/` can cause transient `JSONDecodeError`. Retry (100ms sleep), degrade gracefully.
+- **Validator exception contracts:** Handle expected filesystem, JSON/schema, and malformed-input failures with diagnostics; let unexpected loader or timestamp-parser exceptions propagate so programming defects remain visible.
+- **Threshold-selection tests:** When testing timestamp min/max selection against a threshold, place candidate values on opposite sides of the threshold so the assertion distinguishes the selected value.
 
 ### Git Commit Trailers
 

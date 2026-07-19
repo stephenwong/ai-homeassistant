@@ -123,7 +123,6 @@ class StaleSensorValidator(ValidatorBase):
                     "Falling back to state-only analysis."
                 )
                 return None
-        return None  # pragma: no cover  # unreachable fallthrough
 
     def _parse_iso_string(self, s: str) -> datetime | None:
         """Parse an ISO-8601 string into an offset-aware datetime.
@@ -260,8 +259,8 @@ class StaleSensorValidator(ValidatorBase):
                     )
                 continue
 
-            # M27: a sensor in unavailable/unknown/None state is not reporting —
-            # surface immediately rather than waiting for threshold_hours.
+            # Unavailable/unknown sensors are not reporting; surface them
+            # immediately rather than waiting for threshold_hours.
             st_value = state.get("state")
             if st_value in ("unavailable", "unknown", None):
                 self.warnings.append(
@@ -295,12 +294,9 @@ class StaleSensorValidator(ValidatorBase):
                 if last_changed and last_updated:
                     # Use whichever is older — value change before latest attr write
                     # is the stronger staleness signal.
-                    try:
-                        tc = self.parse_timestamp(last_changed)
-                        tu = self.parse_timestamp(last_updated)
-                        baseline_ts = min(tc, tu) if (tc and tu) else (tc or tu)
-                    except Exception:
-                        baseline_ts = self.parse_timestamp(last_updated)
+                    tc = self.parse_timestamp(last_changed)
+                    tu = self.parse_timestamp(last_updated)
+                    baseline_ts = min(tc, tu) if (tc and tu) else (tc or tu)
                 else:
                     baseline_ts = self.parse_timestamp(last_changed or last_updated)
 

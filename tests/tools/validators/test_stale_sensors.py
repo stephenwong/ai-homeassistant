@@ -135,7 +135,7 @@ def test_api_offline_degrades_gracefully(config_dir):
 
 
 def test_oserror_during_states_fetch_degrades(config_dir):
-    """W3.1: OSError during HAClient construction or states fetch must degrade."""
+    """OSError during HAClient construction or states fetch must degrade."""
     with patch(
         "tools.validators.stale_sensors.HAClient",
         side_effect=OSError("socket error"),
@@ -213,7 +213,7 @@ def test_healthy_sensor_ignored(config_dir):
 
 
 def test_unavailable_state_flagged_immediately(config_dir):
-    """M27: a sensor in unavailable/unknown state must surface at once,
+    """A sensor in unavailable/unknown state must surface at once,
     not wait for threshold_hours to elapse."""
     _write_entity_registry(
         config_dir,
@@ -250,7 +250,7 @@ def test_unavailable_state_flagged_immediately(config_dir):
 
 
 def test_parse_timestamp_handles_positive_offset_aest():
-    """M27: a +10:00 (AEST) offset must be parsed and normalised to UTC
+    """A +10:00 (AEST) offset is parsed and normalised to UTC
     correctly so elapsed-hours math is right."""
     from datetime import timedelta
 
@@ -467,7 +467,7 @@ def test_ci_environment_skips_validation(config_dir):
 
 
 def test_registry_absent_falls_back_gracefully(config_dir):
-    """L55: when the registry file is missing/empty, validator degrades gracefully
+    """When the registry file is missing/empty, validation degrades gracefully
     and emits an info-level note."""
     # We do NOT write core.entity_registry to config_dir, so it's missing.
     mock_client = _mock_states(
@@ -543,6 +543,40 @@ def test_retry_on_registry_read_failure(config_dir):
         assert any("sensor.test_temp" in w for w in v.warnings)
         assert call_count == 2
         mock_sleep.assert_called_once_with(0.1)
+
+
+def test_unexpected_timestamp_parser_error_propagates(config_dir):
+    """Unexpected timestamp parser failures must not be silently recovered."""
+    _write_entity_registry(
+        config_dir,
+        [{"entity_id": "sensor.test_temp", "platform": "zha"}],
+    )
+    mock_client = _mock_states(
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "state": "21.5",
+                "last_changed": "2026-06-24T15:00:00+00:00",
+                "last_updated": "2026-06-24T19:00:00+00:00",
+                "attributes": {},
+            }
+        ]
+    )
+    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
+        v = StaleSensorValidator(str(config_dir))
+        v._get_current_time = MagicMock(
+            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
+        )
+        v.parse_timestamp = MagicMock(
+            side_effect=[
+                None,
+                None,
+                RuntimeError("unexpected parser bug"),
+                datetime.now(UTC),
+            ]
+        )
+        with pytest.raises(RuntimeError, match="unexpected parser bug"):
+            v.validate_all()
 
 
 def test_ha_stale_timeout_env_overrides_default(config_dir):
@@ -749,7 +783,7 @@ def test_main_dispatch_with_ci_short_circuit(monkeypatch):
     assert main() == 0
 
 
-# ── Timestamp parsing variants (covers 128-129, 148-156, 159) ──────────
+# Timestamp parsing variants
 
 
 def test_parse_timestamp_milliseconds_epoch():
@@ -825,7 +859,7 @@ def test_parse_timestamp_unsupported_type_returns_none():
     assert v.parse_timestamp({"nested": True}) is None
 
 
-# ── Invalid HA_STALE_TIMEOUT (covers 194) ──────────────────────────────
+# Invalid HA_STALE_TIMEOUT
 
 
 def test_missing_ha_url_token_skips_gracefully(config_dir):
@@ -848,7 +882,7 @@ def test_invalid_ha_stale_timeout_warns(config_dir):
             assert any("must be an integer" in i for i in v.info)
 
 
-# ── API shape-guard continue paths (covers 203-206, 213, 217, 221, 270) ──
+# API shape-guard continue paths
 
 
 def test_states_not_list_is_skipped(config_dir):
@@ -862,7 +896,7 @@ def test_states_not_list_is_skipped(config_dir):
 
 
 def test_non_dict_state_entry_skipped(config_dir):
-    """Non-dict items in the states list are skipped (continue at 213)."""
+    """Non-dict items in the states list are skipped."""
     with patch(
         "tools.validators.stale_sensors.HAClient",
         return_value=_mock_states(["oops", 42]),
@@ -871,7 +905,7 @@ def test_non_dict_state_entry_skipped(config_dir):
 
 
 def test_dotless_entity_id_skipped(config_dir):
-    """State entries without a '.' in entity_id are skipped (continue at 217)."""
+    """State entries without a dot in entity_id are skipped."""
     states = [
         {
             "entity_id": "no_dot",
@@ -887,7 +921,7 @@ def test_dotless_entity_id_skipped(config_dir):
 
 
 def test_non_sensor_domain_skipped(config_dir):
-    """States with domains not in only_domains are skipped (continue at 221)."""
+    """States with domains outside only_domains are skipped."""
     states = [
         {
             "entity_id": "light.x",
@@ -903,7 +937,7 @@ def test_non_sensor_domain_skipped(config_dir):
 
 
 def test_sensor_with_unparseable_baseline_skipped(config_dir):
-    """sensor.x with garbage last_updated yields no baseline → continue (270)."""
+    """A sensor with an unparseable timestamp yields no baseline and is skipped."""
     states = [
         {
             "entity_id": "sensor.x",
@@ -918,13 +952,12 @@ def test_sensor_with_unparseable_baseline_skipped(config_dir):
         assert StaleSensorValidator(str(config_dir)).validate_all() is True
 
 
-# ── Binary sensor without heartbeat (covers 261) ───────────────────────
-# NOTE: Must override only_domains={"binary_sensor"} so the entity is not
-# filtered out at line 221 before reaching the heartbeat check at 258-261.
+# Binary sensor without heartbeat: use only_domains so the default sensor filter
+# does not skip the heartbeat-specific path.
 
 
 def test_binary_sensor_without_heartbeat_skipped(config_dir):
-    """binary_sensor without last_seen/last_reported → continue (261)."""
+    """A binary sensor without last_seen/last_reported is skipped."""
     states = [
         {
             "entity_id": "binary_sensor.x",
@@ -1000,11 +1033,11 @@ def test_fail_on_stale_trips_on_real_stale_sensor(config_dir):
     assert any("Stale sensor check failed" in e for e in v.errors)
 
 
-# ── L55: ignore_restored / last_changed / strict boundary ────────────────
+# Restored entities, timestamp selection, and threshold boundary behavior
 
 
 def test_ignore_restored_true_skips_restored_entities(config_dir):
-    """L55: ignore_restored=True must skip entities with restored=true."""
+    """ignore_restored=True skips entities with restored=true."""
     _write_entity_registry(
         config_dir,
         [
@@ -1035,8 +1068,8 @@ def test_ignore_restored_true_skips_restored_entities(config_dir):
         assert len(v.warnings) == 0
 
 
-def test_both_heartbeats_present_uses_last_changed(config_dir):
-    """L55: last_changed + last_updated both present — the older one wins."""
+def test_last_changed_and_last_updated_uses_older_timestamp(config_dir):
+    """When both timestamps exist, validation uses the older timestamp."""
     _write_entity_registry(
         config_dir,
         [
@@ -1054,7 +1087,7 @@ def test_both_heartbeats_present_uses_last_changed(config_dir):
                 "entity_id": "sensor.test_temp",
                 "state": "21.5",
                 "last_changed": "2026-06-24T15:00:00+00:00",
-                "last_updated": "2026-06-24T19:00:00+00:00",
+                "last_updated": "2026-06-25T00:00:00+00:00",
                 "attributes": {},
             }
         ]
@@ -1069,7 +1102,7 @@ def test_both_heartbeats_present_uses_last_changed(config_dir):
 
 
 def test_strict_boundary_not_flagged(config_dir):
-    """L55: elapsed == threshold exactly must NOT be flagged (strict >)."""
+    """Elapsed time exactly at the threshold is not flagged (strict >)."""
     _write_entity_registry(
         config_dir,
         [
@@ -1101,7 +1134,7 @@ def test_strict_boundary_not_flagged(config_dir):
 
 
 def test_stale_validator_missing_config_dir_uses_base_validation():
-    """W5.2: A missing config directory is rejected before contacting HA."""
+    """A missing config directory is rejected before contacting HA."""
     with patch(
         "tools.validators.stale_sensors.HAClient", side_effect=OSError("unreachable")
     ) as mock_ha_client:

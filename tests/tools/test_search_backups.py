@@ -54,10 +54,10 @@ class TestSearchBackup:
         assert len(matches) == 1
         assert matches[0]["file"] == "config/test.yaml"
 
-    # ── M22 follow-up: context_lines=0 (default) must not crash ──────────
+    # Zero-context searches
 
     def test_zero_context_accepted(self, tmp_path):
-        """M22: context=0 (default) must not crash search_backup."""
+        """The default zero-context search does not crash."""
         tar_path = _make_backup(
             tmp_path, files_dict={"x.yaml": "line1\npattern\nline3\n"}
         )
@@ -321,11 +321,11 @@ class TestSearchBackupsMainFlow:
         assert "unsafe" in captured.err
 
 
-class TestL71StripDotSlash:
-    """L71: member names with './' prefix must be stripped in output."""
+class TestMemberNameNormalization:
+    """Archive member names are normalized before they are reported."""
 
     def test_output_strips_dot_slash_prefix(self, tmp_path):
-        """L71: member names starting with './' must be displayed without it."""
+        """Member names starting with './' are displayed without that prefix."""
         import re
 
         tar_path = tmp_path / "test.tar.gz"
@@ -348,11 +348,11 @@ class TestL71StripDotSlash:
         assert not matches[0]["file"].startswith("./")
 
 
-class TestL72LazyTar:
-    """L72: lazy tar iteration instead of getmembers()."""
+class TestLazyTarIteration:
+    """Tar members are scanned lazily and non-file members are skipped."""
 
     def test_lazy_tar_iteration_handles_large_archive(self, tmp_path):
-        """L72: many non-file members must be scanned via lazy iteration."""
+        """Non-file members do not prevent lazy scanning of real files."""
         import re
 
         # Create a tar with a symlink and a directory then a file
@@ -384,22 +384,22 @@ class TestL72LazyTar:
         assert matches[0]["file"] == "config/test.yaml"
 
 
-class TestL73Renamed:
-    """L73: is_likely_unsafe_regex renamed from is_potentially_unsafe_regex."""
+class TestUnsafeRegexHelper:
+    """The unsafe-regex helper detects risky patterns and accepts normal ones."""
 
-    def test_renamed_function_exists_and_works(self):
-        """L73: is_likely_unsafe_regex must exist (renamed from old name)."""
+    def test_detects_nested_quantifiers_and_allows_normal_patterns(self):
+        """The unsafe-regex helper distinguishes risky and normal patterns."""
         from tools.search_backups import is_likely_unsafe_regex
 
         assert is_likely_unsafe_regex("(a+)+") is True
         assert is_likely_unsafe_regex("normal") is False
 
 
-class TestL74Unreadable:
-    """L74: unreadable backups reported separately."""
+class TestUnreadableBackups:
+    """Unreadable backup archives are reported separately from no matches."""
 
     def test_main_reports_unreadable_count(self, tmp_path, monkeypatch, capsys):
-        """L74: corrupt backups must be reported as 'unreadable'."""
+        """Corrupt backups are reported as unreadable."""
         backups = [
             {
                 "path": tmp_path / "bad.tar.gz",
@@ -419,11 +419,11 @@ class TestL74Unreadable:
             assert "unreadable" in err
 
 
-class TestL75InternalKey:
-    """L75: _remaining_after must not leak in returned matches."""
+class TestMatchResultShape:
+    """Internal context bookkeeping does not leak into match results."""
 
     def test_internal_key_does_not_leak(self, tmp_path):
-        """L75: _remaining_after must never appear in returned matches."""
+        """Returned matches contain public context fields, not internal bookkeeping."""
         import re
 
         tar_path = _make_backup(
@@ -444,11 +444,11 @@ class TestL75InternalKey:
             assert "context_after" in m
 
 
-class TestL76Safety:
-    """L76: tar-extraction safety regression coverage."""
+class TestTarExtractionSafety:
+    """Tar extraction does not escape its temporary directory or follow links."""
 
     def test_malicious_tar_member_name_does_not_escape(self, tmp_path):
-        """L76: './../../etc/passwd' member names must NOT write outside tmp."""
+        """Traversal member names must not write outside the temporary directory."""
         import re
 
         tar_path = tmp_path / "evil.tar.gz"
@@ -472,7 +472,7 @@ class TestL76Safety:
         assert not any("passwd" in str(p) for p in new_files)
 
     def test_symlink_member_not_followed(self, tmp_path):
-        """L76: SYMTYPE/LNKTYPE members must be skipped (not extracted/followed)."""
+        """Symlink members are skipped rather than extracted or followed."""
         import re
 
         tar_path = tmp_path / "test.tar.gz"
@@ -499,7 +499,7 @@ class TestL76Safety:
         assert matches[0]["file"] == "config/real.yaml"
 
     def test_comment_invariant_near_extract(self):
-        """L76: invariant comment about extract+isfile must exist near extraction."""
+        """The extraction helper documents its extract-and-isfile safety invariant."""
         import inspect
 
         import tools.backup_common

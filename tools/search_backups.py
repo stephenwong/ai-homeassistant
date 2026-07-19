@@ -16,10 +16,20 @@ import sys
 import tarfile
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import NotRequired, TypedDict
 
 from tools.backup_common import get_backups, iter_tarball_file_members
 from tools.common import get_env_int, non_negative_int
+
+
+class _MatchResult(TypedDict):
+    """Shape of a backup search match, including optional context."""
+
+    file: str
+    line_num: int
+    line: str
+    context_before: NotRequired[list[str]]
+    context_after: NotRequired[list[str]]
 
 
 def is_likely_unsafe_regex(pattern: str) -> bool:
@@ -37,9 +47,9 @@ def is_likely_unsafe_regex(pattern: str) -> bool:
 
 def search_backup(
     backup: dict, pattern: re.Pattern, yaml_only: bool = True, context_lines: int = 0
-) -> tuple[list[dict], bool]:
+) -> tuple[list[_MatchResult], bool]:
     """Search a single backup archive for a pattern. Returns (matches, unreadable)."""
-    matches = []
+    matches: list[_MatchResult] = []
     try:
         for display_name, extracted in iter_tarball_file_members(backup["path"]):
             if yaml_only and not (
@@ -50,16 +60,15 @@ def search_backup(
             try:
                 with extracted:
                     context_before: deque[str] = deque(maxlen=context_lines)
-                    pending_after: list[tuple[dict[str, Any], int]] = []
+                    pending_after: list[tuple[_MatchResult, int]] = []
 
                     for line_num, raw_line in enumerate(extracted, start=1):
                         line = raw_line.decode("utf-8").rstrip("\n")
 
                         if pending_after:
-                            remaining_pairs = []
+                            remaining_pairs: list[tuple[_MatchResult, int]] = []
                             for match_entry, remaining in pending_after:
-                                after = match_entry["context_after"]
-                                after.append(line)  # type: ignore[union-attr]
+                                match_entry.setdefault("context_after", []).append(line)
                                 if remaining - 1 > 0:
                                     remaining_pairs.append((match_entry, remaining - 1))
                             pending_after = remaining_pairs

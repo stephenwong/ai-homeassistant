@@ -441,12 +441,11 @@ class TestEdgeCases:
             assert v.validate_all() is True
 
 
-class TestL50EmptyErrorBody:
-    """L50: empty error body must not IndexError."""
+class TestEmptyRenderErrorBody:
+    """An empty render error body does not crash validation."""
 
     def test_empty_error_body_does_not_crash(self, config_dir):
-        """L50: _render returning ('error', '') must not IndexError."""
-        from unittest.mock import MagicMock, patch
+        """A render response with an empty message does not crash validation."""
 
         _write_automation(
             config_dir,
@@ -476,13 +475,11 @@ class TestL50EmptyErrorBody:
             assert len(v.errors) == 0
 
 
-class TestL51OSError:
-    """L51: OSError from from_env must degrade gracefully."""
+class TestClientCreationOSError:
+    """An OSError while creating the client degrades gracefully."""
 
     def test_oserror_from_from_env_is_caught(self, config_dir):
-        """L51: OSError from from_env must degrade gracefully."""
-        from unittest.mock import patch
-
+        """An OSError from client creation is reported as a skipped live check."""
         _write_automation(
             config_dir,
             [

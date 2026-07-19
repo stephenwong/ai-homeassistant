@@ -2,7 +2,14 @@
 
 import re
 
-TEMPLATE_PATTERN = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.DOTALL)
+TEMPLATE_DELIMITERS = (("{{", "}}"), ("{%", "%}"))
+TEMPLATE_PATTERN = re.compile(
+    "|".join(
+        f"{re.escape(opening)}.*?{re.escape(closing)}"
+        for opening, closing in TEMPLATE_DELIMITERS
+    ),
+    re.DOTALL,
+)
 
 
 def is_jinja_template(value: str) -> bool:
