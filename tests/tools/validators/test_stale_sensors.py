@@ -1100,21 +1100,13 @@ def test_strict_boundary_not_flagged(config_dir):
         assert len(v.warnings) == 0
 
 
-def test_stale_validator_nonexistent_dir_behaviour():
-    """W5.2: StaleSensorValidator degrades silently on a nonexistent config dir.
-
-    Unlike other validators (which use ValidatorBase.validate_all()'s
-    config_dir.exists() guard), StaleSensorValidator overrides validate_all()
-    entirely — the guard never runs. The validator degrades via the API
-    unreachable path (HAClient construction fails against the nonexistent
-    config dir's absent .env and HA_URL/HA_TOKEN defaults).
-
-    This test pins the divergence so it is intentional.
-    """
+def test_stale_validator_missing_config_dir_uses_base_validation():
+    """W5.2: A missing config directory is rejected before contacting HA."""
     with patch(
         "tools.validators.stale_sensors.HAClient", side_effect=OSError("unreachable")
-    ):
+    ) as mock_ha_client:
         v = StaleSensorValidator("/nonexistent/path/that/does/not/exist")
         result = v.validate_all()
-    assert result is True
-    assert not any("does not exist" in e for e in v.errors)
+    assert result is False
+    assert f"Config directory {v.config_dir} does not exist" in v.errors
+    mock_ha_client.assert_not_called()

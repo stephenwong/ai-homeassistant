@@ -87,10 +87,6 @@ class StaleSensorValidator(ValidatorBase):
         """Get the current UTC time. Easy to mock in unit tests."""
         return datetime.now(UTC)
 
-    def _validate(self) -> bool:
-        """StaleSensorValidator overrides validate_all() — this satisfies ABC."""
-        return True
-
     def _load_registry(self) -> dict[str, Any] | None:
         """Load and parse the local entity registry with retry-on-failure.
 
@@ -178,7 +174,7 @@ class StaleSensorValidator(ValidatorBase):
 
         return None
 
-    def validate_all(self) -> bool:
+    def _validate(self) -> bool:
         """Query Home Assistant for stale sensors.
 
         Returns True when no staleness or when fail_on_stale is off (default).
