@@ -236,7 +236,7 @@ class TestGenerateChangelog:
 class TestChangelogPathFor:
     def test_generates_changelog_path(self):
         backup = {"filename": "ha_config_20260201_120000.tar.gz"}
-        with patch("tools.generate_changelog.BACKUP_DIR", Path("/tmp/backups")):
+        with patch("tools.backup_common.BACKUP_DIR", Path("/tmp/backups")):
             result = changelog_path_for(backup)
             assert result == Path("/tmp/backups/ha_config_20260201_120000.changelog")
 
@@ -251,7 +251,7 @@ class TestGenerateForBackup:
         }
         backups_list = [backup]
 
-        with patch("tools.generate_changelog.BACKUP_DIR", tmp_path):
+        with patch("tools.backup_common.BACKUP_DIR", tmp_path):
             result = generate_for_backup(backup, backups_list)
             assert result.exists()
             content = result.read_text()
@@ -276,7 +276,7 @@ class TestGenerateForBackup:
         }
         backups_list = [prev, curr]
 
-        with patch("tools.generate_changelog.BACKUP_DIR", tmp_path):
+        with patch("tools.backup_common.BACKUP_DIR", tmp_path):
             result = generate_for_backup(curr, backups_list)
             assert result.exists()
             content = result.read_text()
@@ -316,7 +316,7 @@ class TestMain:
         monkeypatch.setattr("sys.argv", ["generate_changelog", "--generate-all"])
         with (
             patch("tools.generate_changelog.get_backups", return_value=backups),
-            patch("tools.generate_changelog.BACKUP_DIR", tmp_path),
+            patch("tools.backup_common.BACKUP_DIR", tmp_path),
         ):
             result = main()
             assert result == 0
@@ -340,7 +340,7 @@ class TestMain:
         monkeypatch.setattr("sys.argv", ["generate_changelog", "--generate-all"])
         with (
             patch("tools.generate_changelog.get_backups", return_value=backups),
-            patch("tools.generate_changelog.BACKUP_DIR", tmp_path),
+            patch("tools.backup_common.BACKUP_DIR", tmp_path),
         ):
             result = main()
             assert result == 0
@@ -365,7 +365,7 @@ class TestMain:
         )
         with (
             patch("tools.generate_changelog.get_backups", return_value=backups),
-            patch("tools.generate_changelog.BACKUP_DIR", tmp_path),
+            patch("tools.backup_common.BACKUP_DIR", tmp_path),
         ):
             result = main()
             assert result == 0
@@ -429,7 +429,7 @@ class TestMain:
         )
         with (
             patch("tools.generate_changelog.get_backups", return_value=backups),
-            patch("tools.generate_changelog.BACKUP_DIR", tmp_path),
+            patch("tools.backup_common.BACKUP_DIR", tmp_path),
         ):
             result = main()
             assert result == 0
@@ -464,7 +464,7 @@ class TestL59AtomicWrite:
             return orig_replace(*a, **kw)
 
         monkeypatch.setattr(tcommon.os, "replace", fail_on_replace)
-        with patch("tools.generate_changelog.BACKUP_DIR", tmp_path):
+        with patch("tools.backup_common.BACKUP_DIR", tmp_path):
             result = generate_for_backup(backup, [backup])
         assert isinstance(result, Path)
         # Original must survive intact
@@ -492,7 +492,7 @@ class TestL60ValueError:
             "timestamp": datetime(2026, 2, 1, 12, 0, 0),
         }
         with (
-            patch("tools.generate_changelog.BACKUP_DIR", tmp_path),
+            patch("tools.backup_common.BACKUP_DIR", tmp_path),
             pytest.raises(ValueError, match="not found in the backup list"),
         ):
             generate_for_backup(other_backup, [backup])
@@ -540,7 +540,7 @@ class TestL63Gaps:
             "filename": "ha_config_20260201_120000.tar.gz",
             "timestamp": datetime(2026, 2, 1, 12, 0, 0),
         }
-        with patch("tools.generate_changelog.BACKUP_DIR", tmp_path):
+        with patch("tools.backup_common.BACKUP_DIR", tmp_path):
             cl_path = generate_for_backup(backup, [backup])
         text = cl_path.read_text(encoding="utf-8")
         assert "config/test.yaml" in text
@@ -600,7 +600,7 @@ class TestL63Gaps:
         }
         backups = [older, newer]
 
-        with patch("tools.generate_changelog.BACKUP_DIR", tmp_path):
+        with patch("tools.backup_common.BACKUP_DIR", tmp_path):
             generate_for_backup(older, backups)
             cl_path = tmp_path / "ha_config_20260101_120000.changelog"
             content = cl_path.read_text()

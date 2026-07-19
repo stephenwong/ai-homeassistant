@@ -17,6 +17,8 @@ from tools.ha.client import HAClient
 from tools.validators._storage import load_storage_registry
 from tools.validators.base import ValidatorBase
 
+_EPOCH_MS_THRESHOLD = 1e11
+
 
 class StaleSensorValidator(ValidatorBase):
     """Validates that active sensors are updating and have not gone stale."""
@@ -123,43 +125,50 @@ class StaleSensorValidator(ValidatorBase):
                 return None
         return None  # pragma: no cover  # unreachable fallthrough
 
+    def _parse_iso_string(self, s: str) -> datetime | None:
+        """Parse an ISO-8601 string into an offset-aware datetime.
+
+        Normalises a trailing ``Z`` to ``+00:00``, attaches UTC to naive
+        datetimes, and returns ``None`` on parse failure (no warning —
+        callers decide whether to warn).
+        """
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+
+    def _parse_epoch(self, value: float) -> datetime:
+        """Parse a numeric epoch value, normalising milliseconds to seconds."""
+        if value > _EPOCH_MS_THRESHOLD:
+            value = value / 1000.0
+        return datetime.fromtimestamp(value, tz=UTC)
+
     def parse_timestamp(self, value: Any) -> datetime | None:
         """Parse string or epoch numeric timestamps into offset-aware UTC datetimes."""
         if value is None or isinstance(value, bool):
             return None
 
-        # 1. Numeric epoch timestamps (float/int)
         if isinstance(value, (int, float)):
             try:
-                # Normalise milliseconds to seconds
-                if value > 1e11:
-                    value = value / 1000.0
-                return datetime.fromtimestamp(value, tz=UTC)
+                return self._parse_epoch(value)
             except (OverflowError, OSError, ValueError) as e:  # pragma: no cover
                 self.warnings.append(
                     f"Failed to parse numeric timestamp '{value}': {e}"
                 )
                 return None
 
-        # 2. String timestamps
         if isinstance(value, str):
-            # Normalise 'Z' suffix to '+00:00' for backward compatibility
-            if value.endswith("Z"):
-                value = value[:-1] + "+00:00"
-            try:
-                dt = datetime.fromisoformat(value)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
+            dt = self._parse_iso_string(value)
+            if dt is not None:
                 return dt
+            try:
+                return self._parse_epoch(float(value))
             except ValueError:
-                # Check if it is a string representation of a number
-                try:
-                    val_float = float(value)
-                    if val_float > 1e11:
-                        val_float = val_float / 1000.0
-                    return datetime.fromtimestamp(val_float, tz=UTC)
-                except ValueError:
-                    pass
                 self.warnings.append(f"Failed to parse string timestamp '{value}'")
                 return None
 

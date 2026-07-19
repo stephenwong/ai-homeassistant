@@ -102,16 +102,10 @@ class ServiceValidator(ValidatorBase):
     def _validate(self) -> bool:
         """Validate service references in all YAML files against HA API."""
         found: list[tuple[str, str]] = []
-        all_ok = True
-        for fp in self.get_yaml_files():
-            if fp.name == "secrets.yaml":
-                continue
-            data, ok = self.load_yaml_checked(fp)
-            if not ok:
-                all_ok = False
-                continue
-            if data is not None:
-                self._extract_services(data, fp.name, found)
+        err_before = len(self.errors)
+        for fp, data in self.iter_yaml_payloads():
+            self._extract_services(data, fp.name, found)
+        all_ok = len(self.errors) == err_before
 
         if not found:
             return all_ok

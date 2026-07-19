@@ -16,6 +16,11 @@ BACKUP_DIR = Path(__file__).parent.parent / "backups"
 _BACKUP_RE = re.compile(r"^ha_config_(\d{8})_(\d{6})\.tar\.gz$")
 
 
+def changelog_path_for(backup: dict) -> Path:
+    """Return the changelog path paired with *backup* (sibling of the tarball)."""
+    return BACKUP_DIR / (backup["filename"].removesuffix(".tar.gz") + ".changelog")
+
+
 def parse_backup_filename(filename: str) -> datetime | None:
     """Parse backup filename and return datetime object."""
     match = _BACKUP_RE.match(filename)

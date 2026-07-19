@@ -2,6 +2,7 @@
 
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,22 @@ class ValidatorBase(ABC):
         for pattern in ["*.yaml", "*.yml"]:
             yaml_files.extend(self.config_dir.glob(pattern))
         return yaml_files
+
+    def iter_yaml_payloads(self) -> Iterator[tuple[Path, Any]]:
+        """Yield ``(path, data)`` for each non-secrets YAML file in ``config_dir``.
+
+        Centralises the secrets-skip policy. Load failures (recorded to
+        ``self.errors`` by ``load_yaml_checked``) and empty documents
+        (``data is None``) are silently skipped — callers should snapshot
+        ``len(self.errors)`` before iteration to detect load failures.
+        """
+        for fp in self.get_yaml_files():
+            if fp.name == "secrets.yaml":
+                continue
+            data, ok = self.load_yaml_checked(fp)
+            if not ok or data is None:
+                continue
+            yield fp, data
 
     def load_yaml_checked(self, file_path: Path) -> tuple[Any, bool]:
         """Load YAML, recording any error to ``self.errors``.

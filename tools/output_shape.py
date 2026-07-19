@@ -9,6 +9,11 @@ output for agent consumption.
 import json
 
 
+def _compact_dumps(data) -> str:
+    """Serialize *data* as compact JSON (no whitespace, UTF-8 passthrough)."""
+    return json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+
+
 def apply_output_shape(
     data,
     *,
@@ -81,7 +86,7 @@ def print_json(data, *, pretty: bool = False) -> None:
     if pretty:
         print(json.dumps(data, indent=2, ensure_ascii=False))
     else:
-        print(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
+        print(_compact_dumps(data))
 
 
 def _truncate_by_chars(data, max_chars: int):
@@ -93,13 +98,13 @@ def _truncate_by_chars(data, max_chars: int):
     returned anyway (same degradation as the list path — preferable to silently
     dropping the whole response).
     """
-    serialized = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+    serialized = _compact_dumps(data)
     if len(serialized) <= max_chars:
         return data
     if isinstance(data, list):
         return _truncate_list(data, max_chars)
     if isinstance(data, dict):
-        return _cap_dict(data, max_chars)
+        return truncate_dict_by_key_size(data, max_chars)
     return data
 
 
@@ -113,11 +118,8 @@ def _truncate_list(data: list, max_chars: int):
     if original_len == 0:
         return [{"_truncated": True, "shown": 0, "total": 0}]
 
-    sep = (",", ":")
     # Per-item compact serialized length
-    item_lens = [
-        len(json.dumps(item, separators=sep, ensure_ascii=False)) for item in data
-    ]
+    item_lens = [len(_compact_dumps(item)) for item in data]
     # prefix[n] = size of JSON array data[:n] (brackets + commas between items).
     prefix = [2]  # "[" + "]"
     for i, ln in enumerate(item_lens):
@@ -127,7 +129,7 @@ def _truncate_list(data: list, max_chars: int):
     marker_lens = {}
     for n in range(0, original_len + 1):
         marker = {"_truncated": True, "shown": n, "total": original_len}
-        marker_str = json.dumps(marker, separators=sep, ensure_ascii=False)
+        marker_str = _compact_dumps(marker)
         marker_lens[n] = (1 if n > 0 else 0) + len(marker_str)
 
     # Binary-search: largest n in [0, original_len] such that total fits.
@@ -145,15 +147,6 @@ def _truncate_list(data: list, max_chars: int):
 
     marker = {"_truncated": True, "shown": best, "total": original_len}
     return data[:best] + [marker]
-
-
-def _cap_dict(data: dict, max_chars: int):
-    """Drop largest-value keys until the compact serialization fits.
-
-    Thin wrapper over :func:`truncate_dict_by_key_size` with the flat-dict
-    defaults (top-level keys are candidates, default marker field names).
-    """
-    return truncate_dict_by_key_size(data, max_chars)
 
 
 def truncate_dict_by_key_size(
@@ -189,7 +182,7 @@ def truncate_dict_by_key_size(
         *max_chars*, the marker is returned anyway (same degradation as the
         list path — preferable to silently dropping the whole response).
     """
-    serialized = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+    serialized = _compact_dumps(data)
     if len(serialized) <= max_chars:
         return data
 
@@ -204,9 +197,7 @@ def truncate_dict_by_key_size(
 
     keys_by_size = sorted(
         target.keys(),
-        key=lambda k: len(
-            json.dumps(target[k], separators=(",", ":"), ensure_ascii=False)
-        ),
+        key=lambda k: len(_compact_dumps(target[k])),
         reverse=True,
     )
 
@@ -229,10 +220,7 @@ def truncate_dict_by_key_size(
         dropped.append(k)
         del remaining[k]
         candidate = build_candidate()
-        if (
-            len(json.dumps(candidate, separators=(",", ":"), ensure_ascii=False))
-            <= max_chars
-        ):
+        if len(_compact_dumps(candidate)) <= max_chars:
             return candidate
 
     return build_candidate()

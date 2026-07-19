@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import os
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -13,6 +14,8 @@ from tools.validators.base import (  # noqa: F401 — re-exported
 )
 
 DEFAULT_HA_URL = "http://homeassistant.local:8123"
+
+_ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 DEFAULT_SUMMARY_MAX_CHARS = 8000
 
 

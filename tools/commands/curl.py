@@ -16,13 +16,13 @@ Token-efficiency flags for agents:
 import argparse
 import contextlib
 import json
-import re
 import sys
 from typing import Any
 
 import requests
 
 from tools.common import (
+    _ENTITY_RE,
     HARequestError,
     add_output_shape_args,
     add_summary_args,
@@ -173,7 +173,7 @@ def _validate_args(args: argparse.Namespace, summary: bool) -> tuple[str, str] |
         return 1
 
     if args.entity:
-        if not re.match(r"^[a-z0-9_]+\.[a-z0-9_]+$", args.entity):
+        if not _ENTITY_RE.match(args.entity):
             print(f"\u274c Invalid entity_id: {args.entity!r}", file=sys.stderr)
             return 1
         if args.endpoint and args.endpoint != "/api/states":

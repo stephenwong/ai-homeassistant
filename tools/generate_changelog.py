@@ -14,7 +14,11 @@ import sys
 import tarfile
 from pathlib import Path
 
-from tools.backup_common import BACKUP_DIR, get_backups, iter_tarball_file_members
+from tools.backup_common import (
+    changelog_path_for,
+    get_backups,
+    iter_tarball_file_members,
+)
 from tools.common import atomic_write_text
 
 # Files/directories to skip (noisy runtime state)
@@ -170,11 +174,6 @@ def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
             lines.append("")
 
     return "\n".join(lines) + "\n"
-
-
-def changelog_path_for(backup: dict) -> Path:
-    """Get the changelog path for a backup."""
-    return BACKUP_DIR / (backup["filename"].removesuffix(".tar.gz") + ".changelog")
 
 
 def generate_for_backup(backup: dict, backups_list: list[dict]) -> Path:

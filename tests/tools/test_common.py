@@ -658,3 +658,38 @@ class TestFailStderr:
         captured = capsys.readouterr()
         assert result == 1
         assert captured.err.startswith("\u274c")
+
+
+class TestIterYamlPayloads:
+    """ValidatorBase.iter_yaml_payloads generator tests."""
+
+    def test_skips_secrets_yaml(self, tmp_path):
+        """secrets.yaml is never yielded, even when present."""
+        (tmp_path / "secrets.yaml").write_text("password: hunter2\n")
+        (tmp_path / "configuration.yaml").write_text("homeassistant:\n")
+        v = _ConcreteValidator(str(tmp_path))
+        yielded = list(v.iter_yaml_payloads())
+        names = [fp.name for fp, _ in yielded]
+        assert "secrets.yaml" not in names
+        assert "configuration.yaml" in names
+
+    def test_load_failure_recorded_and_skipped(self, tmp_path):
+        """Malformed YAML records an error and is not yielded."""
+        (tmp_path / "broken.yaml").write_text("bad: [\n")
+        (tmp_path / "good.yaml").write_text("ok: true\n")
+        v = _ConcreteValidator(str(tmp_path))
+        before = len(v.errors)
+        yielded = list(v.iter_yaml_payloads())
+        assert len(v.errors) == before + 1
+        assert len(yielded) == 1
+        assert yielded[0][0].name == "good.yaml"
+
+    def test_empty_yaml_skipped(self, tmp_path):
+        """Empty YAML files (data is None) are silently skipped."""
+        (tmp_path / "empty.yaml").write_text("")
+        (tmp_path / "full.yaml").write_text("key: val\n")
+        v = _ConcreteValidator(str(tmp_path))
+        yielded = list(v.iter_yaml_payloads())
+        names = [fp.name for fp, _ in yielded]
+        assert "empty.yaml" not in names
+        assert "full.yaml" in names

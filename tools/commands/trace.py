@@ -1,10 +1,10 @@
 """``trace`` subcommand: fetch Home Assistant automation traces via WebSocket."""
 
 import argparse
-import re
 import sys
 
 from tools.common import (
+    _ENTITY_RE,
     HARequestError,
     add_output_shape_args,
     add_summary_args,
@@ -17,8 +17,6 @@ from tools.output_shape import (
     print_json,
     truncate_dict_by_key_size,
 )
-
-_ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -75,14 +73,13 @@ def _fetch_data(
     """
     try:
         if args.entity_id:
+            entity_short = args.entity_id.split(".", 1)[1]
             try:
                 rest_client = HAClient.from_env()
                 state = rest_client.get_json(f"/api/states/{args.entity_id}")
-                item_id = (state.get("attributes") or {}).get(
-                    "id"
-                ) or args.entity_id.split(".", 1)[1]
+                item_id = (state.get("attributes") or {}).get("id") or entity_short
             except HARequestError:
-                item_id = args.entity_id.split(".", 1)[1]
+                item_id = entity_short
             traces = ws_client.command(
                 "trace/list", domain="automation", item_id=item_id
             )

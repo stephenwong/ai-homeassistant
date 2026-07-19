@@ -12,12 +12,9 @@ import argparse
 import sys
 from collections import defaultdict
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
-from tools.backup_common import get_backups
-
-BACKUP_DIR = Path(__file__).parent.parent / "backups"
+from tools.backup_common import BACKUP_DIR, changelog_path_for, get_backups
 
 
 def group_by_retention_period(backups: list[dict], now: datetime) -> dict:
@@ -46,33 +43,31 @@ def group_by_retention_period(backups: list[dict], now: datetime) -> dict:
     return groups
 
 
+def _keep_latest_per_group(
+    grouped: dict[str, list[dict]],
+    to_keep: list[dict],
+    to_delete: list[dict],
+) -> None:
+    """Keep the latest entry from each group; rest go to delete list."""
+    for items in grouped.values():
+        if not items:
+            continue
+        ordered = sorted(items, key=lambda x: x["timestamp"], reverse=True)
+        to_keep.append(ordered[0])
+        to_delete.extend(ordered[1:])
+
+
 def apply_retention(groups: dict) -> tuple[list[dict], list[dict]]:
     """Apply retention rules and return lists of files to keep/delete."""
-    to_keep = []
-    to_delete = []
+    to_keep: list[dict] = []
+    to_delete: list[dict] = []
 
     # Keep all recent backups (0-7 days)
     to_keep.extend(groups["keep_all"])
 
-    # Keep one per day (7-30 days) - latest from each day
-    for day_backups in groups["daily"].values():
-        if day_backups:
-            # Sort by timestamp, keep latest
-            sorted_backups = sorted(
-                day_backups, key=lambda x: x["timestamp"], reverse=True
-            )
-            to_keep.append(sorted_backups[0])
-            to_delete.extend(sorted_backups[1:])
-
-    # Keep one per week (30+ days) - latest from each week
-    for week_backups in groups["weekly"].values():
-        if week_backups:
-            # Sort by timestamp, keep latest
-            sorted_backups = sorted(
-                week_backups, key=lambda x: x["timestamp"], reverse=True
-            )
-            to_keep.append(sorted_backups[0])
-            to_delete.extend(sorted_backups[1:])
+    # Keep one per day (7-30 days), one per week (30+ days)
+    _keep_latest_per_group(groups["daily"], to_keep, to_delete)
+    _keep_latest_per_group(groups["weekly"], to_keep, to_delete)
 
     return to_keep, to_delete
 
@@ -198,10 +193,7 @@ def main(argv: list[str] | None = None) -> int:
                     errors += 1
                     continue
                 try:
-                    changelog_name = (
-                        backup["filename"].removesuffix(".tar.gz") + ".changelog"
-                    )
-                    changelog_path = BACKUP_DIR / changelog_name
+                    changelog_path = changelog_path_for(backup)
                     if changelog_path.exists():
                         changelog_path.unlink()
                 except OSError as e:

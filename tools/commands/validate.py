@@ -170,7 +170,7 @@ def run_validators(
 ) -> list[ValidatorResult]:
     """Run all default-suite validators in parallel threads.
 
-    The three validators each touch different files, so contention is minimal.
+    Validators touch disjoint files, so contention is minimal.
     ``ReferenceValidator`` itself spawns an inner ThreadPoolExecutor for its
     five-file entity extraction — total active threads peak around 8-15.
     """
@@ -234,16 +234,14 @@ def _format_result_line(r: ValidatorResult, summary: bool, quiet: bool) -> str |
 
     Returns the formatted string, or ``None`` if quiet mode suppresses it.
     """
+    if quiet and r.passed:
+        return None
     if r.passed:
         if summary:
-            if quiet:
-                return None
             if r.cached:
                 return f"PASS {r.description} C"
             return f"PASS {r.description} ({r.duration:.2f}s)"
         suffix = " (cached)" if r.cached else f" ({r.duration:.2f}s)"
-        if quiet:
-            return None
         return f"  \u2705 {r.description}: PASSED{suffix}"
     if summary:
         return f"FAIL {r.description} ({r.duration:.2f}s)"

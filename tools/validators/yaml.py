@@ -80,23 +80,12 @@ class YAMLValidator(ValidatorBase):
             return True
 
         all_valid = True
-
-        for file_path in yaml_files:
-            # Skip secrets.yaml as it may contain sensitive data
-            if file_path.name == "secrets.yaml":
-                continue
-
-            # Parse once; catches encoding errors and YAML syntax errors
-            data, ok = self.load_yaml_checked(file_path)
-            if not ok:
-                all_valid = False
-                continue
-
-            # Structure validation for specific files (data already parsed)
+        err_before = len(self.errors)
+        for file_path, data in self.iter_yaml_payloads():
             all_valid &= self.validate_configuration_structure(file_path, data)
             all_valid &= self.validate_automations_structure(file_path, data)
             all_valid &= self.validate_scripts_structure(file_path, data)
-
+        all_valid &= len(self.errors) == err_before
         return all_valid
 
 

@@ -725,6 +725,45 @@ def test_parse_timestamp_malformed_string_appends_warning():
     assert any("Failed to parse" in w for w in v.warnings)
 
 
+class TestParseIsoString:
+    def test_z_suffix_normalized_to_utc(self):
+        v = StaleSensorValidator()
+        dt = v._parse_iso_string("2026-07-17T10:00:00Z")
+        assert dt == datetime.fromisoformat("2026-07-17T10:00:00+00:00")
+
+    def test_naive_gets_utc_attached(self):
+        v = StaleSensorValidator()
+        dt = v._parse_iso_string("2026-07-17T10:00:00")
+        assert dt.tzinfo is not None
+        assert dt.utcoffset().total_seconds() == 0
+
+    def test_offset_preserved(self):
+        v = StaleSensorValidator()
+        dt = v._parse_iso_string("2026-07-17T10:00:00+10:00")
+        assert dt.utcoffset().total_seconds() == 10 * 3600
+
+    def test_malformed_returns_none(self):
+        v = StaleSensorValidator()
+        assert v._parse_iso_string("not a date") is None
+
+
+class TestParseEpoch:
+    def test_seconds_epoch(self):
+        v = StaleSensorValidator()
+        dt = v._parse_epoch(1782331200)
+        assert dt == datetime.fromtimestamp(1782331200, tz=UTC)
+
+    def test_ms_epoch_divides_by_1000(self):
+        v = StaleSensorValidator()
+        dt = v._parse_epoch(1782331200000)
+        assert dt == datetime.fromtimestamp(1782331200, tz=UTC)
+
+    def test_seconds_epoch_below_threshold(self):
+        v = StaleSensorValidator()
+        dt = v._parse_epoch(1_000_000_000)
+        assert dt == datetime.fromtimestamp(1_000_000_000, tz=UTC)
+
+
 def test_parse_timestamp_unsupported_type_returns_none():
     """parse_timestamp returns None for list/dict values."""
     v = StaleSensorValidator()
