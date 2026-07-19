@@ -66,6 +66,61 @@ def _write_file(cfg_dir, basename, content):
     return path
 
 
+class TestDispatchByFiletype:
+    def test_dispatches_to_on_dict_for_scripts(self, tmp_path):
+        from tools.commands.edit import _dispatch_by_filetype
+        from tools.ha.yaml_editor import YAMLEditor
+
+        editor = YAMLEditor(_write_file(tmp_path, "scripts", "foo:\n  mode: single\n"))
+        calls = []
+        _dispatch_by_filetype(
+            editor,
+            "foo",
+            on_dict=lambda ed, al: calls.append(f"dict:{al}"),
+            on_list=lambda ed, al: calls.append(f"list:{al}"),
+        )
+        assert calls == ["dict:foo"]
+
+    def test_dispatches_to_on_list_for_automations(self, tmp_path):
+        from tools.commands.edit import _dispatch_by_filetype
+        from tools.ha.yaml_editor import YAMLEditor
+
+        editor = YAMLEditor(_write_file(tmp_path, "automations", "- alias: foo\n"))
+        calls = []
+        _dispatch_by_filetype(
+            editor,
+            "foo",
+            on_dict=lambda ed, al: calls.append(f"dict:{al}"),
+            on_list=lambda ed, al: calls.append(f"list:{al}"),
+        )
+        assert calls == ["list:foo"]
+
+    def test_unknown_filetype_preserves_list_fallback(self, tmp_path):
+        from tools.commands.edit import _dispatch_by_filetype
+        from tools.ha.yaml_editor import YAMLEditor
+
+        editor = YAMLEditor(_write_file(tmp_path, "empty", ""))
+        calls = []
+        _dispatch_by_filetype(
+            editor,
+            "foo",
+            on_dict=lambda ed, al: calls.append("dict"),
+            on_list=lambda ed, al: calls.append("list"),
+        )
+        assert calls == ["list"]
+
+    def test_add_with_numeric_alias_is_saved(self, tmp_path):
+        from tools.commands.edit import _run_add
+        from tools.ha.yaml_editor import YAMLEditor
+
+        path = _write_file(tmp_path, "automations", "[]")
+        result = _run_add(
+            YAMLEditor(path), '{"alias": 123, "trigger": [], "action": []}', True
+        )
+        assert result == 0
+        assert "alias: 123" in path.read_text()
+
+
 class TestRunShow:
     def _args(self, cfg_dir, file="automations", alias=None):
         return Namespace(

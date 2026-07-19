@@ -79,6 +79,49 @@ def test_file_deps_empty():
     assert v.file_deps() == []
 
 
+class TestExcludeDomains:
+    def test_exclude_subtracts_from_only_domains(self, tmp_path):
+        v = StaleSensorValidator(
+            config_dir=str(tmp_path),
+            only_domains={"sensor", "binary_sensor"},
+            exclude_domains={"sensor"},
+        )
+        assert v.only_domains == {"binary_sensor"}
+
+    def test_exclude_default_empty(self, tmp_path):
+        assert StaleSensorValidator(config_dir=str(tmp_path)).only_domains == {"sensor"}
+
+    def test_exclude_empty_set_no_op(self, tmp_path):
+        v = StaleSensorValidator(
+            config_dir=str(tmp_path), only_domains={"sensor"}, exclude_domains=set()
+        )
+        assert v.only_domains == {"sensor"}
+
+    def test_exclude_all_yields_empty_set(self, tmp_path):
+        v = StaleSensorValidator(
+            config_dir=str(tmp_path),
+            only_domains={"sensor"},
+            exclude_domains={"sensor"},
+        )
+        assert v.only_domains == set()
+
+    def test_new_keyword_does_not_shift_existing_positional_args(self, tmp_path):
+        v = StaleSensorValidator(
+            str(tmp_path),
+            False,
+            False,
+            24,
+            {"sensor"},
+            {"template"},
+            True,
+            True,
+            exclude_domains={"sensor"},
+        )
+        assert v.exclude_platforms == {"template"}
+        assert v.ignore_restored is True
+        assert v.fail_on_stale is True
+
+
 def test_api_offline_degrades_gracefully(config_dir):
     """If the HA API is offline, the validator logs info and returns True."""
     mock_client = _mock_offline()

@@ -54,30 +54,26 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(func=run)
 
 
+def _parse_csv_arg(value: str | None) -> set[str] | None:
+    """Parse a supplied comma-separated string, or return None when omitted."""
+    if not value:
+        return None
+    return {item.strip().lower() for item in value.split(",")}
+
+
 def run(args: argparse.Namespace) -> int:
     """Entry point for the ``stale-sensors`` subcommand. Returns exit code."""
     summary = resolve_summary(args)
-    only_domains = (
-        {d.strip().lower() for d in args.only_domains.split(",")}
-        if args.only_domains
-        else {"sensor"}
-    )
-
-    if args.exclude_domains:
-        ex_doms = {d.strip().lower() for d in args.exclude_domains.split(",")}
-        only_domains = only_domains - ex_doms
-
-    exclude_platforms = (
-        {p.strip().lower() for p in args.exclude_platforms.split(",")}
-        if args.exclude_platforms
-        else None
-    )
+    only_domains = _parse_csv_arg(args.only_domains)
+    if only_domains is None:
+        only_domains = {"sensor"}
 
     validator = StaleSensorValidator(
         config_dir=args.config,
         threshold_hours=args.threshold,
         only_domains=only_domains,
-        exclude_platforms=exclude_platforms,
+        exclude_domains=_parse_csv_arg(args.exclude_domains),
+        exclude_platforms=_parse_csv_arg(args.exclude_platforms),
         ignore_restored=args.ignore_restored,
         fail_on_stale=args.fail_on_stale,
         summary=summary,

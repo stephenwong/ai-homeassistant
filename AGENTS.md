@@ -205,7 +205,15 @@ Every commit message **you create** must end with (blank line before):
 Model used: <current-model-name>
 Co-authored-by: <tool> <noreply email>
 ```
-Current model: `deepseek-v4-flash`. Tool: `opencode <noreply@opencode.ai>`.
+At commit-message generation time, auto-detect the active model identifier,
+reasoning variant/effort, and agent harness from the current session. Use those
+detected values in the trailers; do not copy stale values from this file. Put
+the reasoning variant after the model name. For example:
+
+```
+Model used: <detected-active-model> (<detected-reasoning-variant>)
+Co-authored-by: <detected-agent-harness> <detected-harness-email>
+```
 
 ## Backups
 

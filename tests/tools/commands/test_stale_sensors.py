@@ -100,6 +100,7 @@ class TestRun:
             config_dir="config_path",
             threshold_hours=12,
             only_domains={"sensor"},
+            exclude_domains={"light", "switch"},
             exclude_platforms={"template", "group"},
             ignore_restored=True,
             fail_on_stale=False,
@@ -173,8 +174,8 @@ class TestRun:
         )
         stale_cmd.run(args)
         mock_val_class.assert_called_once()
-        # sensor should be subtracted, leaving only light
-        assert mock_val_class.call_args.kwargs["only_domains"] == {"light"}
+        assert mock_val_class.call_args.kwargs["only_domains"] == {"sensor", "light"}
+        assert mock_val_class.call_args.kwargs["exclude_domains"] == {"sensor"}
 
     @patch("tools.commands.stale_sensors.StaleSensorValidator")
     def test_fail_on_stale_behavior(self, mock_val_class):
@@ -198,3 +199,26 @@ class TestRun:
         mock_val.validate_all.return_value = False
         args.fail_on_stale = True
         assert stale_cmd.run(args) == 1
+
+
+class TestParseCsvArg:
+    def test_returns_none_for_none(self):
+        assert stale_cmd._parse_csv_arg(None) is None
+
+    def test_returns_none_for_empty_string(self):
+        assert stale_cmd._parse_csv_arg("") is None
+
+    def test_returns_lowercased_set(self):
+        assert stale_cmd._parse_csv_arg("Sensor,Binary_Sensor") == {
+            "sensor",
+            "binary_sensor",
+        }
+
+    def test_strips_whitespace(self):
+        assert stale_cmd._parse_csv_arg("  a , b ,c") == {"a", "b", "c"}
+
+    def test_preserves_explicit_empty_entries(self):
+        assert stale_cmd._parse_csv_arg("a,,b,") == {"a", "b", ""}
+
+    def test_explicit_empty_tokens_do_not_select_default(self):
+        assert stale_cmd._parse_csv_arg(",,") == {""}

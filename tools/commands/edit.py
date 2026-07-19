@@ -7,6 +7,7 @@ and --remove operations.  All writes use atomic save via YAMLEditor.
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from ruamel.yaml import YAML, YAMLError
@@ -158,6 +159,19 @@ def _detect_file_type(editor: YAMLEditor) -> str:
     return "unknown"  # pragma: no cover
 
 
+def _dispatch_by_filetype[T](
+    editor: YAMLEditor,
+    alias: str,
+    *,
+    on_dict: Callable[[YAMLEditor, str], T],
+    on_list: Callable[[YAMLEditor, str], T],
+) -> T:
+    """Run the mapping callback, or the list fallback for other file shapes."""
+    if _detect_file_type(editor) == "dict":
+        return on_dict(editor, alias)
+    return on_list(editor, alias)
+
+
 def _run_show(editor: YAMLEditor, alias: str | None) -> int:
     data = editor.load()
     if data is None:
@@ -199,20 +213,30 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
         # Infer type from file basename for new files
         ftype = "dict" if editor.path.name == "scripts.yaml" else "list"
     try:
-        if ftype == "dict":
+
+        def add_script(ed: YAMLEditor, _: str) -> str | int:
             key = str(entry.get("id") or entry.get("alias") or "")
             if not key:
                 return fail_stderr(
                     "--add requires 'id' or 'alias' key for script files"
                 )
-            editor.add_script(key, entry)
-            label = key
+            ed.add_script(key, entry)
+            return key
+
+        def add_automation(ed: YAMLEditor, _: str) -> str:
+            ed.add_automation(entry)
+            return str(entry.get("alias") or entry.get("id") or "(no alias)")
+
+        if editor.path.exists():
+            label = _dispatch_by_filetype(
+                editor, "", on_dict=add_script, on_list=add_automation
+            )
+        elif ftype == "dict":
+            label = add_script(editor, "")
         else:
-            editor.add_automation(entry)
-            if isinstance(entry, dict):
-                label = entry.get("alias") or entry.get("id") or "(no alias)"
-            else:  # pragma: no cover
-                label = "(no alias)"
+            label = add_automation(editor, "")
+        if isinstance(label, int):
+            return label
     except (TypeError, ValueError) as e:
         return fail_stderr(str(e))
 
@@ -236,12 +260,13 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str], quiet: bool) -> int
             )
         updates[key] = _parse_value(value.strip())
 
-    ftype = _detect_file_type(editor)
     try:
-        if ftype == "dict":
-            editor.update_script(alias, updates)
-        else:
-            editor.update_automation(alias, updates)
+        _dispatch_by_filetype(
+            editor,
+            alias,
+            on_dict=lambda ed, al: ed.update_script(al, updates),
+            on_list=lambda ed, al: ed.update_automation(al, updates),
+        )
     except (ValueError, TypeError) as e:
         return fail_stderr(str(e))
 
@@ -252,12 +277,13 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str], quiet: bool) -> int
 
 
 def _run_remove(editor: YAMLEditor, alias: str, quiet: bool) -> int:
-    ftype = _detect_file_type(editor)
     try:
-        if ftype == "dict":
-            editor.remove_script(alias)
-        else:
-            editor.remove_automation(alias)
+        _dispatch_by_filetype(
+            editor,
+            alias,
+            on_dict=lambda ed, al: ed.remove_script(al),
+            on_list=lambda ed, al: ed.remove_automation(al),
+        )
     except (ValueError, TypeError) as e:
         return fail_stderr(str(e))
 

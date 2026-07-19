@@ -35,6 +35,8 @@ class StaleSensorValidator(ValidatorBase):
         exclude_platforms: set[str] | None = None,
         ignore_restored: bool = False,
         fail_on_stale: bool = False,
+        *,
+        exclude_domains: set[str] | None = None,
     ):
         """Initialize the StaleSensorValidator.
 
@@ -45,12 +47,14 @@ class StaleSensorValidator(ValidatorBase):
             threshold_hours: Inactivity limit in hours before triggering stale state.
             only_domains: Domains to analyze (e.g., {'sensor'}).
             exclude_platforms: Integration platforms to ignore (e.g., {'template'}).
+            exclude_domains: Domains to subtract from only_domains.
             ignore_restored: If True, restored entities at startup won't be flagged.
             fail_on_stale: If True, validator returns False when staleness is detected.
         """
         super().__init__(config_dir, quiet=quiet, summary=summary)
         self.threshold_hours = threshold_hours
-        self.only_domains = only_domains if only_domains is not None else {"sensor"}
+        base_domains = only_domains if only_domains is not None else {"sensor"}
+        self.only_domains = base_domains - (exclude_domains or set())
         self.fail_on_stale = fail_on_stale
         self.stale_entities: list[str] = []
 

@@ -8,6 +8,7 @@ from tools.common import (
     HARequestError,
     add_output_shape_args,
     add_summary_args,
+    fail_stderr,
     resolve_max_chars,
     resolve_summary,
 )
@@ -49,11 +50,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 def _validate_args(args: argparse.Namespace, summary: bool) -> int | None:
     """Validate CLI args. Returns ``1`` on error, ``None`` otherwise."""
     if args.entity_id is not None and not _ENTITY_RE.fullmatch(args.entity_id):
-        print(f"\u274c Invalid entity_id: {args.entity_id!r}", file=sys.stderr)
-        return 1
+        return fail_stderr(f"Invalid entity_id: {args.entity_id!r}")
     if args.first is not None and args.first < 1:
-        print("\u274c --first must be >= 1", file=sys.stderr)
-        return 1
+        return fail_stderr("--first must be >= 1")
     if args.entity_id and args.first is not None and not summary:
         print(
             "\u26a0\ufe0f  --first is ignored when fetching a single automation trace",
@@ -85,11 +84,7 @@ def _fetch_data(
             )
             matching = [t for t in traces if t.get("item_id") == item_id]
             if not matching:
-                print(
-                    f"\u274c No traces found for {args.entity_id}",
-                    file=sys.stderr,
-                )
-                return None, 1
+                return None, fail_stderr(f"No traces found for {args.entity_id}")
             matching.sort(
                 key=lambda t: t.get("timestamp", {}).get("start", ""),
                 reverse=True,
@@ -130,8 +125,7 @@ def _fetch_data(
                     if n > 1:
                         entry["runs"] = n
     except HARequestError as e:
-        print(f"\u274c {e}", file=sys.stderr)
-        return None, 1
+        return None, fail_stderr(str(e))
     return data, None
 
 
@@ -190,8 +184,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         ws_client = HAWSClient.from_env()
     except HARequestError as e:
-        print(f"\u274c {e}", file=sys.stderr)
-        return 1
+        return fail_stderr(str(e))
 
     data, exit_code = _fetch_data(ws_client, args, summary)
     if exit_code is not None:

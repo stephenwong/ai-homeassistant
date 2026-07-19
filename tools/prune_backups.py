@@ -9,6 +9,7 @@ Retention rules:
 """
 
 import argparse
+import contextlib
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -96,9 +97,110 @@ def clean_orphaned_changelogs(dry_run: bool = False) -> int:
             if dry_run:
                 print(f"  Would delete: {orphan.name}", file=sys.stderr)
             else:
-                orphan.unlink()
-                print(f"  Deleted: {orphan.name}", file=sys.stderr)
+                try:
+                    orphan.unlink()
+                except OSError as e:
+                    print(
+                        f"⚠️ failed to delete orphaned changelog {orphan.name}: {e}",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(f"  Deleted: {orphan.name}", file=sys.stderr)
     return len(orphans)
+
+
+def _format_delete_line(backup: dict, now: datetime) -> str:
+    """Format a to-be-deleted backup for display."""
+    try:
+        size = backup["path"].stat().st_size
+    except OSError:
+        size = 0
+    age_days = (now - backup["timestamp"]).days
+    return f"  - {backup['filename']} ({format_size(size)}, {age_days} days old)"
+
+
+def _format_keep_line(backup: dict, now: datetime) -> str:
+    """Format a retained backup for display."""
+    try:
+        size = backup["path"].stat().st_size
+    except OSError:
+        size = 0
+    age_days = (now - backup["timestamp"]).days
+    if age_days == 0:
+        age_str = "today"
+    elif age_days == 1:
+        age_str = "yesterday"
+    else:
+        age_str = f"{age_days} days ago"
+    return f"  - {backup['filename']} ({format_size(size)}, {age_str})"
+
+
+def _validate_deletion_safety(
+    backups: list[dict], to_delete: list[dict], min_keep: int
+) -> str | None:
+    """Return an error message if the deletion plan is unsafe, else None."""
+    if len(to_delete) >= len(backups):
+        return (
+            "❌ Refusing to delete: would remove all backups "
+            f"(len(to_delete)={len(to_delete)} >= len(backups)={len(backups)}). "
+            "Check retention settings."
+        )
+    remaining = len(backups) - len(to_delete)
+    if remaining < min_keep:
+        return (
+            f"❌ Refusing to delete: would leave {remaining} "
+            f"backup(s), below --min-keep {min_keep}."
+        )
+    return None
+
+
+def _delete_backups(to_delete: list[dict]) -> int:
+    """Delete each backup and its changelog sibling; return error count."""
+    errors = 0
+    for backup in to_delete:
+        try:
+            backup["path"].unlink()
+        except OSError as e:
+            print(f"⚠️ failed to delete {backup['filename']}: {e}", file=sys.stderr)
+            errors += 1
+            continue
+        try:
+            changelog_path = changelog_path_for(backup)
+            if changelog_path.exists():
+                changelog_path.unlink()
+        except OSError as e:
+            print(
+                f"⚠️ failed to delete changelog for {backup['filename']}: {e}",
+                file=sys.stderr,
+            )
+            errors += 1
+        print(f"Deleted: {backup['filename']}")
+    return errors
+
+
+def _print_retention_summary(to_keep: list[dict], to_delete: list[dict]) -> None:
+    """Print the high-level keep/delete counts."""
+    print("\nRetention Summary:", file=sys.stderr)
+    print(f"  - Keeping {len(to_keep)} backup(s)", file=sys.stderr)
+    print(f"  - Deleting {len(to_delete)} backup(s)", file=sys.stderr)
+
+
+def _print_delete_preview(to_delete: list[dict], now: datetime) -> None:
+    """Print the delete preview and total space freed."""
+    print("\nBackups to delete:", file=sys.stderr)
+    total_size = 0
+    for backup in sorted(to_delete, key=lambda x: x["timestamp"]):
+        with contextlib.suppress(OSError):
+            total_size += backup["path"].stat().st_size
+        print(_format_delete_line(backup, now))
+    print(f"\nTotal space to free: {format_size(total_size)}")
+
+
+def _print_keep_summary(to_keep: list[dict], now: datetime) -> None:
+    """Print the retained backup summary."""
+    print("\nRetained backups:", file=sys.stderr)
+    for backup in sorted(to_keep, key=lambda x: x["timestamp"], reverse=True):
+        print(_format_keep_line(backup, now), file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -145,64 +247,20 @@ def main(argv: list[str] | None = None) -> int:
     groups = group_by_retention_period(backups, now)
     to_keep, to_delete = apply_retention(groups)
 
-    print("\nRetention Summary:", file=sys.stderr)
-    print(f"  - Keeping {len(to_keep)} backup(s)", file=sys.stderr)
-    print(f"  - Deleting {len(to_delete)} backup(s)", file=sys.stderr)
+    _print_retention_summary(to_keep, to_delete)
 
     if to_delete:
-        print("\nBackups to delete:", file=sys.stderr)
-        total_size = 0
-        for backup in sorted(to_delete, key=lambda x: x["timestamp"]):
-            try:
-                size = backup["path"].stat().st_size
-            except OSError:
-                size = 0
-            total_size += size
-            age_days = (now - backup["timestamp"]).days
-            print(
-                f"  - {backup['filename']} ({format_size(size)}, {age_days} days old)"
-            )
-
-        print(f"\nTotal space to free: {format_size(total_size)}")
+        _print_delete_preview(to_delete, now)
 
         # Defense-in-depth: never empty the directory.
-        if apply_deletes and len(to_delete) >= len(backups):
-            print(
-                "❌ Refusing to delete: would remove all backups "
-                f"(len(to_delete)={len(to_delete)} >= len(backups)={len(backups)}). "
-                "Check retention settings.",
-                file=sys.stderr,
-            )
-            return 1
-        if apply_deletes and (len(backups) - len(to_delete)) < args.min_keep:
-            print(
-                f"❌ Refusing to delete: would leave {len(backups) - len(to_delete)} "
-                f"backup(s), below --min-keep {args.min_keep}.",
-                file=sys.stderr,
-            )
-            return 1
+        if apply_deletes:
+            safety_error = _validate_deletion_safety(backups, to_delete, args.min_keep)
+            if safety_error:
+                print(safety_error, file=sys.stderr)
+                return 1
 
         if apply_deletes:
-            errors = 0
-            for backup in to_delete:
-                try:
-                    backup["path"].unlink()
-                except OSError as e:
-                    msg = f"failed to delete {backup['filename']}: {e}"
-                    print(f"⚠️ {msg}", file=sys.stderr)
-                    errors += 1
-                    continue
-                try:
-                    changelog_path = changelog_path_for(backup)
-                    if changelog_path.exists():
-                        changelog_path.unlink()
-                except OSError as e:
-                    print(
-                        f"⚠️ failed to delete changelog for {backup['filename']}: {e}",
-                        file=sys.stderr,
-                    )
-                    errors += 1
-                print(f"Deleted: {backup['filename']}")
+            errors = _delete_backups(to_delete)
 
             if errors:
                 print(
@@ -217,23 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\n✓ No backups need to be deleted")
 
     if to_keep:
-        print("\nRetained backups:", file=sys.stderr)
-        for backup in sorted(to_keep, key=lambda x: x["timestamp"], reverse=True):
-            age_days = (now - backup["timestamp"]).days
-            try:
-                size = backup["path"].stat().st_size
-            except OSError:
-                size = 0
-            if age_days == 0:
-                age_str = "today"
-            elif age_days == 1:
-                age_str = "yesterday"
-            else:
-                age_str = f"{age_days} days ago"
-            print(
-                f"  - {backup['filename']} ({format_size(size)}, {age_str})",
-                file=sys.stderr,
-            )
+        _print_keep_summary(to_keep, now)
 
     clean_orphaned_changelogs(dry_run=not apply_deletes)
     return 0

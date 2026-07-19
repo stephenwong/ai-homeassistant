@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+import pytest
+
 from tools.backup_common import parse_backup_filename
 from tools.prune_backups import (
     apply_retention,
@@ -664,3 +666,68 @@ def test_missing_file_during_display_does_not_crash(tmp_path, monkeypatch):
 
     rc = pb.main(["--dry-run"])
     assert rc == 0  # must not crash; degrades size to 0
+
+
+class TestFormatLines:
+    def _backup(self, tmp_path, timestamp):
+        path = tmp_path / "ha_config_20240101_000000.tar.gz"
+        path.write_bytes(b"x" * 1024)
+        return {
+            "filename": path.name,
+            "path": path,
+            "timestamp": timestamp,
+        }
+
+    def test_delete_line_includes_filename_size_and_age(self, tmp_path):
+        from tools.prune_backups import _format_delete_line
+
+        backup = self._backup(tmp_path, datetime(2024, 1, 1))
+        line = _format_delete_line(backup, datetime(2024, 1, 8))
+        assert backup["filename"] in line
+        assert "7 days old" in line
+        assert "1.0KB" in line
+
+    def test_delete_line_missing_file_size_zero(self, tmp_path):
+        from tools.prune_backups import _format_delete_line
+
+        backup = self._backup(tmp_path, datetime(2024, 1, 1))
+        backup["path"].unlink()
+        assert "0.0B" in _format_delete_line(backup, datetime(2024, 1, 8))
+
+    @pytest.mark.parametrize(
+        ("now", "expected"),
+        [
+            (datetime(2024, 1, 1, 12), "today"),
+            (datetime(2024, 1, 2), "yesterday"),
+            (datetime(2024, 1, 15), "14 days ago"),
+        ],
+    )
+    def test_keep_line_formats_age(self, tmp_path, now, expected):
+        from tools.prune_backups import _format_keep_line
+
+        backup = self._backup(tmp_path, datetime(2024, 1, 1))
+        assert expected in _format_keep_line(backup, now)
+
+
+class TestValidateDeletionSafety:
+    def test_all_backups_deleted_returns_error(self):
+        from tools.prune_backups import _validate_deletion_safety
+
+        backups = [{"filename": f"b{i}.tar.gz"} for i in range(3)]
+        error = _validate_deletion_safety(backups, backups, min_keep=1)
+        assert error is not None
+        assert "would remove all backups" in error
+
+    def test_below_min_keep_returns_error(self):
+        from tools.prune_backups import _validate_deletion_safety
+
+        backups = [{"filename": f"b{i}.tar.gz"} for i in range(5)]
+        error = _validate_deletion_safety(backups, backups[:4], min_keep=3)
+        assert error is not None
+        assert "below --min-keep" in error
+
+    def test_safe_plan_returns_none(self):
+        from tools.prune_backups import _validate_deletion_safety
+
+        backups = [{"filename": f"b{i}.tar.gz"} for i in range(10)]
+        assert _validate_deletion_safety(backups, backups[:3], min_keep=3) is None

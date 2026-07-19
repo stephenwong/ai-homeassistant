@@ -162,32 +162,20 @@ def _validate_args(args: argparse.Namespace, summary: bool) -> tuple[str, str] |
     method = args.method
 
     if args.raw and args.pretty:
-        print("\u274c Cannot combine --raw with --pretty", file=sys.stderr)
-        return 1
+        return fail_stderr("Cannot combine --raw with --pretty")
 
     if args.pick and (args.count or args.keys or args.raw):
-        print(
-            "\u274c Cannot combine --pick with --count/--keys/--raw",
-            file=sys.stderr,
-        )
-        return 1
+        return fail_stderr("Cannot combine --pick with --count/--keys/--raw")
 
     if args.entity:
         if not _ENTITY_RE.match(args.entity):
-            print(f"\u274c Invalid entity_id: {args.entity!r}", file=sys.stderr)
-            return 1
+            return fail_stderr(f"Invalid entity_id: {args.entity!r}")
         if args.endpoint and args.endpoint != "/api/states":
-            print(
-                "\u274c --entity requires endpoint /api/states (or omit endpoint)",
-                file=sys.stderr,
+            return fail_stderr(
+                "--entity requires endpoint /api/states (or omit endpoint)"
             )
-            return 1
         if args.count or args.keys or args.raw:
-            print(
-                "\u274c Cannot combine --entity with --count/--keys/--raw",
-                file=sys.stderr,
-            )
-            return 1
+            return fail_stderr("Cannot combine --entity with --count/--keys/--raw")
         if method != "GET" and not summary:
             print(
                 "\u26a0\ufe0f  --entity forces GET method (ignoring --method)",
@@ -198,24 +186,12 @@ def _validate_args(args: argparse.Namespace, summary: bool) -> tuple[str, str] |
 
     if args.domain:
         if args.entity:
-            print(
-                "\u274c Cannot combine --domain with --entity",
-                file=sys.stderr,
-            )
-            return 1
+            return fail_stderr("Cannot combine --domain with --entity")
         if args.count or args.keys or args.raw:
-            print(
-                "\u274c Cannot combine --domain with --count/--keys/--raw",
-                file=sys.stderr,
-            )
-            return 1
+            return fail_stderr("Cannot combine --domain with --count/--keys/--raw")
 
     if not args.endpoint:
-        print(
-            "\u274c endpoint path is required (use --entity to fetch by id)",
-            file=sys.stderr,
-        )
-        return 1
+        return fail_stderr("endpoint path is required (use --entity to fetch by id)")
 
     return method, args.endpoint
 
@@ -237,8 +213,7 @@ def _parse_json_body(method: str, args: argparse.Namespace, summary: bool) -> An
             try:
                 json_data = json.loads(args.data)
             except (json.JSONDecodeError, TypeError) as e:
-                print(f"\u274c Invalid JSON in --data: {e}", file=sys.stderr)
-                return 1
+                return fail_stderr(f"Invalid JSON in --data: {e}")
     elif args.data is not None and not summary:
         print(f"\u26a0\ufe0f  --data ignored for {method} requests", file=sys.stderr)
     return json_data
@@ -300,12 +275,10 @@ def _emit_output(
     if requires_json and data is None and not is_json:
         content_type = ""
         flag = "keys" if args.keys else ("first" if args.first is not None else "pick")
-        print(
-            f"\u274c Cannot use --{flag} on non-JSON response "
-            f"(Content-Type: {content_type or 'unknown'})",
-            file=sys.stderr,
+        return fail_stderr(
+            f"Cannot use --{flag} on non-JSON response "
+            f"(Content-Type: {content_type or 'unknown'})"
         )
-        return 1
 
     # 9. Pretty-warning for --keys
     if args.pretty and not summary and args.keys:
@@ -396,11 +369,7 @@ def run(args: argparse.Namespace) -> int:
     resp = resp_or_err
 
     if not resp.ok:
-        print(
-            f"\u274c HTTP {resp.status_code}: {resp.text[:200]}",
-            file=sys.stderr,
-        )
-        return 1
+        return fail_stderr(f"HTTP {resp.status_code}: {resp.text[:200]}")
 
     content_type = resp.headers.get("content-type", "")
     raw_text = resp.text
