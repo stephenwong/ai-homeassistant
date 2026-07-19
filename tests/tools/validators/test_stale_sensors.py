@@ -14,7 +14,7 @@ from tools.validators.stale_sensors import StaleSensorValidator
 @pytest.fixture(autouse=True)
 def patch_load_env():
     """Prevent loading real .env files during test runs."""
-    with patch("tools.ha.client.load_env_file") as mock_load:
+    with patch("tools.validators.stale_sensors.load_env_file") as mock_load:
         yield mock_load
 
 
@@ -28,9 +28,10 @@ def setup_env():
     }
     if "CI" in os.environ:
         env["CI"] = "false"
-    for key in ("HA_STALE_FAIL", "HA_STALE_TIMEOUT"):
-        if key in os.environ:
-            env[key] = "false"
+    if "HA_STALE_FAIL" in os.environ:
+        env["HA_STALE_FAIL"] = "false"
+    if "HA_STALE_TIMEOUT" in os.environ:
+        env["HA_STALE_TIMEOUT"] = "2"
     with patch.dict("os.environ", env):
         yield
 
@@ -61,6 +62,23 @@ def _mock_states(states_list) -> MagicMock:
     client = MagicMock()
     client.get_json.return_value = states_list
     return client
+
+
+def _run_stale_validation(
+    config_dir, registry_entries, states, current_time, **validator_options
+):
+    """Write fixtures, run validation with a mocked client and frozen time."""
+    _write_entity_registry(config_dir, registry_entries)
+    mock_client = _mock_states(states)
+    with (
+        patch("tools.validators.stale_sensors.HAClient", return_value=mock_client),
+        patch.object(
+            StaleSensorValidator, "_get_current_time", return_value=current_time
+        ),
+    ):
+        validator = StaleSensorValidator(str(config_dir), **validator_options)
+        result = validator.validate_all()
+    return validator, result
 
 
 def _mock_offline() -> MagicMock:
@@ -147,7 +165,7 @@ def test_oserror_during_states_fetch_degrades(config_dir):
 
 def test_stale_sensor_detected(config_dir):
     """Active sensor that has not updated for > 24 hours triggers warning."""
-    _write_entity_registry(
+    validator, result = _run_stale_validation(
         config_dir,
         [
             {
@@ -157,9 +175,6 @@ def test_stale_sensor_detected(config_dir):
                 "hidden_by": None,
             }
         ],
-    )
-    # Mock states: test_temp last_updated is 25 hours ago
-    mock_client = _mock_states(
         [
             {
                 "entity_id": "sensor.test_temp",
@@ -167,21 +182,18 @@ def test_stale_sensor_detected(config_dir):
                 "last_updated": "2026-06-24T20:00:00+00:00",
                 "attributes": {},
             }
-        ]
+        ],
+        datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC),
     )
-    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
-        v = StaleSensorValidator(str(config_dir))
-        # Freeze target current time to 2026-06-25 21:00:00 UTC (25 hours later)
-        v._get_current_time = MagicMock(
-            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
-        )
-        assert v.validate_all() is True
-        assert any("sensor.test_temp" in w and "stale" in w.lower() for w in v.warnings)
+    assert result is True
+    assert any(
+        "sensor.test_temp" in w and "stale" in w.lower() for w in validator.warnings
+    )
 
 
 def test_healthy_sensor_ignored(config_dir):
     """Active sensor that updated recently is ignored."""
-    _write_entity_registry(
+    validator, result = _run_stale_validation(
         config_dir,
         [
             {
@@ -191,9 +203,6 @@ def test_healthy_sensor_ignored(config_dir):
                 "hidden_by": None,
             }
         ],
-    )
-    # Mock states: last_updated is 1 hour ago
-    mock_client = _mock_states(
         [
             {
                 "entity_id": "sensor.test_temp",
@@ -201,21 +210,17 @@ def test_healthy_sensor_ignored(config_dir):
                 "last_updated": "2026-06-25T20:00:00+00:00",
                 "attributes": {},
             }
-        ]
+        ],
+        datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC),
     )
-    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
-        v = StaleSensorValidator(str(config_dir))
-        v._get_current_time = MagicMock(
-            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
-        )
-        assert v.validate_all() is True
-        assert len(v.warnings) == 0
+    assert result is True
+    assert len(validator.warnings) == 0
 
 
 def test_unavailable_state_flagged_immediately(config_dir):
     """A sensor in unavailable/unknown state must surface at once,
     not wait for threshold_hours to elapse."""
-    _write_entity_registry(
+    validator, _result = _run_stale_validation(
         config_dir,
         [
             {
@@ -225,24 +230,17 @@ def test_unavailable_state_flagged_immediately(config_dir):
                 "hidden_by": None,
             }
         ],
-    )
-    fresh_now = datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
-    mock_client = _mock_states(
         [
             {
                 "entity_id": "sensor.dead_battery",
                 "state": "unavailable",
-                "last_updated": fresh_now.isoformat(),
+                "last_updated": "2026-06-25T21:00:00+00:00",
                 "attributes": {},
             }
-        ]
+        ],
+        datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC),
     )
-    with (
-        patch("tools.validators.stale_sensors.HAClient", return_value=mock_client),
-        patch.object(StaleSensorValidator, "_get_current_time", return_value=fresh_now),
-    ):
-        v = StaleSensorValidator(str(config_dir))
-        v.validate_all()
+    v = validator
     assert any(
         "unavailable" in w or "unknown" in w or "not reporting" in w for w in v.warnings
     ), "unavailable state must surface immediately"
@@ -353,7 +351,7 @@ def test_virtual_platform_ignored(config_dir):
 
 def test_restored_entity_flagged(config_dir):
     """Restored entities are flagged as stale immediately."""
-    _write_entity_registry(
+    validator, result = _run_stale_validation(
         config_dir,
         [
             {
@@ -363,9 +361,6 @@ def test_restored_entity_flagged(config_dir):
                 "hidden_by": None,
             }
         ],
-    )
-    # Restored: True in attributes, but last_updated is 5 mins ago (HA startup time)
-    mock_client = _mock_states(
         [
             {
                 "entity_id": "sensor.restored_temp",
@@ -373,22 +368,19 @@ def test_restored_entity_flagged(config_dir):
                 "last_updated": "2026-06-25T20:55:00+00:00",
                 "attributes": {"restored": True},
             }
-        ]
+        ],
+        datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC),
     )
-    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
-        v = StaleSensorValidator(str(config_dir))
-        v._get_current_time = MagicMock(
-            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
-        )
-        assert v.validate_all() is True
-        assert any(
-            "sensor.restored_temp" in w and "restored" in w.lower() for w in v.warnings
-        )
+    assert result is True
+    assert any(
+        "sensor.restored_temp" in w and "restored" in w.lower()
+        for w in validator.warnings
+    )
 
 
 def test_custom_heartbeat_timestamp(config_dir):
     """Zigbee last_seen attribute is checked if present, catching hidden staleness."""
-    _write_entity_registry(
+    validator, result = _run_stale_validation(
         config_dir,
         [
             {
@@ -398,9 +390,6 @@ def test_custom_heartbeat_timestamp(config_dir):
                 "hidden_by": None,
             }
         ],
-    )
-    # last_updated is fresh, but last_seen (heartbeat) attribute is stale
-    mock_client = _mock_states(
         [
             {
                 "entity_id": "sensor.z2m_temp",
@@ -408,20 +397,18 @@ def test_custom_heartbeat_timestamp(config_dir):
                 "last_updated": "2026-06-25T20:55:00+00:00",
                 "attributes": {"last_seen": "2026-06-24T20:00:00Z"},
             }
-        ]
+        ],
+        datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC),
     )
-    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
-        v = StaleSensorValidator(str(config_dir))
-        v._get_current_time = MagicMock(
-            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
-        )
-        assert v.validate_all() is True
-        assert any("sensor.z2m_temp" in w and "stale" in w.lower() for w in v.warnings)
+    assert result is True
+    assert any(
+        "sensor.z2m_temp" in w and "stale" in w.lower() for w in validator.warnings
+    )
 
 
 def test_numeric_heartbeat_timestamp(config_dir):
     """Validator parses integer/float epochs in heartbeats."""
-    _write_entity_registry(
+    validator, result = _run_stale_validation(
         config_dir,
         [
             {
@@ -431,9 +418,6 @@ def test_numeric_heartbeat_timestamp(config_dir):
                 "hidden_by": None,
             }
         ],
-    )
-    # epoch seconds representation
-    mock_client = _mock_states(
         [
             {
                 "entity_id": "sensor.numeric_temp",
@@ -441,17 +425,13 @@ def test_numeric_heartbeat_timestamp(config_dir):
                 "last_updated": "2026-06-25T20:55:00+00:00",
                 "attributes": {"last_reported": 1782331200},  # epoch seconds
             }
-        ]
+        ],
+        datetime.fromtimestamp(1782421200, tz=UTC),
     )
-    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
-        v = StaleSensorValidator(str(config_dir))
-        v._get_current_time = MagicMock(
-            return_value=datetime.fromtimestamp(1782421200, tz=UTC)
-        )
-        assert v.validate_all() is True
-        assert any(
-            "sensor.numeric_temp" in w and "stale" in w.lower() for w in v.warnings
-        )
+    assert result is True
+    assert any(
+        "sensor.numeric_temp" in w and "stale" in w.lower() for w in validator.warnings
+    )
 
 
 def test_ci_environment_skips_validation(config_dir):
@@ -594,7 +574,7 @@ def test_ha_stale_timeout_env_overrides_default(config_dir):
 
 def test_fail_on_stale_mode_returns_false_when_stale(config_dir):
     """fail_on_stale=True + stale sensors → validate_all returns False."""
-    _write_entity_registry(
+    validator, result = _run_stale_validation(
         config_dir,
         [
             {
@@ -604,8 +584,6 @@ def test_fail_on_stale_mode_returns_false_when_stale(config_dir):
                 "hidden_by": None,
             }
         ],
-    )
-    mock_client = _mock_states(
         [
             {
                 "entity_id": "sensor.test_temp",
@@ -613,20 +591,17 @@ def test_fail_on_stale_mode_returns_false_when_stale(config_dir):
                 "last_updated": "2026-06-24T20:00:00+00:00",
                 "attributes": {},
             }
-        ]
+        ],
+        datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC),
+        fail_on_stale=True,
     )
-    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
-        v = StaleSensorValidator(str(config_dir), fail_on_stale=True)
-        v._get_current_time = MagicMock(
-            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
-        )
-        assert v.validate_all() is False
-        assert any("failed" in e.lower() for e in v.errors)
+    assert result is False
+    assert any("failed" in e.lower() for e in validator.errors)
 
 
 def test_fail_on_stale_off_keeps_diagnostic(config_dir):
     """fail_on_stale=False (default) returns True even when stale."""
-    _write_entity_registry(
+    validator, result = _run_stale_validation(
         config_dir,
         [
             {
@@ -636,8 +611,6 @@ def test_fail_on_stale_off_keeps_diagnostic(config_dir):
                 "hidden_by": None,
             }
         ],
-    )
-    mock_client = _mock_states(
         [
             {
                 "entity_id": "sensor.test_temp",
@@ -645,20 +618,17 @@ def test_fail_on_stale_off_keeps_diagnostic(config_dir):
                 "last_updated": "2026-06-24T20:00:00+00:00",
                 "attributes": {},
             }
-        ]
+        ],
+        datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC),
+        fail_on_stale=False,
     )
-    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
-        v = StaleSensorValidator(str(config_dir), fail_on_stale=False)
-        v._get_current_time = MagicMock(
-            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
-        )
-        assert v.validate_all() is True
-        assert any("sensor.test_temp" in w for w in v.warnings)
+    assert result is True
+    assert any("sensor.test_temp" in w for w in validator.warnings)
 
 
 def test_fail_on_stale_no_stale_returns_true(config_dir):
     """fail_on_stale=True with no stale sensors returns True."""
-    _write_entity_registry(
+    validator, result = _run_stale_validation(
         config_dir,
         [
             {
@@ -668,8 +638,6 @@ def test_fail_on_stale_no_stale_returns_true(config_dir):
                 "hidden_by": None,
             }
         ],
-    )
-    mock_client = _mock_states(
         [
             {
                 "entity_id": "sensor.test_temp",
@@ -677,15 +645,12 @@ def test_fail_on_stale_no_stale_returns_true(config_dir):
                 "last_updated": "2026-06-25T20:00:00+00:00",
                 "attributes": {},
             }
-        ]
+        ],
+        datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC),
+        fail_on_stale=True,
     )
-    with patch("tools.validators.stale_sensors.HAClient", return_value=mock_client):
-        v = StaleSensorValidator(str(config_dir), fail_on_stale=True)
-        v._get_current_time = MagicMock(
-            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC)
-        )
-        assert v.validate_all() is True
-        assert len(v.warnings) == 0
+    assert result is True
+    assert len(validator.warnings) == 0
 
 
 def test_fail_on_stale_env_var_picked_up_after_load_env(config_dir, monkeypatch):
@@ -786,23 +751,15 @@ def test_main_dispatch_with_ci_short_circuit(monkeypatch):
 # Timestamp parsing variants
 
 
-def test_parse_timestamp_milliseconds_epoch():
-    """parse_timestamp normalises ms-epoch timestamps by dividing by 1000."""
+@pytest.mark.parametrize(
+    "value",
+    [1782331200000, "1782331200", "1782331200000"],
+    ids=["integer-milliseconds", "seconds-string", "milliseconds-string"],
+)
+def test_parse_timestamp_epoch_variants(value):
+    """Equivalent epoch forms normalize to the same UTC timestamp."""
     v = StaleSensorValidator()
-    result = v.parse_timestamp(1782331200000)
-    assert result == datetime.fromtimestamp(1782331200, tz=UTC)
-
-
-def test_parse_timestamp_numeric_string():
-    """parse_timestamp handles numeric strings via float conversion."""
-    v = StaleSensorValidator()
-    assert v.parse_timestamp("1782331200") == datetime.fromtimestamp(1782331200, tz=UTC)
-
-
-def test_parse_timestamp_ms_string():
-    """Millisecond epoch as a string is normalised by dividing by 1000."""
-    v = StaleSensorValidator()
-    result = v.parse_timestamp("1782331200000")
+    result = v.parse_timestamp(value)
     assert result == datetime.fromtimestamp(1782331200, tz=UTC)
 
 
@@ -836,20 +793,19 @@ class TestParseIsoString:
 
 
 class TestParseEpoch:
-    def test_seconds_epoch(self):
+    @pytest.mark.parametrize(
+        ("value", "expected_seconds"),
+        [
+            (1782331200, 1782331200),
+            (1782331200000, 1782331200),
+            (1_000_000_000, 1_000_000_000),
+        ],
+        ids=["seconds", "milliseconds", "below-millisecond-threshold"],
+    )
+    def test_epoch_variants(self, value, expected_seconds):
         v = StaleSensorValidator()
-        dt = v._parse_epoch(1782331200)
-        assert dt == datetime.fromtimestamp(1782331200, tz=UTC)
-
-    def test_ms_epoch_divides_by_1000(self):
-        v = StaleSensorValidator()
-        dt = v._parse_epoch(1782331200000)
-        assert dt == datetime.fromtimestamp(1782331200, tz=UTC)
-
-    def test_seconds_epoch_below_threshold(self):
-        v = StaleSensorValidator()
-        dt = v._parse_epoch(1_000_000_000)
-        assert dt == datetime.fromtimestamp(1_000_000_000, tz=UTC)
+        dt = v._parse_epoch(value)
+        assert dt == datetime.fromtimestamp(expected_seconds, tz=UTC)
 
 
 def test_parse_timestamp_unsupported_type_returns_none():

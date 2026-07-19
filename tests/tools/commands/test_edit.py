@@ -67,6 +67,26 @@ def _write_file(cfg_dir, basename, content):
 
 
 class TestDispatchByFiletype:
+    def test_supplied_filetype_skips_shape_detection(self, tmp_path, monkeypatch):
+        from tools.commands import edit
+        from tools.ha.yaml_editor import YAMLEditor
+
+        editor = YAMLEditor(_write_file(tmp_path, "scripts", "{}"))
+        monkeypatch.setattr(
+            edit,
+            "_detect_file_type",
+            lambda _editor: pytest.fail("shape should already be known"),
+        )
+        calls = []
+        edit._dispatch_by_filetype(
+            editor,
+            "foo",
+            file_type="dict",
+            on_dict=lambda _ed, al: calls.append(f"dict:{al}"),
+            on_list=lambda _ed, al: calls.append(f"list:{al}"),
+        )
+        assert calls == ["dict:foo"]
+
     def test_dispatches_to_on_dict_for_scripts(self, tmp_path):
         from tools.commands.edit import _dispatch_by_filetype
         from tools.ha.yaml_editor import YAMLEditor
@@ -278,6 +298,22 @@ class TestRunAdd:
         assert len(reloaded) == 2
         assert reloaded[1]["alias"] == "New"
 
+    def test_add_detects_existing_file_shape_once(self, tmp_path, monkeypatch):
+        from tools.commands import edit
+
+        _write_file(tmp_path, "automations", "[]")
+        calls = 0
+        original = edit._detect_file_type
+
+        def detect_once(editor):
+            nonlocal calls
+            calls += 1
+            return original(editor)
+
+        monkeypatch.setattr(edit, "_detect_file_type", detect_once)
+        assert run(self._args(tmp_path, json_str='{"alias":"New"}')) == 0
+        assert calls == 1
+
 
 class TestRunRemove:
     def _args(self, cfg_dir, alias=None):
@@ -374,6 +410,21 @@ class TestEdgeCases:
         err = capsys.readouterr().err
         assert "could not parse" in err.lower() or "yaml" in err.lower()
         assert "Traceback" not in err
+
+    def test_execution_file_not_found_reports_read_error(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        _write_file(tmp_path, "automations", "[]")
+
+        def missing(_editor):
+            raise FileNotFoundError("file vanished")
+
+        monkeypatch.setattr("tools.commands.edit.YAMLEditor.load", missing)
+        result = run(self._ns(config=str(tmp_path), show=True))
+        assert result == 1
+        err = capsys.readouterr().err.lower()
+        assert "could not read" in err
+        assert "could not parse" not in err
 
     def test_nonexistent_file_errors(self, tmp_path, capsys):
         args = self._ns(config=str(tmp_path), show=True)

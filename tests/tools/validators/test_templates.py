@@ -28,6 +28,16 @@ def _mock_render(success: bool = True, message: str = "") -> MagicMock:
     return client
 
 
+def _run_template_validation(config_dir, data, *, success=True, message=""):
+    """Write one automation and run template validation with a mocked client."""
+    _write_automation(config_dir, data)
+    client = _mock_render(success=success, message=message)
+    with patch("tools.validators.templates.HAClient.from_env", return_value=client):
+        validator = TemplateValidator(str(config_dir))
+        result = validator.validate_all()
+    return validator, result
+
+
 class TestFileDeps:
     def test_file_deps_empty(self):
         v = TemplateValidator()
@@ -36,7 +46,7 @@ class TestFileDeps:
 
 class TestTemplateValidation:
     def test_valid_template_passes(self, config_dir):
-        _write_automation(
+        validator, result = _run_template_validation(
             config_dir,
             [
                 {
@@ -49,14 +59,11 @@ class TestTemplateValidation:
                 },
             ],
         )
-        client = _mock_render(success=True)
-        with patch("tools.validators.templates.HAClient.from_env", return_value=client):
-            v = TemplateValidator(str(config_dir))
-            assert v.validate_all() is True
-            assert len(v.errors) == 0
+        assert result is True
+        assert len(validator.errors) == 0
 
     def test_syntax_error_fails(self, config_dir):
-        _write_automation(
+        validator, result = _run_template_validation(
             config_dir,
             [
                 {
@@ -68,15 +75,14 @@ class TestTemplateValidation:
                     ],
                 },
             ],
+            success=False,
+            message="syntax error: unexpected end of template",
         )
-        client = _mock_render(False, "syntax error: unexpected end of template")
-        with patch("tools.validators.templates.HAClient.from_env", return_value=client):
-            v = TemplateValidator(str(config_dir))
-            assert v.validate_all() is False
-            assert any("syntax error" in e.lower() for e in v.errors)
+        assert result is False
+        assert any("syntax error" in e.lower() for e in validator.errors)
 
     def test_runtime_undefined_warns(self, config_dir):
-        _write_automation(
+        validator, result = _run_template_validation(
             config_dir,
             [
                 {
@@ -91,16 +97,15 @@ class TestTemplateValidation:
                     ],
                 },
             ],
+            success=False,
+            message="'trigger' is undefined",
         )
-        client = _mock_render(False, "'trigger' is undefined")
-        with patch("tools.validators.templates.HAClient.from_env", return_value=client):
-            v = TemplateValidator(str(config_dir))
-            assert v.validate_all() is True
-            assert any("trigger" in w for w in v.warnings)
-            assert len(v.errors) == 0
+        assert result is True
+        assert any("trigger" in w for w in validator.warnings)
+        assert len(validator.errors) == 0
 
     def test_unknown_filter_is_error(self, config_dir):
-        _write_automation(
+        validator, result = _run_template_validation(
             config_dir,
             [
                 {
@@ -115,15 +120,14 @@ class TestTemplateValidation:
                     ],
                 },
             ],
+            success=False,
+            message="No filter named 'hash'",
         )
-        client = _mock_render(False, "No filter named 'hash'")
-        with patch("tools.validators.templates.HAClient.from_env", return_value=client):
-            v = TemplateValidator(str(config_dir))
-            assert v.validate_all() is False
-            assert any("no filter named" in e.lower() for e in v.errors)
+        assert result is False
+        assert any("no filter named" in e.lower() for e in validator.errors)
 
     def test_extracts_from_value_template(self, config_dir):
-        _write_automation(
+        validator, result = _run_template_validation(
             config_dir,
             [
                 {
@@ -137,13 +141,11 @@ class TestTemplateValidation:
                 },
             ],
         )
-        client = _mock_render(True)
-        with patch("tools.validators.templates.HAClient.from_env", return_value=client):
-            v = TemplateValidator(str(config_dir))
-            assert v.validate_all() is True
+        assert result is True
+        assert not validator.errors
 
     def test_skips_non_template_strings(self, config_dir):
-        _write_automation(
+        validator, result = _run_template_validation(
             config_dir,
             [
                 {
@@ -156,15 +158,12 @@ class TestTemplateValidation:
                 },
             ],
         )
-        client = _mock_render()
-        with patch("tools.validators.templates.HAClient.from_env", return_value=client):
-            v = TemplateValidator(str(config_dir))
-            assert v.validate_all() is True
-            assert len(v.info) == 0  # no "skipped" — we connected to HA
-            assert len(v.errors) == 0
+        assert result is True
+        assert len(validator.info) == 0  # no "skipped" — we connected to HA
+        assert len(validator.errors) == 0
 
     def test_multiple_templates_all_valid(self, config_dir):
-        _write_automation(
+        validator, result = _run_template_validation(
             config_dir,
             [
                 {
@@ -194,10 +193,8 @@ class TestTemplateValidation:
                 },
             ],
         )
-        client = _mock_render(True)
-        with patch("tools.validators.templates.HAClient.from_env", return_value=client):
-            v = TemplateValidator(str(config_dir))
-            assert v.validate_all() is True
+        assert result is True
+        assert not validator.errors
 
 
 class TestRenderErrors:

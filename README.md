@@ -360,6 +360,8 @@ uv run python tools/prune_backups.py --apply --min-keep 5   # defense-in-depth f
 
 **Prefer `ha_cli edit` over manual YAML editing** — it uses `ruamel.yaml` for round-trip editing that preserves comments, formatting, and key ordering. Operates on `automations.yaml` (list) and `scripts.yaml` (dict).
 
+Edit errors distinguish a missing target (`file not found`), an execution-time read failure (`could not read`), and invalid YAML (`could not parse`).
+
 ```bash
 # List all automation aliases
 uv run python tools/ha_cli.py edit automations

@@ -136,6 +136,8 @@ SHA256-hash cache in `config/.cache/validators/<ClassName>.json`. Transparent â€
 ### YAML Editing (ha_cli edit)
 
 **Prefer `ha_cli edit`** â€” round-trip YAML via `ruamel.yaml`, preserves comments/formatting.
+Edit diagnostics distinguish a missing target (`file not found`), an execution-time
+read failure (`could not read`), and invalid YAML (`could not parse`).
 ```bash
 uv run python tools/ha_cli.py edit automations                  # list aliases
 uv run python tools/ha_cli.py edit automations "Turn on Alarm"  # show one

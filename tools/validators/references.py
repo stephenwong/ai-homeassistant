@@ -541,10 +541,10 @@ class ReferenceValidator(ValidatorBase):
                 }
 
             summary[domain]["count"] += 1
-            if entity_data.get("disabled_by") is None:
-                summary[domain]["enabled"] += 1
-            else:
+            if self._is_disabled(entity_data):
                 summary[domain]["disabled"] += 1
+            else:
+                summary[domain]["enabled"] += 1
 
             # Add some examples
             if len(summary[domain]["examples"]) < 3:

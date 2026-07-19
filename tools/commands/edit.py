@@ -145,7 +145,9 @@ def run(args: argparse.Namespace) -> int:
 
         return 1  # pragma: no cover  # unreachable; satisfies type checker
 
-    except (FileNotFoundError, YAMLError) as e:
+    except FileNotFoundError as e:
+        return fail_stderr(f"could not read {target_file}: {e}")
+    except YAMLError as e:
         return fail_stderr(f"could not parse {target_file}: {e}")
 
 
@@ -163,11 +165,12 @@ def _dispatch_by_filetype[T](
     editor: YAMLEditor,
     alias: str,
     *,
+    file_type: str | None = None,
     on_dict: Callable[[YAMLEditor, str], T],
     on_list: Callable[[YAMLEditor, str], T],
 ) -> T:
     """Run the mapping callback, or the list fallback for other file shapes."""
-    if _detect_file_type(editor) == "dict":
+    if (file_type if file_type is not None else _detect_file_type(editor)) == "dict":
         return on_dict(editor, alias)
     return on_list(editor, alias)
 
@@ -229,7 +232,11 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
 
         if editor.path.exists():
             label = _dispatch_by_filetype(
-                editor, "", on_dict=add_script, on_list=add_automation
+                editor,
+                "",
+                file_type=ftype,
+                on_dict=add_script,
+                on_list=add_automation,
             )
         elif ftype == "dict":
             label = add_script(editor, "")

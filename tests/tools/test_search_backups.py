@@ -21,6 +21,25 @@ def _make_backup(tmp_path, files_dict, name="test.tar.gz"):
     return tar_path
 
 
+def _make_backup_record(tmp_path, files_dict, *, name="test.tar.gz"):
+    """Create a backup and its standard metadata for main-flow tests."""
+    tar_path = _make_backup(tmp_path, files_dict, name=name)
+    return {
+        "path": tar_path,
+        "filename": tar_path.name,
+        "timestamp": datetime(2026, 2, 1),
+    }
+
+
+def _run_main(monkeypatch, backups, *arguments):
+    """Invoke search_backups.main with a controlled argv and backup list."""
+    monkeypatch.setattr("sys.argv", ["search_backups", *arguments])
+    with patch("tools.search_backups.get_backups", return_value=backups):
+        from tools.search_backups import main
+
+        return main()
+
+
 class TestSearchBackup:
     def test_finds_pattern_in_yaml(self, tmp_path):
         tar_path = _make_backup(
@@ -195,114 +214,38 @@ class TestSearchBackupsMainFlow:
     """Test the main() function flow with mocked backups."""
 
     def test_main_no_backups(self, tmp_path, capsys, monkeypatch):
-        from unittest.mock import patch
-
-        monkeypatch.setattr("sys.argv", ["search_backups", "pattern"])
-        with patch("tools.search_backups.get_backups", return_value=[]):
-            from tools.search_backups import main
-
-            result = main()
-            assert result == 1
+        assert _run_main(monkeypatch, [], "pattern") == 1
 
     def test_main_with_matches(self, tmp_path, capsys, monkeypatch):
-        from unittest.mock import patch
-
-        tar_path = _make_backup(tmp_path, {"config/test.yaml": "sensor.temperature\n"})
         backups = [
-            {
-                "path": tar_path,
-                "filename": tar_path.name,
-                "timestamp": datetime(2026, 2, 1),
-            }
+            _make_backup_record(tmp_path, {"config/test.yaml": "sensor.temperature\n"})
         ]
-        monkeypatch.setattr("sys.argv", ["search_backups", "sensor"])
-        with patch("tools.search_backups.get_backups", return_value=backups):
-            from tools.search_backups import main
-
-            result = main()
-            assert result == 0
-            captured = capsys.readouterr()
-            assert "MATCH" in captured.out
+        assert _run_main(monkeypatch, backups, "sensor") == 0
+        assert "MATCH" in capsys.readouterr().out
 
     def test_main_files_only(self, tmp_path, capsys, monkeypatch):
-        from unittest.mock import patch
-
-        tar_path = _make_backup(tmp_path, {"config/test.yaml": "sensor.test\n"})
-        backups = [
-            {
-                "path": tar_path,
-                "filename": tar_path.name,
-                "timestamp": datetime(2026, 2, 1),
-            }
-        ]
-        monkeypatch.setattr("sys.argv", ["search_backups", "--files-only", "sensor"])
-        with patch("tools.search_backups.get_backups", return_value=backups):
-            from tools.search_backups import main
-
-            result = main()
-            assert result == 0
+        backups = [_make_backup_record(tmp_path, {"config/test.yaml": "sensor.test\n"})]
+        assert _run_main(monkeypatch, backups, "--files-only", "sensor") == 0
 
     def test_main_with_context(self, tmp_path, capsys, monkeypatch):
-        from unittest.mock import patch
-
-        tar_path = _make_backup(
-            tmp_path,
-            {"config/test.yaml": "before\nsensor.test\nafter\n"},
-        )
         backups = [
-            {
-                "path": tar_path,
-                "filename": tar_path.name,
-                "timestamp": datetime(2026, 2, 1),
-            }
+            _make_backup_record(
+                tmp_path,
+                {"config/test.yaml": "before\nsensor.test\nafter\n"},
+            )
         ]
-        monkeypatch.setattr("sys.argv", ["search_backups", "-C", "1", "sensor"])
-        with patch("tools.search_backups.get_backups", return_value=backups):
-            from tools.search_backups import main
-
-            result = main()
-            assert result == 0
+        assert _run_main(monkeypatch, backups, "-C", "1", "sensor") == 0
 
     def test_main_no_matches(self, tmp_path, capsys, monkeypatch):
-        from unittest.mock import patch
-
-        tar_path = _make_backup(tmp_path, {"config/test.yaml": "nothing here\n"})
         backups = [
-            {
-                "path": tar_path,
-                "filename": tar_path.name,
-                "timestamp": datetime(2026, 2, 1),
-            }
+            _make_backup_record(tmp_path, {"config/test.yaml": "nothing here\n"})
         ]
-        monkeypatch.setattr("sys.argv", ["search_backups", "nonexistent_pattern"])
-        with patch("tools.search_backups.get_backups", return_value=backups):
-            from tools.search_backups import main
-
-            result = main()
-            assert result == 0
-            captured = capsys.readouterr()
-            assert "Found in 0" in captured.err
+        assert _run_main(monkeypatch, backups, "nonexistent_pattern") == 0
+        assert "Found in 0" in capsys.readouterr().err
 
     def test_main_all_files(self, tmp_path, capsys, monkeypatch):
-        from unittest.mock import patch
-
-        tar_path = _make_backup(
-            tmp_path,
-            {"config/test.sh": "sensor_match\n"},
-        )
-        backups = [
-            {
-                "path": tar_path,
-                "filename": tar_path.name,
-                "timestamp": datetime(2026, 2, 1),
-            }
-        ]
-        monkeypatch.setattr("sys.argv", ["search_backups", "--all", "sensor_match"])
-        with patch("tools.search_backups.get_backups", return_value=backups):
-            from tools.search_backups import main
-
-            result = main()
-            assert result == 0
+        backups = [_make_backup_record(tmp_path, {"config/test.sh": "sensor_match\n"})]
+        assert _run_main(monkeypatch, backups, "--all", "sensor_match") == 0
 
     def test_main_invalid_regex(self, capsys, monkeypatch):
         monkeypatch.setattr("sys.argv", ["search_backups", "[invalid"])
@@ -400,23 +343,17 @@ class TestUnreadableBackups:
 
     def test_main_reports_unreadable_count(self, tmp_path, monkeypatch, capsys):
         """Corrupt backups are reported as unreadable."""
+        (tmp_path / "bad.tar.gz").write_text("not a real tar file")
         backups = [
             {
                 "path": tmp_path / "bad.tar.gz",
                 "filename": "bad.tar.gz",
                 "timestamp": datetime(2026, 2, 1),
-            },
+            }
         ]
-        (tmp_path / "bad.tar.gz").write_text("not a real tar file")
-
-        monkeypatch.setattr("sys.argv", ["search_backups", "pattern"])
-        with patch("tools.search_backups.get_backups", return_value=backups):
-            from tools.search_backups import main
-
-            result = main()
-            assert result == 1  # unreadable count > 0
-            _, err = capsys.readouterr()
-            assert "unreadable" in err
+        assert _run_main(monkeypatch, backups, "pattern") == 1
+        _, err = capsys.readouterr()
+        assert "unreadable" in err
 
 
 class TestMatchResultShape:
