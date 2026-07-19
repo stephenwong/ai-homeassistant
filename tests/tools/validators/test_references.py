@@ -110,6 +110,66 @@ class TestIsUUIDFormat:
         assert validator.is_uuid_format("88a52f17-bf43-cb27-6836-f06ac5c0744X") is False
 
 
+class TestCollectStringValues:
+    """W3.3: _collect_string_values normalises str/list/dict into a set."""
+
+    def test_str_passes_through_when_not_skipped(self, validator):
+        result = validator._collect_string_values("light.kitchen", skip=lambda s: False)
+        assert result == {"light.kitchen"}
+
+    def test_str_skipped(self, validator):
+        result = validator._collect_string_values(
+            "!secret x", skip=lambda s: s.startswith("!")
+        )
+        assert result == set()
+
+    def test_list_filters_non_strings_and_skipped(self, validator):
+        result = validator._collect_string_values(
+            ["light.a", 42, "light.b", "!skip"],
+            skip=lambda s: s.startswith("!"),
+        )
+        assert result == {"light.a", "light.b"}
+
+    def test_dict_iterates_keys_only(self, validator):
+        result = validator._collect_string_values(
+            {"light.kitchen": "on", "light.living": "off"},
+            skip=lambda s: False,
+        )
+        assert result == {"light.kitchen", "light.living"}
+
+    def test_none_returns_empty(self, validator):
+        assert validator._collect_string_values(None, skip=lambda s: False) == set()
+
+
+class TestDisabledHiddenPredicates:
+    """W3.4: disabled/hidden predicates use ``is not None`` uniformly."""
+
+    def test_is_disabled_none_is_false(self, validator):
+        assert validator._is_disabled({"disabled_by": None}) is False
+
+    def test_is_disabled_string_is_true(self, validator):
+        assert validator._is_disabled({"disabled_by": "user"}) is True
+
+    def test_is_disabled_empty_string_is_true(self, validator):
+        """W3.4: empty string is treated as disabled by the ``is not None`` predicate.
+        This matches the entity-branch behavior (``is not None``),
+        not the old device-branch truthy check which was the outlier."""
+        assert validator._is_disabled({"disabled_by": ""}) is True
+
+    def test_is_hidden_none_is_false(self, validator):
+        assert validator._is_hidden({"hidden_by": None}) is False
+
+    def test_is_hidden_empty_string_is_true(self, validator):
+        """W3.4: empty string is treated as hidden by the ``is not None`` predicate."""
+        assert validator._is_hidden({"hidden_by": ""}) is True
+
+    def test_is_hidden_handles_missing_key(self, validator):
+        assert validator._is_hidden({}) is False
+
+    def test_is_hidden_string_is_true(self, validator):
+        assert validator._is_hidden({"hidden_by": "user"}) is True
+
+
 class TestExtractEntityRegistryIds:
     def test_device_automation(self, validator):
         data = {
@@ -1258,6 +1318,17 @@ def test_references_main_accepts_quiet(monkeypatch, tmp_path):
     (tmp_path / "configuration.yaml").write_text("homeassistant:\n")
     monkeypatch.setattr("sys.argv", ["ref_validator", str(tmp_path), "--quiet"])
     assert main() == 0
+
+
+class TestDottedStatesForm:
+    """W3.5: dotted-form ``states.X.Y`` must trigger template extraction."""
+
+    def test_dotted_states_form_detected(self, validator):
+        """A bare ``states.light.kitchen`` (no parens) must be detected
+        as a template and its entity extracted."""
+        data = {"value": "{{ states.light.kitchen }}"}
+        refs = validator.extract_entity_references(data)
+        assert "light.kitchen" in refs
 
 
 class TestExtractEntityReferencesNesting:

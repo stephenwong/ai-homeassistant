@@ -111,18 +111,14 @@ def _blob_hash(keys: list[str | bytes]) -> str:
 
 
 def save_blob(config_dir: Path, name: str, data) -> None:
-    """Save arbitrary JSON-serializable data to the entity cache.
+    """Save arbitrary JSON-serializable data to the entity cache atomically.
 
-    Writes to ``{config_dir}/{BLOB_CACHE_DIR}/{name}.json``.  Creates
-    the cache directory if needed.  Writes a warning to stderr on failure.
+    Writes via :func:`tools.common.atomic_write_text` (temp + fsync +
+    ``os.replace``) so a crash mid-write never leaves a truncated cache file.
     """
     path = config_dir / BLOB_CACHE_DIR / f"{name}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-    except OSError as e:
-        print(f"WARN: failed to write cache {path}: {e}", file=sys.stderr)
+    atomic_write_text(path, json.dumps(data))
 
 
 def load_blob(config_dir: Path, name: str):

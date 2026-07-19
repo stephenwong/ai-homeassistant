@@ -206,6 +206,18 @@ def test_scene_name_slugified(tmp_path):
     assert "scene.evening_mode" in entities
 
 
+def test_scene_falls_back_when_no_name_field(tmp_path):
+    """W3.2 characterization: a scene without `name` is silently skipped."""
+    (tmp_path / ".storage").mkdir(exist_ok=True)
+    (tmp_path / "scenes.yaml").write_text(
+        "- entities:\n    light.kitchen: 'on'\n"  # no `name`
+    )
+    w, i = [], []
+    ext = EntityDefinitionExtractor(tmp_path, tmp_path / ".storage", w, i)
+    entities = ext.get_config_defined_entities()
+    assert not any(e.startswith("scene.") for e in entities)
+
+
 def test_extracts_zone_from_config_yaml(tmp_path):
     (tmp_path / ".storage").mkdir(exist_ok=True)
     (tmp_path / "configuration.yaml").write_text("zone:\n  - name: Work\n")

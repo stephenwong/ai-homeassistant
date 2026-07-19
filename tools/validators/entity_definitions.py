@@ -189,15 +189,17 @@ class EntityDefinitionExtractor:
         # need it.
         config_data = self._load_config_yaml()
 
-        # Run all five file reads concurrently (each targets a different file).
+        # _extract_from_configuration operates on already-loaded dict data (no I/O).
+        # Run it inline instead of submitting to the thread pool.
+        config_entities = self._extract_from_configuration(config_data)
+
+        # Run the four file-reading extractions concurrently.
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            f_config = executor.submit(self._extract_from_configuration, config_data)
             f_auto = executor.submit(self._extract_automation_entities, config_data)
             f_script = executor.submit(self._extract_script_entities, config_data)
             f_scene = executor.submit(self._extract_scene_entities, config_data)
             f_zone = executor.submit(self._extract_zone_entities, config_data)
 
-        config_entities = f_config.result()
         automation_entities = f_auto.result()
         script_entities = f_script.result()
         scene_entities = f_scene.result()
@@ -398,52 +400,73 @@ class EntityDefinitionExtractor:
 
         return entities
 
-    def _extract_automation_entities(self, config_data: dict | None = None) -> set[str]:
-        """Extract automation entities from automations.yaml.
+    def _extract_named_entities(
+        self,
+        config_data: dict | None,
+        *,
+        domain: str,
+        config_key: str,
+        name_field: str,
+        file_name: str,
+        allow_id_fallback: bool = False,
+    ) -> set[str]:
+        """Extract entities named via *name_field* from a YAML list.
 
-        Per HA docs: The 'id' field is a unique identifier for UI customization -
-        it is NOT the entity_id. Entity_id is derived from alias (friendly name).
-        See: https://www.home-assistant.io/docs/automation/yaml/
-
-        When *config_data* contains an ``automation`` key with a ``!include*``
-        tag, resolves the include and extracts entities from the resolved data.
+        Centralises the resolve-include → file-fallback loop shared by
+        automation/scene extraction. When *allow_id_fallback* is True
+        (automation-only), an item with empty *name_field* but a non-empty
+        ``id`` falls back to slugifying the id.
         """
         entities: set[str] = set()
 
-        # New: honour !include* in configuration.yaml for the automation key.
         if isinstance(config_data, dict):
-            resolved = self._resolve_include(config_data.get("automation"))
+            resolved = self._resolve_include(config_data.get(config_key))
             if resolved is not None:
                 data = resolved if isinstance(resolved, list) else [resolved]
-                for automation in data:
-                    if isinstance(automation, dict):
-                        alias = automation.get("alias", "")
-                        if alias:
-                            entity_id = self._make_entity_id("automation", alias)
+                for item in data:
+                    if isinstance(item, dict):
+                        name = item.get(name_field, "")
+                        if name:
+                            entity_id = self._make_entity_id(domain, name)
+                            if entity_id:
+                                entities.add(entity_id)
+                        elif allow_id_fallback and item.get("id"):
+                            entity_id = self._make_entity_id(
+                                domain, "", explicit_id=item.get("id")
+                            )
                             if entity_id:
                                 entities.add(entity_id)
                 return entities
 
-        automations_file = self.config_dir / "automations.yaml"
-
-        if automations_file.exists():
-            data = self._load_yaml_file(automations_file)
+        file_path = self.config_dir / file_name
+        if file_path.exists():
+            data = self._load_yaml_file(file_path)
             if isinstance(data, list):
-                for automation in data:
-                    if isinstance(automation, dict):
-                        alias = automation.get("alias", "")
-                        if alias:
-                            entity_id = self._make_entity_id("automation", alias)
+                for item in data:
+                    if isinstance(item, dict):
+                        name = item.get(name_field, "")
+                        if name:
+                            entity_id = self._make_entity_id(domain, name)
                             if entity_id:
                                 entities.add(entity_id)
-                        elif automation.get("id"):
+                        elif allow_id_fallback and item.get("id"):
                             entity_id = self._make_entity_id(
-                                "automation", "", explicit_id=automation.get("id")
+                                domain, "", explicit_id=item.get("id")
                             )
                             if entity_id:
                                 entities.add(entity_id)
-
         return entities
+
+    def _extract_automation_entities(self, config_data: dict | None = None) -> set[str]:
+        """Extract automation entities from automations.yaml."""
+        return self._extract_named_entities(
+            config_data,
+            domain="automation",
+            config_key="automation",
+            name_field="alias",
+            file_name="automations.yaml",
+            allow_id_fallback=True,
+        )
 
     def _extract_script_entities(self, config_data: dict | None = None) -> set[str]:
         """Extract script entities from scripts.yaml."""
@@ -474,40 +497,15 @@ class EntityDefinitionExtractor:
         return entities
 
     def _extract_scene_entities(self, config_data: dict | None = None) -> set[str]:
-        """Extract scene entities from scenes.yaml.
-
-        Like automations, the 'id' field is for UI customization,
-        not the entity_id. Entity_id is derived from friendly name.
-        """
-        entities: set[str] = set()
-
-        if isinstance(config_data, dict):
-            resolved = self._resolve_include(config_data.get("scene"))
-            if resolved is not None:
-                data = resolved if isinstance(resolved, list) else [resolved]
-                for scene in data:
-                    if isinstance(scene, dict):
-                        name = scene.get("name", "")
-                        if name:
-                            entity_id = self._make_entity_id("scene", name)
-                            if entity_id:
-                                entities.add(entity_id)
-                return entities
-
-        scenes_file = self.config_dir / "scenes.yaml"
-
-        if scenes_file.exists():
-            data = self._load_yaml_file(scenes_file)
-            if isinstance(data, list):
-                for scene in data:
-                    if isinstance(scene, dict):
-                        name = scene.get("name", "")
-                        if name:
-                            entity_id = self._make_entity_id("scene", name)
-                            if entity_id:
-                                entities.add(entity_id)
-
-        return entities
+        """Extract scene entities from scenes.yaml."""
+        return self._extract_named_entities(
+            config_data,
+            domain="scene",
+            config_key="scene",
+            name_field="name",
+            file_name="scenes.yaml",
+            allow_id_fallback=False,
+        )
 
     def _extract_zone_entities(self, config_data: dict | None) -> set[str]:
         """Extract zone entities from configuration and storage.

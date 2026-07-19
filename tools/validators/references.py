@@ -7,6 +7,7 @@ Validates that all entity references in configuration files actually exist.
 import json
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
@@ -211,6 +212,28 @@ class ReferenceValidator(ValidatorBase):
             or value in self.SPECIAL_KEYWORDS
         )
 
+    @staticmethod
+    def _collect_string_values(value: Any, *, skip: Callable[[str], bool]) -> set[str]:
+        """Flatten *value* (str/list/dict-keys) into a set of strings.
+
+        - str: ``{value}`` if not skipped.
+        - list: union over items that are non-skipped strings.
+        - dict: union over keys that are non-skipped strings.
+        """
+        out: set[str] = set()
+        if isinstance(value, str):
+            if not skip(value):
+                out.add(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, str) and not skip(item):
+                    out.add(item)
+        elif isinstance(value, dict):
+            for key in value:
+                if isinstance(key, str) and not skip(key):
+                    out.add(key)
+        return out
+
     def extract_entity_references(self, data: Any) -> set[str]:
         """Extract entity references from configuration data."""
         entities = set()
@@ -219,21 +242,11 @@ class ReferenceValidator(ValidatorBase):
             for key, value in data.items():
                 # Common entity reference keys
                 if key in ["entity_id", "entity_ids", "entities"]:
-                    if isinstance(value, str):
-                        if not self.should_skip_entity_validation(value):
-                            entities.add(value)
-                    elif isinstance(value, list):
-                        for entity in value:
-                            if isinstance(
-                                entity, str
-                            ) and not self.should_skip_entity_validation(entity):
-                                entities.add(entity)
-                    elif isinstance(value, dict):
-                        for entity_id in value:
-                            if isinstance(
-                                entity_id, str
-                            ) and not self.should_skip_entity_validation(entity_id):
-                                entities.add(entity_id)
+                    entities.update(
+                        self._collect_string_values(
+                            value, skip=self.should_skip_entity_validation
+                        )
+                    )
 
                 # Device/area IDs — handled by separate extractors
                 elif key in ["device_id", "device_ids", "area_id", "area_ids"]:
@@ -244,9 +257,7 @@ class ReferenceValidator(ValidatorBase):
                     entities.update(self.extract_entity_references(value))
 
                 # Templates might contain entity references
-                elif isinstance(value, str) and any(
-                    x in value for x in ["state_attr(", "states(", "is_state("]
-                ):
+                elif isinstance(value, str) and is_jinja_template(value):
                     entities.update(self.extract_entities_from_template(value))
 
                 # Recursive search
@@ -276,15 +287,11 @@ class ReferenceValidator(ValidatorBase):
         if isinstance(data, dict):
             for key, value in data.items():
                 if key in keys:
-                    if isinstance(value, str):
-                        if not self._should_skip_id_validation(value):
-                            refs.add(value)
-                    elif isinstance(value, list):
-                        for item in value:
-                            if isinstance(
-                                item, str
-                            ) and not self._should_skip_id_validation(item):
-                                refs.add(item)
+                    refs.update(
+                        self._collect_string_values(
+                            value, skip=self._should_skip_id_validation
+                        )
+                    )
                 else:
                     refs.update(self._extract_id_references(value, keys))
         elif isinstance(data, list):
@@ -307,14 +314,12 @@ class ReferenceValidator(ValidatorBase):
         if isinstance(data, dict):
             for key, value in data.items():
                 if key in ("entity_id", "entity_ids"):
-                    candidates = (
-                        [value]
-                        if isinstance(value, str)
-                        else (value if isinstance(value, list) else [])
+                    entity_registry_ids.update(
+                        self._collect_string_values(
+                            value,
+                            skip=lambda s: not self.is_uuid_format(s),
+                        )
                     )
-                    for cand in candidates:
-                        if isinstance(cand, str) and self.is_uuid_format(cand):
-                            entity_registry_ids.add(cand)
                 else:
                     entity_registry_ids.update(self.extract_entity_registry_ids(value))
         elif isinstance(data, list):
@@ -322,6 +327,16 @@ class ReferenceValidator(ValidatorBase):
                 entity_registry_ids.update(self.extract_entity_registry_ids(item))
 
         return entity_registry_ids
+
+    @staticmethod
+    def _is_disabled(entity_data: dict) -> bool:
+        """True when the entity/device is disabled (``disabled_by`` is set)."""
+        return entity_data.get("disabled_by") is not None
+
+    @staticmethod
+    def _is_hidden(entity_data: dict) -> bool:
+        """True when the entity is hidden (``hidden_by`` is set)."""
+        return entity_data.get("hidden_by") is not None
 
     def _check_entity_refs(
         self,
@@ -349,11 +364,11 @@ class ReferenceValidator(ValidatorBase):
                 continue
 
             if entity_id in entities:
-                if entities[entity_id].get("disabled_by") is not None:
+                if self._is_disabled(entities[entity_id]):
                     self.warnings.append(
                         f"{file_path}: References disabled entity '{entity_id}'"
                     )
-                if entities[entity_id].get("hidden_by"):
+                if self._is_hidden(entities[entity_id]):
                     self.info.append(
                         f"{file_path}: References hidden entity '{entity_id}'"
                     )
@@ -400,7 +415,7 @@ class ReferenceValidator(ValidatorBase):
 
             actual_entity_id = entity_id_mapping[registry_id]
             entity_data = entities.get(actual_entity_id, {})
-            if entity_data.get("disabled_by") is not None:
+            if self._is_disabled(entity_data):
                 self.warnings.append(
                     f"{file_path}: Entity registry ID '{registry_id}' "
                     f"references disabled entity '{actual_entity_id}'"
@@ -429,7 +444,7 @@ class ReferenceValidator(ValidatorBase):
                 all_valid = False
                 continue
 
-            if devices[device_id].get("disabled_by"):
+            if self._is_disabled(devices[device_id]):
                 self.warnings.append(
                     f"{file_path}: References disabled device '{device_id}'"
                 )

@@ -211,7 +211,7 @@ class StaleSensorValidator(ValidatorBase):
         try:
             client = HAClient(url, token, timeout=timeout_val)
             states = client.get_json("/api/states")
-        except HARequestError as e:
+        except (HARequestError, OSError) as e:
             self.info.append(f"Skipped stale sensor validation: API unreachable - {e}")
             return True
 

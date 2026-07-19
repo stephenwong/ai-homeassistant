@@ -118,6 +118,43 @@ class TestExtractFiles:
         assert mock_open.call_count == 1
 
 
+class TestUnifiedDiff:
+    """W3.7: _unified_diff extracts canonical a/b-filename unified diffs."""
+
+    def test_returns_diff_with_a_b_filenames(self):
+        from tools.generate_changelog import _unified_diff
+
+        result = _unified_diff("config/test.yaml", ["old"], ["new"])
+        assert isinstance(result, list)
+        assert any(
+            line.startswith("---") and "a/config/test.yaml" in line for line in result
+        )
+        assert any(
+            line.startswith("+++") and "b/config/test.yaml" in line for line in result
+        )
+
+    def test_empty_when_inputs_identical(self):
+        from tools.generate_changelog import _unified_diff
+
+        assert _unified_diff("x.yaml", ["same"], ["same"]) == []
+
+
+class TestCountDiff:
+    """W3.7: _count_diff counts + and - lines ignoring file headers."""
+
+    def test_counts_additions_and_removals(self):
+        from tools.generate_changelog import _count_diff
+
+        diff = ["+++ b/x", "--- a/x", "+added", "-removed", "+kept"]
+        assert _count_diff(diff) == (2, 1)
+
+    def test_ignores_filename_headers(self):
+        from tools.generate_changelog import _count_diff
+
+        diff = ["+++ b/x", "--- a/x"]
+        assert _count_diff(diff) == (0, 0)
+
+
 class TestGenerateChangelog:
     def test_initial_backup(self, tmp_path):
         tar_path = _make_tar(tmp_path, {"config/test.yaml": "key: value\n"})

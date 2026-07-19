@@ -184,7 +184,6 @@ class HAWSClient:
         self.token = token
         self.timeout = timeout
         self._session_factory = session_factory
-        self._msg_id = 0
 
     @classmethod
     def from_env(cls) -> HAWSClient:
@@ -206,7 +205,6 @@ class HAWSClient:
         Raises HARequestError on connection failure, auth failure, or
         command failure.
         """
-        self._msg_id = 0
         return asyncio.run(self._command(command_type, **params))
 
     async def _command(self, command_type: str, **params: Any) -> Any:
@@ -251,14 +249,12 @@ class HAWSClient:
 
     async def _send_and_receive(self, ws, command_type: str, **params: Any) -> Any:
         """Send a command and loop until we receive the matching result."""
-        self._msg_id += 1
-        sent_id = self._msg_id
-        await ws.send_json({"id": sent_id, "type": command_type, **params})
+        msg_id = 1
+        await ws.send_json({"id": msg_id, "type": command_type, **params})
 
-        # Loop until we get our result, skipping event/pong/other messages.
         for _ in range(100):
             msg = await ws.receive_json()
-            if msg.get("type") == "result" and msg.get("id") == sent_id:
+            if msg.get("type") == "result" and msg.get("id") == msg_id:
                 if not msg.get("success", False):
                     error = msg.get("error", {})
                     raise HARequestError(

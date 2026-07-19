@@ -2,7 +2,7 @@
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +85,33 @@ class ValidatorBase(ABC):
             if not ok or data is None:
                 continue
             yield fp, data
+
+    def _try_live(
+        self,
+        info_prefix: str,
+        fn: Callable[[Any], Any],
+    ) -> Any | None:
+        """Run *fn* against a live HA client, degrading to None on network failure.
+
+        Constructs ``HAClient.from_env()``, passes it to *fn*, and returns
+        the result. On ``HARequestError`` or ``OSError`` (DNS, socket, .env
+        read, etc.), appends an ``f"{info_prefix} skipped: {e}"`` info line
+        and returns None. Centralises the degrade-on-offline policy shared by
+        services/templates/stale-sensors validators.
+        """
+        from tools.common import HARequestError
+        from tools.ha.client import HAClient
+
+        try:
+            client = HAClient.from_env()
+        except (HARequestError, OSError) as e:
+            self.info.append(f"{info_prefix} skipped: {e}")
+            return None
+        try:
+            return fn(client)
+        except (HARequestError, OSError) as e:
+            self.info.append(f"{info_prefix} skipped: {e}")
+            return None
 
     def load_yaml_checked(self, file_path: Path) -> tuple[Any, bool]:
         """Load YAML, recording any error to ``self.errors``.

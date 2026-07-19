@@ -68,7 +68,7 @@ class TemplateValidator(ValidatorBase):
     def _render(client: HAClient, template: str) -> tuple[str, str]:
         try:
             resp = client.post("/api/template", json={"template": template})
-        except HARequestError as e:
+        except (HARequestError, OSError) as e:
             return ("network", str(e))
         if resp.status_code == 200:
             return ("ok", resp.text)
@@ -89,11 +89,7 @@ class TemplateValidator(ValidatorBase):
         if not found:
             return all_ok
 
-        try:
-            client = HAClient.from_env()
-        except (HARequestError, OSError) as e:
-            self.info.append(f"Live template check skipped: {e}")
-            client = None
+        client = self._try_live("Live template check", lambda c: c)
 
         for path, tmpl in sorted(set(found)):
             if client is None:

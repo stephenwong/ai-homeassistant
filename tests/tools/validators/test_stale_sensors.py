@@ -91,6 +91,17 @@ def test_api_offline_degrades_gracefully(config_dir):
         )
 
 
+def test_oserror_during_states_fetch_degrades(config_dir):
+    """W3.1: OSError during HAClient construction or states fetch must degrade."""
+    with patch(
+        "tools.validators.stale_sensors.HAClient",
+        side_effect=OSError("socket error"),
+    ):
+        v = StaleSensorValidator(str(config_dir))
+        assert v.validate_all() is True
+        assert any("skipped" in i.lower() or "unreachable" in i.lower() for i in v.info)
+
+
 def test_stale_sensor_detected(config_dir):
     """Active sensor that has not updated for > 24 hours triggers warning."""
     _write_entity_registry(
@@ -1044,3 +1055,23 @@ def test_strict_boundary_not_flagged(config_dir):
         )
         assert v.validate_all() is True
         assert len(v.warnings) == 0
+
+
+def test_stale_validator_nonexistent_dir_behaviour():
+    """W5.2: StaleSensorValidator degrades silently on a nonexistent config dir.
+
+    Unlike other validators (which use ValidatorBase.validate_all()'s
+    config_dir.exists() guard), StaleSensorValidator overrides validate_all()
+    entirely — the guard never runs. The validator degrades via the API
+    unreachable path (HAClient construction fails against the nonexistent
+    config dir's absent .env and HA_URL/HA_TOKEN defaults).
+
+    This test pins the divergence so it is intentional.
+    """
+    with patch(
+        "tools.validators.stale_sensors.HAClient", side_effect=OSError("unreachable")
+    ):
+        v = StaleSensorValidator("/nonexistent/path/that/does/not/exist")
+        result = v.validate_all()
+    assert result is True
+    assert not any("does not exist" in e for e in v.errors)

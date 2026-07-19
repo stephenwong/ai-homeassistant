@@ -451,3 +451,27 @@ class TestL47Nesting:
         assert set(
             ["light.turn_on", "switch.turn_on", "light.turn_off", "fan.turn_on"]
         ) <= set(services)
+
+
+class TestOfflineOSError:
+    """W3.1: OSError from from_env() must degrade, not crash."""
+
+    def test_oserror_from_from_env_is_skipped(self, config_dir):
+        _write_automation(
+            config_dir,
+            [
+                {
+                    "id": "t",
+                    "alias": "T",
+                    "triggers": [],
+                    "actions": [{"action": "light.turn_on", "data": {}}],
+                },
+            ],
+        )
+        with patch(
+            "tools.validators.services.HAClient.from_env",
+            side_effect=OSError("permission denied on .env"),
+        ):
+            v = ServiceValidator(str(config_dir))
+            assert v.validate_all() is True
+            assert any("skipped" in i.lower() for i in v.info)

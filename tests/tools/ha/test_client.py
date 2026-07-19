@@ -525,7 +525,13 @@ class TestHAWSCommand:
         with pytest.raises(HARequestError, match="Unknown command"):
             c.command("bad/command")
 
-    def test_msg_id_resets_between_commands(self):
+    def test_command_does_not_require_msg_id_instance_attr(self):
+        """W5.1: msg_id is a local inside _send_and_receive, not an instance attr.
+
+        The instance attr gave a misleading signal that it carried state across
+        commands. The reset at the start of command() proved it didn't. Drop the
+        instance attr and use a local.
+        """
         from tools.ha.client import HAWSClient
 
         ws = _make_mock_ws(
@@ -538,9 +544,9 @@ class TestHAWSCommand:
         sf = _make_mock_session_factory(ws)
         c = HAWSClient("http://ha:8123", "tok", session_factory=sf)
         c.command("system_log/list")
-        assert c._msg_id == 1
+        assert not hasattr(c, "_msg_id")
 
-        # Second command: msg_id resets to 0, increments to 1
+        # Second command still works.
         ws2 = _make_mock_ws(
             [
                 {"type": "auth_required"},
@@ -550,8 +556,8 @@ class TestHAWSCommand:
         )
         sf2 = _make_mock_session_factory(ws2)
         c._session_factory = sf2
-        c.command("system_log/list")
-        assert c._msg_id == 1
+        result = c.command("system_log/list")
+        assert result == "ok"
 
     def test_loop_exhaustion_raises(self):
         """Sending 100+ non-result messages should exhaust the loop guard."""

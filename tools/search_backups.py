@@ -16,6 +16,7 @@ import sys
 import tarfile
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from tools.backup_common import get_backups, iter_tarball_file_members
 from tools.common import get_env_int, non_negative_int
@@ -49,19 +50,19 @@ def search_backup(
             try:
                 with extracted:
                     context_before: deque[str] = deque(maxlen=context_lines)
-                    pending_after: list[dict] = []
+                    pending_after: list[tuple[dict[str, Any], int]] = []
 
                     for line_num, raw_line in enumerate(extracted, start=1):
                         line = raw_line.decode("utf-8").rstrip("\n")
 
                         if pending_after:
-                            remaining = []
-                            for pending_match in pending_after:
-                                pending_match["context_after"].append(line)
-                                pending_match["_remaining_after"] -= 1
-                                if pending_match["_remaining_after"] > 0:
-                                    remaining.append(pending_match)
-                            pending_after = remaining
+                            remaining_pairs = []
+                            for match_entry, remaining in pending_after:
+                                after = match_entry["context_after"]
+                                after.append(line)  # type: ignore[union-attr]
+                                if remaining - 1 > 0:
+                                    remaining_pairs.append((match_entry, remaining - 1))
+                            pending_after = remaining_pairs
 
                         if not pattern.search(line):
                             if context_lines > 0:
@@ -76,8 +77,7 @@ def search_backup(
                         if context_lines > 0:
                             match_entry["context_before"] = list(context_before)
                             match_entry["context_after"] = []
-                            match_entry["_remaining_after"] = context_lines
-                            pending_after.append(match_entry)
+                            pending_after.append((match_entry, context_lines))
 
                         matches.append(match_entry)
 
@@ -86,8 +86,6 @@ def search_backup(
             except UnicodeDecodeError:
                 continue
 
-        for match in matches:
-            match.pop("_remaining_after", None)
     except (tarfile.TarError, OSError) as e:
         print(f"  Warning: Could not read {backup['filename']}: {e}", file=sys.stderr)
         return [], True

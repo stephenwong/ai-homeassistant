@@ -9,8 +9,7 @@ format-only check when the HA API is unreachable.
 import re
 from typing import Any
 
-from tools.common import HARequestError
-from tools.ha.client import HAClient
+from tools.ha.client import HAClient  # noqa: F401 — kept for test patch targets
 from tools.validators._templates import is_jinja_template
 from tools.validators.base import ValidatorBase
 
@@ -76,20 +75,15 @@ class ServiceValidator(ValidatorBase):
                 cls._extract_services(item, f"{path}[{i}]", out)
 
     def _get_services(self) -> set[str] | None:
-        try:
-            client = HAClient.from_env()
-        except HARequestError as e:
-            self.info.append(f"Live service check skipped: {e}")
-            return None
-        try:
-            catalog = client.get_json("/api/services")
-        except HARequestError as e:
-            self.info.append(f"Live service check skipped: {e}")
-            return None
+        len_before = len(self.info)
+        catalog = self._try_live(
+            "Live service check", lambda c: c.get_json("/api/services")
+        )
         if catalog is None:
-            self.info.append(
-                "Live service check skipped: null response from /api/services"
-            )
+            if len(self.info) == len_before:
+                self.info.append(
+                    "Live service check skipped: null response from /api/services"
+                )
             return None
         valid: set[str] = set()
         for entry in catalog:

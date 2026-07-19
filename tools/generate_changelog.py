@@ -73,6 +73,30 @@ def extract_files(backup_path: Path) -> dict[str, str]:
     return files
 
 
+def _unified_diff(name: str, old: list[str], new: list[str]) -> list[str]:
+    """Compute a unified diff list with HA-changelog-style a/ and b/ filenames."""
+    return list(
+        difflib.unified_diff(
+            old,
+            new,
+            fromfile=f"a/{name}",
+            tofile=f"b/{name}",
+            lineterm="",
+        )
+    )
+
+
+def _count_diff(lines: list[str]) -> tuple[int, int]:
+    """Return (added, removed) line counts from a unified-diff list."""
+    added = sum(
+        1 for line in lines if line.startswith("+") and not line.startswith("+++")
+    )
+    removed = sum(
+        1 for line in lines if line.startswith("-") and not line.startswith("---")
+    )
+    return added, removed
+
+
 def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
     """Generate changelog content comparing two backups."""
     lines = []
@@ -111,51 +135,22 @@ def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
             # Added
             line_count = len(current_files[name].splitlines())
             changed_files.append(f"  A {name} (+{line_count})")
-            diff = difflib.unified_diff(
-                [],
-                current_files[name].splitlines(),
-                fromfile=f"a/{name}",
-                tofile=f"b/{name}",
-                lineterm="",
-            )
+            diff = _unified_diff(name, [], current_files[name].splitlines())
             diffs.append("\n".join(diff))
         elif not in_current and in_previous:
             # Deleted
             line_count = len(previous_files[name].splitlines())
             changed_files.append(f"  D {name} (-{line_count})")
-            diff = difflib.unified_diff(
-                previous_files[name].splitlines(),
-                [],
-                fromfile=f"a/{name}",
-                tofile=f"b/{name}",
-                lineterm="",
-            )
+            diff = _unified_diff(name, previous_files[name].splitlines(), [])
             diffs.append("\n".join(diff))
         elif in_current and in_previous:
             if current_files[name] != previous_files[name]:
                 # Modified
                 old_lines = previous_files[name].splitlines()
                 new_lines = current_files[name].splitlines()
-                diff_lines = list(
-                    difflib.unified_diff(
-                        old_lines,
-                        new_lines,
-                        fromfile=f"a/{name}",
-                        tofile=f"b/{name}",
-                        lineterm="",
-                    )
-                )
+                diff_lines = _unified_diff(name, old_lines, new_lines)
                 if diff_lines:
-                    added = sum(
-                        1
-                        for line in diff_lines
-                        if line.startswith("+") and not line.startswith("+++")
-                    )
-                    removed = sum(
-                        1
-                        for line in diff_lines
-                        if line.startswith("-") and not line.startswith("---")
-                    )
+                    added, removed = _count_diff(diff_lines)
                     changed_files.append(f"  M {name} (+{added}, -{removed})")
                     diffs.append("\n".join(diff_lines))
 
