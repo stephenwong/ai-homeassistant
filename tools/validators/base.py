@@ -25,6 +25,8 @@ _HA_TAGS = [
     "!secret",
 ]
 
+_YAML_GLOB_PATTERNS = ("*.yaml", "*.yml")
+
 
 def _make_tag_constructor(tag: str):
     """Return a constructor that round-trips a HA YAML tag as a plain string."""
@@ -61,12 +63,12 @@ class ValidatorBase(ABC):
         Used by the caching layer to determine when a cached result is stale.
         Subclasses override this to declare their file dependencies.
         """
-        return ["*.yaml", "*.yml"]
+        return list(_YAML_GLOB_PATTERNS)
 
     def get_yaml_files(self) -> list[Path]:
         """Get all top-level YAML files in the config directory."""
         yaml_files: list[Path] = []
-        for pattern in ["*.yaml", "*.yml"]:
+        for pattern in _YAML_GLOB_PATTERNS:
             yaml_files.extend(self.config_dir.glob(pattern))
         return yaml_files
 
@@ -103,12 +105,7 @@ class ValidatorBase(ABC):
         from tools.ha.client import HAClient
 
         try:
-            client = HAClient.from_env()
-        except (HARequestError, OSError) as e:
-            self.info.append(f"{info_prefix} skipped: {e}")
-            return None
-        try:
-            return fn(client)
+            return fn(HAClient.from_env())
         except (HARequestError, OSError) as e:
             self.info.append(f"{info_prefix} skipped: {e}")
             return None

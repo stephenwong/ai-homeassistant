@@ -171,6 +171,14 @@ def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _write_changelog(backup: dict, previous_backup: dict | None) -> Path:
+    """Write a changelog for *backup* against its already-selected predecessor."""
+    changelog_file = changelog_path_for(backup)
+    content = generate_changelog(backup, previous_backup)
+    atomic_write_text(changelog_file, content)
+    return changelog_file
+
+
 def generate_for_backup(backup: dict, backups_list: list[dict]) -> Path:
     """Generate changelog for a single backup, finding its predecessor."""
     # Find previous backup
@@ -186,10 +194,7 @@ def generate_for_backup(backup: dict, backups_list: list[dict]) -> Path:
             "cannot compute a predecessor"
         )
 
-    changelog_file = changelog_path_for(backup)
-    content = generate_changelog(backup, previous)
-    atomic_write_text(changelog_file, content)
-    return changelog_file
+    return _write_changelog(backup, previous)
 
 
 def main() -> int:
@@ -220,13 +225,14 @@ def main() -> int:
     if args.generate_all:
         generated = 0
         skipped = 0
-        for backup in backups:
+        for i, backup in enumerate(backups):
             cl_path = changelog_path_for(backup)
             if cl_path.exists() and not args.force:
                 skipped += 1
                 continue
             print(f"Generating changelog for {backup['filename']}...", file=sys.stderr)
-            generate_for_backup(backup, backups)
+            previous = backups[i - 1] if i > 0 else None
+            _write_changelog(backup, previous)
             generated += 1
 
         print(

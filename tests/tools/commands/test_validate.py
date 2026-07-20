@@ -14,7 +14,6 @@ class TestValidatorResult:
         r = ValidatorResult(
             description="Test",
             passed=True,
-            stdout="",
             stderr="err",
             duration=0.5,
         )
@@ -23,11 +22,11 @@ class TestValidatorResult:
         assert r.duration == 0.5
 
     def test_cached_defaults_to_false(self):
-        r = ValidatorResult("Test", True, "", "", 0.0)
+        r = ValidatorResult(description="Test", passed=True, duration=0.0)
         assert r.cached is False
 
     def test_cached_true(self):
-        r = ValidatorResult("Test", True, "", "", 0.0, cached=True)
+        r = ValidatorResult(description="Test", passed=True, duration=0.0, cached=True)
         assert r.cached is True
 
 
@@ -336,7 +335,6 @@ class TestRunValidators:
         for r in results:
             assert isinstance(r.description, str)
             assert isinstance(r.passed, bool)
-            assert isinstance(r.stdout, str)
             assert isinstance(r.stderr, str)
             assert isinstance(r.duration, float)
 
@@ -451,8 +449,8 @@ class TestRun:
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[
-                ValidatorResult("V1", True, "ok", "", 0.1),
-                ValidatorResult("V2", True, "ok", "", 0.1),
+                ValidatorResult(description="V1", passed=True, duration=0.1),
+                ValidatorResult(description="V2", passed=True, duration=0.1),
             ],
         ):
             result = run(self._args(config_dir, quiet=True))
@@ -462,8 +460,10 @@ class TestRun:
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[
-                ValidatorResult("V1", True, "ok", "", 0.1),
-                ValidatorResult("V2", False, "", "broke", 0.1),
+                ValidatorResult(description="V1", passed=True, duration=0.1),
+                ValidatorResult(
+                    description="V2", passed=False, stderr="broke", duration=0.1
+                ),
             ],
         ):
             result = run(self._args(config_dir, quiet=True))
@@ -475,7 +475,7 @@ class TestRun:
     def test_quiet_suppresses_pass_output(self, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
-            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+            return_value=[ValidatorResult(description="V1", passed=True, duration=0.1)],
         ):
             run(self._args(config_dir, quiet=True))
         out = capsys.readouterr().out
@@ -486,7 +486,7 @@ class TestRun:
     def test_non_quiet_prints_banner_and_summary(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
-            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+            return_value=[ValidatorResult(description="V1", passed=True, duration=0.1)],
         ):
             run(self._args(config_dir, quiet=False))
         out, err = capsys.readouterr()
@@ -498,7 +498,7 @@ class TestRun:
     def test_prints_duration_per_validator(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
-            return_value=[ValidatorResult("V1", True, "ok", "", 1.5)],
+            return_value=[ValidatorResult(description="V1", passed=True, duration=1.5)],
         ):
             run(self._args(config_dir, quiet=False))
         out, err = capsys.readouterr()
@@ -509,7 +509,9 @@ class TestRun:
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[
-                ValidatorResult("V1", True, "ok", "", 0.0, cached=True),
+                ValidatorResult(
+                    description="V1", passed=True, duration=0.0, cached=True
+                ),
             ],
         ):
             run(self._args(config_dir, quiet=False))
@@ -520,7 +522,7 @@ class TestRun:
     def test_force_shows_cache_ignored_message(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
-            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+            return_value=[ValidatorResult(description="V1", passed=True, duration=0.1)],
         ):
             run(self._args(config_dir, quiet=False, force=True))
         out, err = capsys.readouterr()
@@ -529,7 +531,7 @@ class TestRun:
     def test_passes_force_to_run_validators(self, config_dir):
         with patch(
             "tools.commands.validate.run_validators",
-            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+            return_value=[ValidatorResult(description="V1", passed=True, duration=0.1)],
         ) as mock_rv:
             run(self._args(config_dir, quiet=True, force=True))
         # config_dir passed positionally, quiet + force + summary as keywords
@@ -543,7 +545,7 @@ class TestRun:
     def test_summary_compact_output_all_pass(self, _, config_dir, capsys):
         with patch(
             "tools.commands.validate.run_validators",
-            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+            return_value=[ValidatorResult(description="V1", passed=True, duration=0.1)],
         ):
             run(self._args(config_dir, quiet=False))
         out = capsys.readouterr().out
@@ -559,8 +561,13 @@ class TestRun:
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[
-                ValidatorResult("V1", True, "ok", "", 0.1),
-                ValidatorResult("V2", False, "", "something broke", 0.2),
+                ValidatorResult(description="V1", passed=True, duration=0.1),
+                ValidatorResult(
+                    description="V2",
+                    passed=False,
+                    stderr="something broke",
+                    duration=0.2,
+                ),
             ],
         ):
             run(self._args(config_dir, quiet=False))
@@ -580,7 +587,9 @@ class TestRun:
         with (
             patch(
                 "tools.commands.validate.run_validators",
-                return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+                return_value=[
+                    ValidatorResult(description="V1", passed=True, duration=0.1)
+                ],
             ),
         ):
             run(self._args(config_dir, quiet=False, summary=True))
@@ -593,8 +602,10 @@ class TestRun:
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[
-                ValidatorResult("V1", True, "ok", "", 0.1),
-                ValidatorResult("V2", False, "", "error detail", 0.2),
+                ValidatorResult(description="V1", passed=True, duration=0.1),
+                ValidatorResult(
+                    description="V2", passed=False, stderr="error detail", duration=0.2
+                ),
             ],
         ):
             run(self._args(config_dir, quiet=True))
@@ -611,7 +622,9 @@ class TestRun:
         with patch(
             "tools.commands.validate.run_validators",
             return_value=[
-                ValidatorResult("V1", True, "ok", "", 0.0, cached=True),
+                ValidatorResult(
+                    description="V1", passed=True, duration=0.0, cached=True
+                ),
             ],
         ):
             run(self._args(config_dir, quiet=False))
@@ -629,7 +642,7 @@ class TestRun:
         """--no-summary forces verbose output even when stdout is not a TTY."""
         with patch(
             "tools.commands.validate.run_validators",
-            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+            return_value=[ValidatorResult(description="V1", passed=True, duration=0.1)],
         ):
             run(self._args(config_dir, quiet=False, no_summary=True))
         out, err = capsys.readouterr()
@@ -642,7 +655,7 @@ class TestRun:
         """Both --summary and --no-summary prints a warning."""
         with patch(
             "tools.commands.validate.run_validators",
-            return_value=[ValidatorResult("V1", True, "ok", "", 0.1)],
+            return_value=[ValidatorResult(description="V1", passed=True, duration=0.1)],
         ):
             run(self._args(config_dir, quiet=False, summary=True, no_summary=True))
         _, err = capsys.readouterr()
@@ -657,7 +670,10 @@ class TestRun:
             "tools.commands.validate.run_validators",
             return_value=[
                 ValidatorResult(
-                    "MyValidator", False, "some stdout output", "the error text", 1.5
+                    description="MyValidator",
+                    passed=False,
+                    stderr="the error text",
+                    duration=1.5,
                 ),
             ],
         ):
@@ -723,7 +739,6 @@ class TestFormatResultLine:
         defaults = dict(
             description="YAML Syntax Validation",
             passed=True,
-            stdout="",
             stderr="",
             duration=1.5,
             cached=False,

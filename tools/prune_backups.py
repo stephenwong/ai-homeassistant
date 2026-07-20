@@ -12,15 +12,26 @@ import argparse
 import contextlib
 import sys
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Any
+from typing import Any, TypedDict
 
 from tools.backup_common import BACKUP_DIR, changelog_path_for, get_backups
 
 
-def group_by_retention_period(backups: list[dict], now: datetime) -> dict:
+class RetentionGroups(TypedDict):
+    """Backups grouped according to the retention policy."""
+
+    keep_all: list[dict[str, Any]]
+    daily: defaultdict[str, list[dict[str, Any]]]
+    weekly: defaultdict[str, list[dict[str, Any]]]
+
+
+def group_by_retention_period(
+    backups: list[dict[str, Any]], now: datetime
+) -> RetentionGroups:
     """Group backups into retention periods."""
-    groups: dict[str, Any] = {
+    groups: RetentionGroups = {
         "keep_all": [],  # Last 7 days
         "daily": defaultdict(list),  # 7-30 days, one per day
         "weekly": defaultdict(list),  # 30+ days, one per week
@@ -45,9 +56,9 @@ def group_by_retention_period(backups: list[dict], now: datetime) -> dict:
 
 
 def _keep_latest_per_group(
-    grouped: dict[str, list[dict]],
-    to_keep: list[dict],
-    to_delete: list[dict],
+    grouped: Mapping[str, list[dict[str, Any]]],
+    to_keep: list[dict[str, Any]],
+    to_delete: list[dict[str, Any]],
 ) -> None:
     """Keep the latest entry from each group; rest go to delete list."""
     for items in grouped.values():
@@ -58,10 +69,12 @@ def _keep_latest_per_group(
         to_delete.extend(ordered[1:])
 
 
-def apply_retention(groups: dict) -> tuple[list[dict], list[dict]]:
+def apply_retention(
+    groups: RetentionGroups,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Apply retention rules and return lists of files to keep/delete."""
-    to_keep: list[dict] = []
-    to_delete: list[dict] = []
+    to_keep: list[dict[str, Any]] = []
+    to_delete: list[dict[str, Any]] = []
 
     # Keep all recent backups (0-7 days)
     to_keep.extend(groups["keep_all"])

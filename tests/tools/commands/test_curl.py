@@ -349,6 +349,16 @@ class TestHttpMethods:
         _args, _kwargs = mock_client.post.call_args
         assert _kwargs["json"] == {"entity_id": "light.kitchen"}
 
+    @pytest.mark.parametrize("body, expected", [("42", 42), ("true", True)])
+    def test_post_scalar_json_data(self, mock_client, body, expected):
+        """Scalar JSON bodies must not be confused with an error sentinel."""
+        mock_client.post.return_value = json_resp({"success": True})
+        args = make_args(method="POST", data=body)
+
+        assert curl_cmd.run(args) == 0
+
+        mock_client.post.assert_called_once_with("/api/states", json=expected)
+
     def test_post_without_data(self, mock_client):
         mock_client.post.return_value = json_resp({"success": True})
         args = make_args(method="POST")
@@ -1303,52 +1313,56 @@ class TestValidateArgs:
         return Namespace(**defaults)
 
     def test_raw_and_pretty_returns_1(self):
-        from tools.commands.curl import _validate_args
+        from tools.commands.curl import _CurlError, _validate_args
 
         args = self._args(raw=True, pretty=True)
-        assert _validate_args(args, summary=False) == 1
+        with pytest.raises(_CurlError, match="Cannot combine --raw with --pretty"):
+            _validate_args(args, summary=False)
 
     def test_pick_with_count_returns_1(self):
-        from tools.commands.curl import _validate_args
+        from tools.commands.curl import _CurlError, _validate_args
 
         args = self._args(pick="state", count=True)
-        assert _validate_args(args, summary=False) == 1
+        with pytest.raises(_CurlError, match="Cannot combine --pick"):
+            _validate_args(args, summary=False)
 
     def test_entity_sets_endpoint_and_forces_get(self):
         from tools.commands.curl import _validate_args
 
         args = self._args(entity="sensor.foo")
         result = _validate_args(args, summary=False)
-        assert result != 1
-        method, endpoint = result
-        assert method == "GET"
-        assert endpoint == "/api/states/sensor.foo"
+        assert result.method == "GET"
+        assert result.endpoint == "/api/states/sensor.foo"
+        assert args.endpoint is None
 
     def test_entity_with_invalid_id_returns_1(self):
-        from tools.commands.curl import _validate_args
+        from tools.commands.curl import _CurlError, _validate_args
 
         args = self._args(entity="not-an-entity-id")
-        assert _validate_args(args, summary=False) == 1
+        with pytest.raises(_CurlError, match="Invalid entity_id"):
+            _validate_args(args, summary=False)
 
     def test_domain_with_entity_returns_1(self):
-        from tools.commands.curl import _validate_args
+        from tools.commands.curl import _CurlError, _validate_args
 
         args = self._args(entity="sensor.foo", domain="light")
-        assert _validate_args(args, summary=False) == 1
+        with pytest.raises(_CurlError, match="Cannot combine --domain"):
+            _validate_args(args, summary=False)
 
     def test_missing_endpoint_returns_1(self):
-        from tools.commands.curl import _validate_args
+        from tools.commands.curl import _CurlError, _validate_args
 
         args = self._args()
-        assert _validate_args(args, summary=False) == 1
+        with pytest.raises(_CurlError, match="endpoint path is required"):
+            _validate_args(args, summary=False)
 
     def test_explicit_endpoint_passthrough(self):
         from tools.commands.curl import _validate_args
 
         args = self._args(endpoint="/api/services")
-        method, endpoint = _validate_args(args, summary=False)
-        assert method == "GET"
-        assert endpoint == "/api/services"
+        request = _validate_args(args, summary=False)
+        assert request.method == "GET"
+        assert request.endpoint == "/api/services"
 
 
 class TestExecuteRequest:
@@ -1385,19 +1399,20 @@ class TestExecuteRequest:
         client.delete.assert_called_once_with("/api/x", json=None)
 
     def test_unknown_method_returns_1(self):
-        from tools.commands.curl import _execute_request
+        from tools.commands.curl import _CurlError, _execute_request
 
         client = self._client()
-        assert _execute_request(client, "HEAD", "/api/x", None) == 1
+        with pytest.raises(_CurlError, match="Unknown HTTP method"):
+            _execute_request(client, "HEAD", "/api/x", None)
 
-    def test_harequesterror_returns_1(self, capsys):
-        from tools.commands.curl import _execute_request
+    def test_harequesterror_returns_1(self):
+        from tools.commands.curl import _CurlError, _execute_request
         from tools.common import HARequestError
 
         client = MagicMock()
         client.get.side_effect = HARequestError("boom")
-        assert _execute_request(client, "GET", "/api/x", None) == 1
-        assert "boom" in capsys.readouterr().err
+        with pytest.raises(_CurlError, match="boom"):
+            _execute_request(client, "GET", "/api/x", None)
 
 
 class TestEmitOutput:
@@ -1420,7 +1435,16 @@ class TestEmitOutput:
             method="GET",
             endpoint="/api/any",
         )
-        result = _emit_output(args, [1, 2, 3], "[1,2,3]", True, summary=False)
+        from tools.commands.curl import _CurlRequest
+
+        result = _emit_output(
+            args,
+            _CurlRequest("GET", "/api/any"),
+            [1, 2, 3],
+            "[1,2,3]",
+            True,
+            summary=False,
+        )
         assert result == 0
         assert capsys.readouterr().out.strip() == "3"
 
@@ -1441,6 +1465,15 @@ class TestEmitOutput:
             method="GET",
             endpoint="/api/any",
         )
-        result = _emit_output(args, None, "raw text here", False, summary=False)
+        from tools.commands.curl import _CurlRequest
+
+        result = _emit_output(
+            args,
+            _CurlRequest("GET", "/api/any"),
+            None,
+            "raw text here",
+            False,
+            summary=False,
+        )
         assert result == 0
         assert capsys.readouterr().out == "raw text here"

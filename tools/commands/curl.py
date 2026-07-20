@@ -17,6 +17,7 @@ import argparse
 import contextlib
 import json
 import sys
+from dataclasses import dataclass
 from typing import Any
 
 import requests
@@ -157,55 +158,73 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 # ====================================================================
 
 
-def _validate_args(args: argparse.Namespace, summary: bool) -> tuple[str, str] | int:
+class _CurlError(Exception):
+    """Expected curl failure translated to a CLI exit code by run."""
+
+
+@dataclass(frozen=True)
+class _CurlRequest:
+    """Normalized request data shared by execution and output rendering."""
+
+    method: str
+    endpoint: str
+
+
+def _has_collection_output_flags(args: argparse.Namespace) -> bool:
+    """Check whether a collection-oriented output flag is active."""
+    return bool(args.count or args.keys or args.raw)
+
+
+def _validate_args(args: argparse.Namespace, summary: bool) -> _CurlRequest:
     """Validate CLI args for curl: conflict checks, entity/domain, endpoint."""
     method = args.method
+    endpoint = args.endpoint
 
     if args.raw and args.pretty:
-        return fail_stderr("Cannot combine --raw with --pretty")
+        raise _CurlError("Cannot combine --raw with --pretty")
 
-    if args.pick and (args.count or args.keys or args.raw):
-        return fail_stderr("Cannot combine --pick with --count/--keys/--raw")
+    if args.pick and _has_collection_output_flags(args):
+        raise _CurlError("Cannot combine --pick with --count/--keys/--raw")
 
     if args.entity:
         if not _ENTITY_RE.match(args.entity):
-            return fail_stderr(f"Invalid entity_id: {args.entity!r}")
-        if args.endpoint and args.endpoint != "/api/states":
-            return fail_stderr(
+            raise _CurlError(f"Invalid entity_id: {args.entity!r}")
+        if endpoint and endpoint != "/api/states":
+            raise _CurlError(
                 "--entity requires endpoint /api/states (or omit endpoint)"
             )
-        if args.count or args.keys or args.raw:
-            return fail_stderr("Cannot combine --entity with --count/--keys/--raw")
+        if _has_collection_output_flags(args):
+            raise _CurlError("Cannot combine --entity with --count/--keys/--raw")
         if method != "GET" and not summary:
             print(
                 "\u26a0\ufe0f  --entity forces GET method (ignoring --method)",
                 file=sys.stderr,
             )
-        args.endpoint = f"/api/states/{args.entity}"
+        endpoint = f"/api/states/{args.entity}"
         method = "GET"
 
     if args.domain:
         if args.entity:
-            return fail_stderr("Cannot combine --domain with --entity")
-        if args.count or args.keys or args.raw:
-            return fail_stderr("Cannot combine --domain with --count/--keys/--raw")
+            raise _CurlError("Cannot combine --domain with --entity")
+        if _has_collection_output_flags(args):
+            raise _CurlError("Cannot combine --domain with --count/--keys/--raw")
 
-    if not args.endpoint:
-        return fail_stderr("endpoint path is required (use --entity to fetch by id)")
+    if not endpoint:
+        raise _CurlError("endpoint path is required (use --entity to fetch by id)")
 
-    return method, args.endpoint
+    return _CurlRequest(method=method, endpoint=endpoint)
 
 
-def _build_client() -> HAClient | int:
-    """Build an HAClient from env, returning 1 on error."""
+def _build_client() -> HAClient:
+    """Build an HAClient from env, raising _CurlError on failure."""
     try:
         return HAClient.from_env()
     except HARequestError as e:
-        return fail_stderr(str(e))
+        raise _CurlError(str(e)) from e
 
 
-def _parse_json_body(method: str, args: argparse.Namespace, summary: bool) -> Any | int:
-    """Parse --data JSON for body-applicable methods, returning 1 on error."""
+def _parse_json_body(method: str, args: argparse.Namespace, summary: bool) -> Any:
+    """Parse --data JSON for body-applicable methods."""
     body_methods = {"POST", "PUT", "PATCH"}
     json_data = None
     if method in body_methods:
@@ -213,7 +232,7 @@ def _parse_json_body(method: str, args: argparse.Namespace, summary: bool) -> An
             try:
                 json_data = json.loads(args.data)
             except (json.JSONDecodeError, TypeError) as e:
-                return fail_stderr(f"Invalid JSON in --data: {e}")
+                raise _CurlError(f"Invalid JSON in --data: {e}") from e
     elif args.data is not None and not summary:
         print(f"\u26a0\ufe0f  --data ignored for {method} requests", file=sys.stderr)
     return json_data
@@ -224,10 +243,10 @@ def _execute_request(
     method: str,
     endpoint: str,
     json_data: Any,
-) -> requests.Response | int:
+) -> requests.Response:
     """Dispatch the HTTP method to the matching HAClient method.
 
-    Returns the response on success, or ``1`` on ``HARequestError``.
+    Raises _CurlError for an unknown method or request failure.
     """
     method_dispatch = {
         "GET": lambda: client.get(endpoint),
@@ -238,15 +257,16 @@ def _execute_request(
     }
     handler = method_dispatch.get(method)
     if handler is None:
-        return fail_stderr(f"Unknown HTTP method: {method}")
+        raise _CurlError(f"Unknown HTTP method: {method}")
     try:
         return handler()
     except HARequestError as e:
-        return fail_stderr(str(e))
+        raise _CurlError(str(e)) from e
 
 
 def _emit_output(
     args: argparse.Namespace,
+    request: _CurlRequest,
     data: Any,
     raw_text: str,
     is_json: bool,
@@ -255,14 +275,14 @@ def _emit_output(
     """Dispatch output processing based on CLI flags. Returns exit code."""
     # 7. Bare endpoint guardrail
     if (
-        args.method == "GET"
-        and args.endpoint == "/api/states"
+        request.method == "GET"
+        and request.endpoint == "/api/states"
         and not _has_transform_flags(args)
         and not args.pretty
         and summary
         and not args.no_guard
     ):
-        count_result = _handle_count(data, raw_text, is_json)
+        count_result = _handle_count(data)
         print(
             "Hint: use --first/--pick/--entity/--domain to narrow, "
             "or --no-guard to dump all",
@@ -273,11 +293,9 @@ def _emit_output(
     # 8. Validate output flag against JSON-ness
     requires_json = args.keys or (args.first is not None) or bool(args.pick)
     if requires_json and data is None and not is_json:
-        content_type = ""
         flag = "keys" if args.keys else ("first" if args.first is not None else "pick")
-        return fail_stderr(
-            f"Cannot use --{flag} on non-JSON response "
-            f"(Content-Type: {content_type or 'unknown'})"
+        raise _CurlError(
+            f"Cannot use --{flag} on non-JSON response (Content-Type: unknown)"
         )
 
     # 9. Pretty-warning for --keys
@@ -294,7 +312,7 @@ def _emit_output(
         else resolve_max_chars(args, summary)
     )
     if args.count:
-        return _handle_count(data, raw_text, is_json)
+        return _handle_count(data)
     if args.keys:
         return _handle_keys(data, summary=summary, max_chars=effective_max_chars)
     if args.raw:
@@ -346,42 +364,29 @@ def _emit_output(
 
 def run(args: argparse.Namespace) -> int:
     """Execute a curl request.  Returns exit code (0 success, 1 error)."""
-    summary = resolve_summary(args)
+    try:
+        summary = resolve_summary(args)
+        request = _validate_args(args, summary)
+        client = _build_client()
+        json_data = _parse_json_body(request.method, args, summary)
+        resp = _execute_request(client, request.method, request.endpoint, json_data)
 
-    method_endpoint_or_err = _validate_args(args, summary)
-    if isinstance(method_endpoint_or_err, int):
-        return method_endpoint_or_err
-    method, endpoint = method_endpoint_or_err
+        if not resp.ok:
+            raise _CurlError(f"HTTP {resp.status_code}: {resp.text[:200]}")
 
-    client_or_err = _build_client()
-    if isinstance(client_or_err, int):
-        return client_or_err
-    client = client_or_err
+        content_type = resp.headers.get("content-type", "")
+        raw_text = resp.text
+        is_json = "application/json" in content_type or raw_text.strip().startswith(
+            ("{", "[")
+        )
+        data = None
+        if is_json:
+            with contextlib.suppress(ValueError, TypeError, json.JSONDecodeError):
+                data = resp.json()
 
-    json_data_or_err = _parse_json_body(method, args, summary)
-    if isinstance(json_data_or_err, int):
-        return json_data_or_err
-    json_data = json_data_or_err
-
-    resp_or_err = _execute_request(client, method, endpoint, json_data)
-    if isinstance(resp_or_err, int):
-        return resp_or_err
-    resp = resp_or_err
-
-    if not resp.ok:
-        return fail_stderr(f"HTTP {resp.status_code}: {resp.text[:200]}")
-
-    content_type = resp.headers.get("content-type", "")
-    raw_text = resp.text
-    is_json = "application/json" in content_type or raw_text.strip().startswith(
-        ("{", "[")
-    )
-    data = None
-    if is_json:
-        with contextlib.suppress(ValueError, TypeError, json.JSONDecodeError):
-            data = resp.json()
-
-    return _emit_output(args, data, raw_text, is_json, summary)
+        return _emit_output(args, request, data, raw_text, is_json, summary)
+    except _CurlError as e:
+        return fail_stderr(str(e))
 
 
 # ====================================================================
@@ -389,7 +394,7 @@ def run(args: argparse.Namespace) -> int:
 # ====================================================================
 
 
-def _handle_count(data, raw_text: str, is_json: bool) -> int:
+def _handle_count(data: Any) -> int:
     """Print the length of a JSON collection; 0 otherwise."""
     if isinstance(data, (list, dict)):
         print(len(data))

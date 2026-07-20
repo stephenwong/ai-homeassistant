@@ -31,7 +31,6 @@ class ValidatorResult:
 
     description: str
     passed: bool
-    stdout: str = ""
     stderr: str = ""
     duration: float = 0.0
     cached: bool = False
