@@ -32,3 +32,10 @@ def make_parser() -> tuple[ArgumentParser, Any]:
     parser = ArgumentParser()
     subparsers = parser.add_subparsers(dest="command")
     return parser, subparsers
+
+
+def parse_command_args(command: str, add_parser: Any, argv: list[str]) -> Any:
+    """Parse a command's arguments through its production parser factory."""
+    parser, subparsers = make_parser()
+    add_parser(subparsers)
+    return parser.parse_args([command, *argv])

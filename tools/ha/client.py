@@ -7,6 +7,7 @@ lived in `tools/reload_config.py` and `tools/ha_api_diagnostic.py`.
 import asyncio
 import os
 import sys
+from collections.abc import Callable
 from typing import Any
 
 import aiohttp
@@ -50,6 +51,12 @@ def _env_config() -> tuple[str, str, int]:
     return url, token, timeout
 
 
+def _client_from_env(client_cls: Callable[..., Any]) -> Any:
+    """Construct a client class from the shared environment configuration."""
+    url, token, timeout = _env_config()
+    return client_cls(url, token, timeout=timeout)
+
+
 class HAClient:
     """Thin wrapper around the Home Assistant REST API."""
 
@@ -91,8 +98,7 @@ class HAClient:
         only sets env vars that are present in the file, so calling it again
         later is safe.
         """
-        url, token, timeout = _env_config()
-        return cls(url, token, timeout=timeout)
+        return _client_from_env(cls)
 
     def close(self) -> None:
         """Close the underlying requests.Session, releasing pooled connections."""
@@ -138,7 +144,10 @@ class HAClient:
         return self._request("PATCH", path, **kwargs)
 
     def get_json(self, path: str, **kwargs: Any) -> Any:
-        """GET ``path`` and parse JSON. Returns None on non-JSON responses."""
+        """GET ``path`` and parse JSON.
+
+        Raises :class:`HARequestError` for non-2xx or non-JSON responses.
+        """
         response = self.get(path, **kwargs)
         if response.status_code < 200 or response.status_code >= 300:
             snippet = response.content[:200].decode("utf-8", errors="replace")
@@ -188,8 +197,7 @@ class HAWSClient:
     @classmethod
     def from_env(cls) -> HAWSClient:
         """Construct a client from HA_URL/HA_TOKEN/HA_REQUEST_TIMEOUT."""
-        url, token, timeout = _env_config()
-        return cls(url, token, timeout=timeout)
+        return _client_from_env(cls)
 
     @property
     def _ws_url(self) -> str:

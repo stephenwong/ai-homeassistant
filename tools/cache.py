@@ -43,9 +43,7 @@ def compute_hash(config_dir: Path, patterns: list[str]) -> str:
 
 def cache_path(config_dir: Path, name: str) -> Path:
     """Return the path to the cache file for a given validator name."""
-    cache_dir = config_dir / CACHE_DIR_NAME
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"{name}.json"
+    return config_dir / CACHE_DIR_NAME / f"{name}.json"
 
 
 def load_cache(config_dir: Path, name: str) -> dict | None:
@@ -157,4 +155,6 @@ def save_cache(
         "duration": round(duration, 4),
         "stderr": stderr,
     }
-    atomic_write_text(cache_path(config_dir, name), json.dumps(data))
+    path = cache_path(config_dir, name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(path, json.dumps(data))

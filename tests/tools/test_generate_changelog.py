@@ -146,6 +146,23 @@ class TestCountDiff:
 
 
 class TestGenerateChangelog:
+    def test_file_change_collection_keeps_summaries_paired_with_diffs(self):
+        from tools.generate_changelog import _collect_file_changes
+
+        changes = _collect_file_changes(
+            {"config/b.yaml": "new\n", "config/a.yaml": "added\n"},
+            {"config/b.yaml": "old\n"},
+        )
+
+        assert [summary for summary, _diff in changes] == [
+            "  A config/a.yaml (+1)",
+            "  M config/b.yaml (+1, -1)",
+        ]
+        for summary, diff in changes:
+            name = summary.split()[1]
+            assert f"a/{name}" in diff
+            assert f"b/{name}" in diff
+
     def test_initial_backup(self, tmp_path):
         tar_path = make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
         backup = {

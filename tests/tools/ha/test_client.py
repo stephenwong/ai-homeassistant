@@ -7,7 +7,7 @@ import pytest
 import requests
 
 from tools.common import HARequestError, MissingTokenError
-from tools.ha.client import HAClient
+from tools.ha.client import HAClient, HAWSClient
 
 
 class TestInit:
@@ -87,6 +87,31 @@ class TestFromEnv:
         with patch("tools.ha.client.load_env_file") as mock_load:
             HAClient.from_env()
             mock_load.assert_called_once()
+
+    def test_rest_and_websocket_factories_share_environment_tuple(self, monkeypatch):
+        received = []
+
+        class RecordingREST(HAClient):
+            def __init__(self, url, token, *, timeout=10, **kwargs):
+                received.append(("rest", url, token, timeout))
+                super().__init__(url, token, timeout=timeout, **kwargs)
+
+        class RecordingWebSocket(HAWSClient):
+            def __init__(self, url, token, *, timeout=10, **kwargs):
+                received.append(("websocket", url, token, timeout))
+                super().__init__(url, token, timeout=timeout, **kwargs)
+
+        monkeypatch.setattr(
+            "tools.ha.client._env_config",
+            lambda: ("http://ha.example:8123", "tok", 42),
+        )
+        RecordingREST.from_env()
+        RecordingWebSocket.from_env()
+
+        assert received == [
+            ("rest", "http://ha.example:8123", "tok", 42),
+            ("websocket", "http://ha.example:8123", "tok", 42),
+        ]
 
 
 @pytest.mark.parametrize(
@@ -222,6 +247,12 @@ def test_client_close_with_owned_session():
 
 
 class TestGetJson:
+    def test_docstring_describes_error_contract(self):
+        doc = HAClient.get_json.__doc__ or ""
+        assert "non-2xx" in doc
+        assert "non-JSON" in doc
+        assert "HARequestError" in doc
+
     def test_parses_json_response(self):
         session = MagicMock()
         resp = MagicMock(status_code=200)

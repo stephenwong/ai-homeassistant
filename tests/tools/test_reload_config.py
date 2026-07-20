@@ -6,7 +6,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tools.common import HARequestError
-from tools.reload_config import detect_changed_services, reload_config, reload_service
+from tools.reload_config import (
+    CORE_RELOAD_SERVICE,
+    FILE_TO_SERVICE,
+    SERVICE_LABELS,
+    detect_changed_services,
+    reload_config,
+    reload_service,
+)
 
 
 def _diff_only(stdout):
@@ -31,6 +38,10 @@ def _make_client():
 
 
 class TestDetectChangedServices:
+    def test_core_service_constant_is_used_for_mapping_and_label(self):
+        assert FILE_TO_SERVICE["configuration.yaml"] == CORE_RELOAD_SERVICE
+        assert SERVICE_LABELS[CORE_RELOAD_SERVICE] == "core config"
+
     def test_automations_yaml_returns_automation_reload(self):
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = _diff_only(_nul("config/automations.yaml\n"))
@@ -53,13 +64,13 @@ class TestDetectChangedServices:
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = _diff_only(_nul("config/configuration.yaml\n"))
             result = detect_changed_services()
-        assert result == {"homeassistant/reload_core_config"}
+        assert result == {CORE_RELOAD_SERVICE}
 
     def test_unknown_yaml_returns_reload_core_config(self):
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = _diff_only(_nul("config/secrets.yaml\n"))
             result = detect_changed_services()
-        assert result == {"homeassistant/reload_core_config"}
+        assert result == {CORE_RELOAD_SERVICE}
 
     def test_subdir_file_not_included(self):
         with patch("subprocess.run") as mock_run:
@@ -520,9 +531,7 @@ class TestClassifyChangedFiles:
     def test_unknown_yaml_falls_back_to_core_config(self):
         from tools.reload_config import _classify_changed_files
 
-        assert _classify_changed_files({"unknown.yaml"}) == {
-            "homeassistant/reload_core_config"
-        }
+        assert _classify_changed_files({"unknown.yaml"}) == {CORE_RELOAD_SERVICE}
 
     def test_non_yaml_file_ignored(self):
         from tools.reload_config import _classify_changed_files
@@ -549,6 +558,20 @@ class TestClassifyChangedFiles:
 
 class TestRunGitDiff:
     """Direct unit tests for _run_git_diff."""
+
+    def test_top_level_config_basename_handles_nested_and_custom_dirs(self):
+        from tools.reload_config import _top_level_config_basename
+
+        assert _top_level_config_basename("config/automations.yaml", "config") == (
+            "automations.yaml"
+        )
+        assert (
+            _top_level_config_basename("config/blueprints/foo.yaml", "config") is None
+        )
+        assert (
+            _top_level_config_basename("custom/ha/configuration.yaml", "custom/ha")
+            == "configuration.yaml"
+        )
 
     def test_returns_basenames_for_diff_paths(self):
         from unittest.mock import MagicMock, patch

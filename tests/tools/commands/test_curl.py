@@ -1,12 +1,11 @@
 """Tests for tools/commands/curl.py — pure-Python curl subcommand."""
 
-import argparse
 import json
-from argparse import Namespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.helpers import parse_command_args
 from tools.commands import curl as curl_cmd
 from tools.common import HARequestError
 from tools.ha.client import HAClient
@@ -17,34 +16,18 @@ from tools.ha.client import HAClient
 
 
 def make_args(**overrides):
-    """Build a Namespace with sensible defaults for CLI args."""
-    defaults = dict(
-        endpoint="/api/states",
-        method="GET",
-        data=None,
-        count=False,
-        keys=False,
-        first=None,
-        raw=False,
-        pretty=False,
-        pick=None,
-        entity=None,
-        domain=None,
-        max_chars=None,
-        no_guard=False,
-        summary=False,
-        no_summary=True,
-    )
-    defaults.update(overrides)
-    return Namespace(**defaults)
+    """Build args from curl's production parser, with test-specific overrides."""
+    # Direct ``run`` tests must opt out of the non-TTY summary auto-detection;
+    # the option itself still comes from curl's production parser.
+    args = parse(["/api/states", "--no-summary"])
+    for name, value in overrides.items():
+        setattr(args, name, value)
+    return args
 
 
 def parse(argv):
     """Parse ``curl <argv>`` through the real argparse and return args."""
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers()
-    curl_cmd.add_parser(subparsers)
-    return parser.parse_args(["curl"] + argv)
+    return parse_command_args("curl", curl_cmd.add_parser, argv)
 
 
 # ---------------------------------------------------------------------------
@@ -68,25 +51,44 @@ def mock_client():
         yield client
 
 
-def json_resp(data, status=200):
-    """Build a 200 JSON response mock."""
+_MISSING = object()
+
+
+def response_mock(
+    *,
+    status=200,
+    ok=None,
+    headers=None,
+    content_type=None,
+    text="",
+    json_data=_MISSING,
+):
+    """Build a configurable response mock for curl tests."""
     r = MagicMock()
-    r.ok = status < 400
+    r.ok = status < 400 if ok is None else ok
     r.status_code = status
-    r.headers = {"content-type": "application/json"}
-    r.text = json.dumps(data)
-    r.json.return_value = data
+    if headers is None:
+        headers = {} if content_type is None else {"content-type": content_type}
+    r.headers = headers
+    r.text = text
+    if json_data is not _MISSING:
+        r.json.return_value = json_data
     return r
+
+
+def json_resp(data, status=200):
+    """Build a JSON response mock."""
+    return response_mock(
+        status=status,
+        content_type="application/json",
+        text=json.dumps(data),
+        json_data=data,
+    )
 
 
 def text_resp(text="ok", ct="text/plain", status=200):
     """Build a non-JSON response mock."""
-    r = MagicMock()
-    r.ok = status < 400
-    r.status_code = status
-    r.headers = {"content-type": ct}
-    r.text = text
-    return r
+    return response_mock(status=status, content_type=ct, text=text)
 
 
 # ---------------------------------------------------------------------------
@@ -334,24 +336,17 @@ class TestHttpMethods:
         assert out == "<html>HA</html>"
 
     def test_empty_response_body(self, mock_client, capsys):
-        r = MagicMock()
-        r.ok = True
-        r.status_code = 204
-        r.headers = {}
-        r.text = ""
-        mock_client.get.return_value = r
+        mock_client.get.return_value = response_mock(status=204)
         args = make_args(endpoint="/api/")
         assert curl_cmd.run(args) == 0
         assert capsys.readouterr().out == ""
 
     def test_json_with_charset_in_content_type(self, mock_client, capsys):
-        r = MagicMock()
-        r.ok = True
-        r.status_code = 200
-        r.headers = {"content-type": "application/json; charset=utf-8"}
-        r.text = '{"key": "val"}'
-        r.json.return_value = {"key": "val"}
-        mock_client.get.return_value = r
+        mock_client.get.return_value = response_mock(
+            content_type="application/json; charset=utf-8",
+            text='{"key": "val"}',
+            json_data={"key": "val"},
+        )
         args = make_args()
         assert curl_cmd.run(args) == 0
         assert '"key":"val"' in capsys.readouterr().out
@@ -543,12 +538,7 @@ class TestCount:
         assert capsys.readouterr().out.strip() == "0"  # non-JSON returns 0
 
     def test_count_empty_non_json(self, mock_client, capsys):
-        r = MagicMock()
-        r.ok = True
-        r.status_code = 204
-        r.headers = {}
-        r.text = ""
-        mock_client.get.return_value = r
+        mock_client.get.return_value = response_mock(status=204)
         args = make_args(count=True, endpoint="/api/")
         assert curl_cmd.run(args) == 0
         assert capsys.readouterr().out.strip() == "0"
@@ -1287,12 +1277,11 @@ class TestMaxCharsInteractions:
         """CaseInsensitiveDict headers should not break response parsing."""
         from requests.structures import CaseInsensitiveDict
 
-        resp = MagicMock()
-        resp.status_code = 200
-        resp.headers = CaseInsensitiveDict({"CONTENT-TYPE": "application/json"})
-        resp.json.return_value = {"ok": True}
-        resp.text = '{"ok": true}'
-        mock_client.get.return_value = resp
+        mock_client.get.return_value = response_mock(
+            headers=CaseInsensitiveDict({"CONTENT-TYPE": "application/json"}),
+            json_data={"ok": True},
+            text='{"ok": true}',
+        )
         args = make_args(endpoint="/api/states")
         assert curl_cmd.run(args) == 0
 

@@ -4,10 +4,30 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tools.ha_cli import build_parser, main
+from tools.ha_cli import _COMMAND_MODULES, build_parser, main
 
 
 class TestBuildParser:
+    def test_command_registry_preserves_registration_order(self):
+        assert [module.__name__.rsplit(".", 1)[-1] for module in _COMMAND_MODULES] == [
+            "validate",
+            "reload",
+            "curl",
+            "edit",
+            "stale_sensors",
+            "trace",
+        ]
+        parser = build_parser()
+        subparser_action = parser._subparsers._group_actions[0]
+        assert list(subparser_action.choices) == [
+            "validate",
+            "reload",
+            "curl",
+            "edit",
+            "stale-sensors",
+            "trace",
+        ]
+
     def test_has_validate_subcommand(self):
         parser = build_parser()
         args = parser.parse_args(["validate"])

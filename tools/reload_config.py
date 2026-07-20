@@ -17,20 +17,32 @@ from tools.common import HARequestError, MissingTokenError, get_env_int
 from tools.ha.client import HAClient
 
 _REPO_ROOT = Path(__file__).parent.parent
+CORE_RELOAD_SERVICE = "homeassistant/reload_core_config"
 
 FILE_TO_SERVICE = {
     "automations.yaml": "automation/reload",
     "scripts.yaml": "script/reload",
     "scenes.yaml": "scene/reload",
-    "configuration.yaml": "homeassistant/reload_core_config",
+    "configuration.yaml": CORE_RELOAD_SERVICE,
 }
 ALL_SERVICES = frozenset(FILE_TO_SERVICE.values())
 SERVICE_LABELS = {
     "automation/reload": "automations",
     "script/reload": "scripts",
     "scene/reload": "scenes",
-    "homeassistant/reload_core_config": "core config",
+    CORE_RELOAD_SERVICE: "core config",
 }
+
+
+def _top_level_config_basename(path: str, config_dir: str) -> str | None:
+    """Return a direct child basename of *config_dir*, otherwise ``None``."""
+    try:
+        relative = Path(path).relative_to(Path(config_dir))
+    except ValueError:
+        return None
+    if len(relative.parts) != 1:
+        return None
+    return relative.name
 
 
 def _run_git_diff(config_dir: str, git_timeout: int) -> set[str] | None:
@@ -52,9 +64,9 @@ def _run_git_diff(config_dir: str, git_timeout: int) -> set[str] | None:
         for p_str in r.stdout.split("\0"):
             p_str = p_str.strip()
             if p_str:
-                p = Path(p_str)
-                if len(p.parts) == 2 and p.parts[0] == config_dir:
-                    changed.add(p.name)
+                basename = _top_level_config_basename(p_str, config_dir)
+                if basename is not None:
+                    changed.add(basename)
         return changed
     except OSError, subprocess.TimeoutExpired:
         return None
@@ -85,9 +97,9 @@ def _run_git_status_untracked(config_dir: str, git_timeout: int) -> set[str]:
                 if len(token) > 3 and token[2] == " ":
                     status = token[:2]
                     path = token[3:].strip()
-                    p = Path(path)
-                    if len(p.parts) == 2 and p.parts[0] == config_dir:
-                        changed.add(p.name)
+                    basename = _top_level_config_basename(path, config_dir)
+                    if basename is not None:
+                        changed.add(basename)
                     if status[0] in ("R", "C"):
                         i += 2
                         continue
@@ -102,7 +114,7 @@ def _classify_changed_files(filenames: set[str]) -> set[str]:
     services: set[str] = set()
     for fname in filenames:
         if fname.endswith((".yaml", ".yml")):
-            services.add(FILE_TO_SERVICE.get(fname, "homeassistant/reload_core_config"))
+            services.add(FILE_TO_SERVICE.get(fname, CORE_RELOAD_SERVICE))
     return services
 
 
@@ -186,7 +198,7 @@ def reload_config(summary: bool = False) -> bool:
 
     # reload_core_config must run before domain reloads — automations/scripts
     # reference helpers and integrations that core config sets up.
-    core_service = "homeassistant/reload_core_config"
+    core_service = CORE_RELOAD_SERVICE
     domain_services = services - {core_service}
     results = []
 

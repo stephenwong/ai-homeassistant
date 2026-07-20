@@ -1,17 +1,24 @@
 """TDD tests for tools/commands/edit.py — ha_cli edit subcommand."""
 
-from argparse import Namespace
 from unittest.mock import patch
 
 import pytest
 
-from tests.helpers import make_parser
+from tests.helpers import make_parser, parse_command_args
 from tools.commands.edit import add_parser, run
 
 
 def _boom(*arguments, **keywords):
     """Helper: raises TypeError. Used in monkeypatch tests."""
     raise TypeError("boom")
+
+
+def make_args(**overrides):
+    """Build args from edit's production parser, with test-specific overrides."""
+    args = parse_command_args("edit", add_parser, ["automations"])
+    for name, value in overrides.items():
+        setattr(args, name, value)
+    return args
 
 
 class TestAddParser:
@@ -143,16 +150,7 @@ class TestDispatchByFiletype:
 
 class TestRunShow:
     def _args(self, cfg_dir, file="automations", alias=None):
-        return Namespace(
-            config=str(cfg_dir),
-            file=file,
-            alias=alias,
-            show=True,
-            set=None,
-            add=None,
-            remove=False,
-            quiet=False,
-        )
+        return make_args(config=str(cfg_dir), file=file, alias=alias, show=True)
 
     def test_show_all_lists_aliases(self, tmp_path, capsys):
         _write_file(
@@ -221,16 +219,7 @@ class TestRunShow:
 
 class TestRunSet:
     def _args(self, cfg_dir, alias=None, kvs=None):
-        return Namespace(
-            config=str(cfg_dir),
-            file="automations",
-            alias=alias,
-            show=False,
-            set=kvs or [],
-            add=None,
-            remove=False,
-            quiet=False,
-        )
+        return make_args(config=str(cfg_dir), alias=alias, show=False, set=kvs or [])
 
     def test_set_updates_automation(self, tmp_path):
         _write_file(
@@ -262,16 +251,7 @@ class TestRunSet:
 
 class TestRunAdd:
     def _args(self, cfg_dir, json_str=None):
-        return Namespace(
-            config=str(cfg_dir),
-            file="automations",
-            alias=None,
-            show=False,
-            set=None,
-            add=json_str,
-            remove=False,
-            quiet=False,
-        )
+        return make_args(config=str(cfg_dir), show=False, add=json_str)
 
     def test_add_appends_automation(self, tmp_path):
         _write_file(
@@ -332,16 +312,7 @@ class TestRunAdd:
 
 class TestRunRemove:
     def _args(self, cfg_dir, alias=None):
-        return Namespace(
-            config=str(cfg_dir),
-            file="automations",
-            alias=alias,
-            show=False,
-            set=None,
-            add=None,
-            remove=True,
-            quiet=False,
-        )
+        return make_args(config=str(cfg_dir), alias=alias, show=False, remove=True)
 
     def test_remove_automation(self, tmp_path):
         _write_file(
@@ -384,18 +355,7 @@ class TestRunRemove:
 
 class TestEdgeCases:
     def _ns(self, **overrides):
-        defaults = {
-            "config": "config",
-            "file": "automations",
-            "alias": None,
-            "show": False,
-            "set": None,
-            "add": None,
-            "remove": False,
-            "quiet": False,
-        }
-        defaults.update(overrides)
-        return Namespace(**defaults)
+        return make_args(**overrides)
 
     def test_conflicting_show_and_remove_rejected(self, capsys):
         result = run(self._ns(show=True, remove=True, alias="X"))
@@ -697,15 +657,11 @@ delete:
             "automations",
             "- alias: A\n  triggers: []\n  actions: []\n",
         )
-        args = Namespace(
+        args = make_args(
             config=str(tmp_path),
-            file="automations",
             alias="A",
             show=False,
-            set=None,
             add='{"alias":"B"}',
-            remove=False,
-            quiet=False,
         )
         rc = run(args)
         assert rc == 1
@@ -771,17 +727,14 @@ class TestRunSetOutput:
     def test_run_set_suppresses_output_when_quiet(self, tmp_path, capsys):
         autos = tmp_path / "automations.yaml"
         autos.write_text("- alias: A\n  id: '1'\n")
-        args = Namespace(
+        args = make_args(
             file="automations",
             alias="A",
             config=str(tmp_path),
             show=False,
             set=["mode=single"],
-            add=None,
-            remove=False,
             quiet=True,
             summary=True,
-            no_summary=False,
         )
         rc = run(args)
         assert rc == 0
@@ -791,14 +744,12 @@ class TestRunSetOutput:
     def test_run_set_prints_when_verbose(self, tmp_path, capsys):
         autos = tmp_path / "automations.yaml"
         autos.write_text("- alias: A\n  id: '1'\n")
-        args = Namespace(
+        args = make_args(
             file="automations",
             alias="A",
             config=str(tmp_path),
             show=False,
             set=["mode=single"],
-            add=None,
-            remove=False,
             quiet=False,
             summary=False,
             no_summary=True,

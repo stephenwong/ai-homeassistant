@@ -124,6 +124,21 @@ def _describe_file_change(
     return None, None
 
 
+def _collect_file_changes(
+    current_files: dict[str, str], previous_files: dict[str, str]
+) -> list[tuple[str, str]]:
+    """Return ordered ``(summary, diff)`` pairs for changed files."""
+    changes = []
+    all_names = sorted(set(current_files) | set(previous_files))
+    for name in all_names:
+        summary, diff = _describe_file_change(
+            name, previous_files.get(name), current_files.get(name)
+        )
+        if summary is not None:
+            changes.append((summary, diff or ""))
+    return changes
+
+
 def generate_changelog(
     backup: BackupRecord, previous_backup: BackupRecord | None
 ) -> str:
@@ -151,29 +166,18 @@ def generate_changelog(
 
     previous_files = extract_files(previous_backup["path"])
 
-    all_names = sorted(set(list(current_files.keys()) + list(previous_files.keys())))
+    changes = _collect_file_changes(current_files, previous_files)
 
-    changed_files = []
-    diffs = []
-
-    for name in all_names:
-        summary, diff = _describe_file_change(
-            name, previous_files.get(name), current_files.get(name)
-        )
-        if summary is not None:
-            changed_files.append(summary)
-            diffs.append(diff or "")
-
-    if not changed_files:
+    if not changes:
         lines.append("No changes detected.")
         return "\n".join(lines) + "\n"
 
     lines.append("Changed files:")
-    lines.extend(changed_files)
+    lines.extend(summary for summary, _diff in changes)
     lines.append("")
     lines.append("---")
 
-    for diff in diffs:
+    for _summary, diff in changes:
         if diff:
             lines.append(diff)
             lines.append("")

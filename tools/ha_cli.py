@@ -27,6 +27,8 @@ from tools.commands import (
     validate,
 )
 
+_COMMAND_MODULES = (validate, reload, curl, edit, stale_sensors, trace)
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level argparse parser."""
@@ -40,12 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="<command>",
     )
 
-    validate.add_parser(subparsers)
-    reload.add_parser(subparsers)
-    curl.add_parser(subparsers)
-    edit.add_parser(subparsers)
-    stale_sensors.add_parser(subparsers)
-    trace.add_parser(subparsers)
+    for command_module in _COMMAND_MODULES:
+        command_module.add_parser(subparsers)
 
     return parser
 

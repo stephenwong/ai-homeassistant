@@ -7,6 +7,7 @@ import pytest
 
 from tools.cache import (
     _blob_hash,
+    cache_path,
     compute_hash,
     load_blob,
     load_cache,
@@ -161,6 +162,11 @@ class TestLoadCache:
         assert result is None
         cache_dir = tmp_path / ".cache" / "validators"
         assert not cache_dir.exists()
+
+    def test_cache_path_is_read_only(self, tmp_path):
+        path = cache_path(tmp_path, "Foo")
+        assert path == tmp_path / ".cache" / "validators" / "Foo.json"
+        assert not path.parent.exists()
 
     def test_invalid_json_returns_none(self, tmp_path):
         cache_dir = tmp_path / ".cache" / "validators"
