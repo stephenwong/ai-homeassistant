@@ -201,6 +201,24 @@ class TestSearchBackup:
         matches, _u = search_backup(backup, re.compile("match"))
         assert matches == []
 
+    def test_retains_matches_before_binary_data(self, tmp_path):
+        """A decode failure after a match keeps the earlier match."""
+        tar_path = tmp_path / "test.tar.gz"
+        with tarfile.open(tar_path, "w:gz") as tar:
+            data = b"match\n\xff\n"
+            info = tarfile.TarInfo(name="config/binary.yaml")
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+
+        backup = {
+            "path": tar_path,
+            "filename": tar_path.name,
+            "timestamp": datetime(2026, 2, 1),
+        }
+        matches, _u = search_backup(backup, re.compile("match"))
+        assert len(matches) == 1
+        assert matches[0]["line_num"] == 1
+
 
 class TestRegexSafety:
     def test_detects_nested_quantifier_pattern(self):

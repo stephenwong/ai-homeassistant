@@ -45,6 +45,49 @@ def is_likely_unsafe_regex(pattern: str) -> bool:
     return any(re.search(expr, pattern) for expr in nested_quantifier_patterns)
 
 
+def _search_file(
+    extracted,
+    display_name: str,
+    pattern: re.Pattern,
+    context_lines: int,
+    matches: list[_MatchResult],
+) -> None:
+    """Search one decoded archive member and assemble optional context."""
+    context_before: deque[str] = deque(maxlen=context_lines)
+    pending_after: list[tuple[_MatchResult, int]] = []
+
+    for line_num, raw_line in enumerate(extracted, start=1):
+        line = raw_line.decode("utf-8").rstrip("\n")
+
+        if pending_after:
+            remaining_pairs: list[tuple[_MatchResult, int]] = []
+            for match_entry, remaining in pending_after:
+                match_entry.setdefault("context_after", []).append(line)
+                if remaining - 1 > 0:
+                    remaining_pairs.append((match_entry, remaining - 1))
+            pending_after = remaining_pairs
+
+        if not pattern.search(line):
+            if context_lines > 0:
+                context_before.append(line)
+            continue
+
+        match_entry = {
+            "file": display_name,
+            "line_num": line_num,
+            "line": line,
+        }
+        if context_lines > 0:
+            match_entry["context_before"] = list(context_before)
+            match_entry["context_after"] = []
+            pending_after.append((match_entry, context_lines))
+
+        matches.append(match_entry)
+
+        if context_lines > 0:
+            context_before.append(line)
+
+
 def search_backup(
     backup: dict, pattern: re.Pattern, yaml_only: bool = True, context_lines: int = 0
 ) -> tuple[list[_MatchResult], bool]:
@@ -59,39 +102,13 @@ def search_backup(
 
             try:
                 with extracted:
-                    context_before: deque[str] = deque(maxlen=context_lines)
-                    pending_after: list[tuple[_MatchResult, int]] = []
-
-                    for line_num, raw_line in enumerate(extracted, start=1):
-                        line = raw_line.decode("utf-8").rstrip("\n")
-
-                        if pending_after:
-                            remaining_pairs: list[tuple[_MatchResult, int]] = []
-                            for match_entry, remaining in pending_after:
-                                match_entry.setdefault("context_after", []).append(line)
-                                if remaining - 1 > 0:
-                                    remaining_pairs.append((match_entry, remaining - 1))
-                            pending_after = remaining_pairs
-
-                        if not pattern.search(line):
-                            if context_lines > 0:
-                                context_before.append(line)
-                            continue
-
-                        match_entry = {
-                            "file": display_name,
-                            "line_num": line_num,
-                            "line": line,
-                        }
-                        if context_lines > 0:
-                            match_entry["context_before"] = list(context_before)
-                            match_entry["context_after"] = []
-                            pending_after.append((match_entry, context_lines))
-
-                        matches.append(match_entry)
-
-                        if context_lines > 0:
-                            context_before.append(line)
+                    _search_file(
+                        extracted,
+                        display_name,
+                        pattern,
+                        context_lines,
+                        matches,
+                    )
             except UnicodeDecodeError:
                 continue
 
@@ -100,6 +117,73 @@ def search_backup(
         return [], True
 
     return matches, False
+
+
+def _search_backups(
+    backups: list[dict],
+    pattern: re.Pattern,
+    *,
+    yaml_only: bool,
+    context_lines: int,
+    max_workers: int,
+) -> list[tuple[dict, tuple[list[_MatchResult], bool]]]:
+    """Search backups concurrently while retaining newest-first ordering."""
+    results: list[tuple[dict, tuple[list[_MatchResult], bool]]] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            (
+                backup,
+                executor.submit(
+                    search_backup,
+                    backup,
+                    pattern,
+                    yaml_only=yaml_only,
+                    context_lines=context_lines,
+                ),
+            )
+            for backup in backups
+        ]
+
+        for backup, future in futures:
+            results.append((backup, future.result()))
+    return results
+
+
+def _render_results(
+    results: list[tuple[dict, tuple[list[_MatchResult], bool]]],
+    *,
+    files_only: bool,
+    context_lines: int,
+) -> tuple[int, int]:
+    """Render search results and return (matches, unreadable archives) counts."""
+    unreadable_count = sum(
+        1 for _backup, (_matches, unreadable) in results if unreadable
+    )
+    match_count = sum(1 for _backup, (matches, _u) in results if matches)
+
+    for backup, (matches, _u) in results:
+        date_str = backup["timestamp"].strftime("%b %d")
+        if matches:
+            print(f"  MATCH  {backup['filename']} ({date_str})")
+            if not files_only:
+                for m in matches:
+                    if context_lines > 0 and "context_before" in m:
+                        for ctx_line in m["context_before"]:
+                            print(f"           {m['file']}:     {ctx_line}")
+                    print(f"         {m['file']}:{m['line_num']}:{m['line']}")
+                    if context_lines > 0 and "context_after" in m:
+                        for ctx_line in m["context_after"]:
+                            print(f"           {m['file']}:     {ctx_line}")
+                print()
+        else:
+            print(f"  ----   {backup['filename']} ({date_str})")
+
+    unreadable_suffix = f" ({unreadable_count} unreadable)" if unreadable_count else ""
+    print(
+        f"\nFound in {match_count} of {len(results)} backups{unreadable_suffix}",
+        file=sys.stderr,
+    )
+    return match_count, unreadable_count
 
 
 def main() -> int:
@@ -161,51 +245,15 @@ def main() -> int:
     if worker_warning:
         print(f"Warning: {worker_warning}", file=sys.stderr)
 
-    results = []
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            (
-                backup,
-                executor.submit(
-                    search_backup,
-                    backup,
-                    pattern,
-                    yaml_only=yaml_only,
-                    context_lines=args.context,
-                ),
-            )
-            for backup in backups
-        ]
-
-        for backup, future in futures:
-            results.append((backup, future.result()))
-
-    unreadable_count = sum(
-        1 for _backup, (_matches, unreadable) in results if unreadable
+    results = _search_backups(
+        backups,
+        pattern,
+        yaml_only=yaml_only,
+        context_lines=args.context,
+        max_workers=max_workers,
     )
-    match_count = sum(1 for _backup, (matches, _u) in results if matches)
-
-    for backup, (matches, _u) in results:
-        date_str = backup["timestamp"].strftime("%b %d")
-        if matches:
-            print(f"  MATCH  {backup['filename']} ({date_str})")
-            if not args.files_only:
-                for m in matches:
-                    if args.context > 0 and "context_before" in m:
-                        for ctx_line in m["context_before"]:
-                            print(f"           {m['file']}:     {ctx_line}")
-                    print(f"         {m['file']}:{m['line_num']}:{m['line']}")
-                    if args.context > 0 and "context_after" in m:
-                        for ctx_line in m["context_after"]:
-                            print(f"           {m['file']}:     {ctx_line}")
-                print()
-        else:
-            print(f"  ----   {backup['filename']} ({date_str})")
-
-    unreadable_suffix = f" ({unreadable_count} unreadable)" if unreadable_count else ""
-    print(
-        f"\nFound in {match_count} of {len(backups)} backups{unreadable_suffix}",
-        file=sys.stderr,
+    match_count, unreadable_count = _render_results(
+        results, files_only=args.files_only, context_lines=args.context
     )
     return 0 if match_count else (1 if unreadable_count else 0)
 

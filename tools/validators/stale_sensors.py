@@ -167,11 +167,82 @@ class StaleSensorValidator(ValidatorBase):
                 return dt
             try:
                 return self._parse_epoch(float(value))
-            except ValueError:
+            except OverflowError, OSError, ValueError:
                 self.warnings.append(f"Failed to parse string timestamp '{value}'")
                 return None
 
         return None
+
+    def _eligible_state(
+        self, state: dict[str, Any], registry: dict[str, Any] | None
+    ) -> tuple[str, str, dict[str, Any]] | None:
+        """Return domain, entity ID, and attributes for an eligible state."""
+        entity_id = state.get("entity_id")
+        if not entity_id or "." not in entity_id:
+            return None
+
+        domain, _ = entity_id.split(".", 1)
+        if domain not in self.only_domains:
+            return None
+
+        reg_entry = registry.get(entity_id) if registry else None
+        if reg_entry:
+            if reg_entry.get("disabled_by") is not None:
+                return None
+            if reg_entry.get("hidden_by") is not None:
+                return None
+
+            platform = reg_entry.get("platform")
+            if platform in self.exclude_platforms:
+                return None
+
+        attrs = state.get("attributes") or {}
+        if attrs.get("restored") is True:
+            if not self.ignore_restored:
+                self.warnings.append(
+                    f"{entity_id}: Entity has 'restored' status at HA startup. "
+                    "Real hardware state is unknown."
+                )
+            return None
+
+        return domain, entity_id, attrs
+
+    def _heartbeat_timestamp(self, attrs: dict[str, Any]) -> datetime | None:
+        """Choose the newest available radio heartbeat timestamp."""
+        heartbeat_ts = None
+        for key in ("last_seen", "last_reported"):
+            val = attrs.get(key)
+            parsed = self.parse_timestamp(val)
+            if parsed and (heartbeat_ts is None or parsed > heartbeat_ts):
+                heartbeat_ts = parsed
+        return heartbeat_ts
+
+    def _baseline_timestamp(
+        self, state: dict[str, Any], heartbeat_ts: datetime | None
+    ) -> datetime | None:
+        """Choose heartbeat first, otherwise the older state timestamp."""
+        if heartbeat_ts is not None:
+            return heartbeat_ts
+
+        # Prefer last_changed (value-change) over last_updated (attr-write).
+        last_changed = state.get("last_changed")
+        last_updated = state.get("last_updated")
+        if last_changed is not None and last_updated is not None:
+            # Use whichever is older — value change before latest attr write
+            # is the stronger staleness signal.
+            tc = self.parse_timestamp(last_changed)
+            tu = self.parse_timestamp(last_updated)
+            if tc is not None and tu is not None:
+                return min(tc, tu)
+            return tc if tc is not None else tu
+
+        timestamp = last_changed if last_changed is not None else last_updated
+        return self.parse_timestamp(timestamp)
+
+    def _record_stale(self, entity_id: str, warning: str) -> None:
+        """Record a stale entity and its diagnostic warning."""
+        self.stale_entities.append(entity_id)
+        self.warnings.append(warning)
 
     def _validate(self) -> bool:
         """Query Home Assistant for stale sensors.
@@ -180,6 +251,11 @@ class StaleSensorValidator(ValidatorBase):
         Returns False when fail_on_stale is True and stale sensors exist.
         Populates warnings/errors/info with diagnostic details.
         """
+        self.stale_entities.clear()
+        self.errors.clear()
+        self.warnings.clear()
+        self.info.clear()
+
         # Fast skip in CI/CD environments
         if os.getenv("CI") == "true":
             self.info.append(
@@ -188,8 +264,9 @@ class StaleSensorValidator(ValidatorBase):
             return True
 
         load_env_file()
-        if not self.fail_on_stale:
-            self.fail_on_stale = os.getenv("HA_STALE_FAIL", "").strip().lower() in (
+        fail_on_stale = self.fail_on_stale
+        if not fail_on_stale:
+            fail_on_stale = os.getenv("HA_STALE_FAIL", "").strip().lower() in (
                 "1",
                 "true",
                 "yes",
@@ -227,58 +304,26 @@ class StaleSensorValidator(ValidatorBase):
             if not isinstance(state, dict):
                 continue
 
-            entity_id = state.get("entity_id")
-            if not entity_id or "." not in entity_id:
+            eligible = self._eligible_state(state, registry)
+            if eligible is None:
                 continue
-
-            domain, _ = entity_id.split(".", 1)
-            if domain not in self.only_domains:
-                continue
-
-            # Look up entity registry definitions if available
-            reg_entry = registry.get(entity_id) if registry else None
-            if reg_entry:
-                # Exclude disabled and hidden entities
-                if reg_entry.get("disabled_by") is not None:
-                    continue
-                if reg_entry.get("hidden_by") is not None:
-                    continue
-
-                # Exclude virtual / non-hardware platforms
-                platform = reg_entry.get("platform")
-                if platform in self.exclude_platforms:
-                    continue
-
-            # Check if startup restoration is active
-            attrs = state.get("attributes") or {}
-            if attrs.get("restored") is True:
-                if not self.ignore_restored:
-                    self.warnings.append(
-                        f"{entity_id}: Entity has 'restored' status at HA startup. "
-                        "Real hardware state is unknown."
-                    )
-                continue
+            domain, entity_id, attrs = eligible
 
             # Unavailable/unknown sensors are not reporting; surface them
             # immediately rather than waiting for threshold_hours.
             st_value = state.get("state")
             if st_value in ("unavailable", "unknown", None):
-                self.warnings.append(
-                    f"{entity_id}: State is {st_value!r} — device not reporting."
+                self._record_stale(
+                    entity_id,
+                    f"{entity_id}: State is {st_value!r} — device not reporting.",
                 )
-                self.stale_entities.append(entity_id)
                 continue
 
             # Heartbeat check: Z2M or custom attributes represent
             # actual radio communication time.
             # Binary sensors are only validated if a heartbeat attribute
             # is explicitly present.
-            heartbeat_ts = None
-            for key in ("last_seen", "last_reported"):
-                val = attrs.get(key)
-                parsed = self.parse_timestamp(val)
-                if parsed and (heartbeat_ts is None or parsed > heartbeat_ts):
-                    heartbeat_ts = parsed
+            heartbeat_ts = self._heartbeat_timestamp(attrs)
 
             if domain == "binary_sensor" and heartbeat_ts is None:
                 # Skip binary sensors without device heartbeats
@@ -286,19 +331,7 @@ class StaleSensorValidator(ValidatorBase):
                 continue
 
             # Determine baseline timestamp to compare
-            baseline_ts = heartbeat_ts
-            if baseline_ts is None:
-                # Prefer last_changed (value-change) over last_updated (attr-write).
-                last_changed = state.get("last_changed")
-                last_updated = state.get("last_updated")
-                if last_changed and last_updated:
-                    # Use whichever is older — value change before latest attr write
-                    # is the stronger staleness signal.
-                    tc = self.parse_timestamp(last_changed)
-                    tu = self.parse_timestamp(last_updated)
-                    baseline_ts = min(tc, tu) if (tc and tu) else (tc or tu)
-                else:
-                    baseline_ts = self.parse_timestamp(last_changed or last_updated)
+            baseline_ts = self._baseline_timestamp(state, heartbeat_ts)
 
             if baseline_ts is None:
                 continue
@@ -308,13 +341,13 @@ class StaleSensorValidator(ValidatorBase):
             elapsed_hours = delta.total_seconds() / 3600.0
 
             if elapsed_hours > self.threshold_hours:
-                self.stale_entities.append(entity_id)
-                self.warnings.append(
+                self._record_stale(
+                    entity_id,
                     f"{entity_id}: Stale state detected. Last update was "
-                    f"{elapsed_hours:.1f} hours ago (limit: {self.threshold_hours}h)."
+                    f"{elapsed_hours:.1f} hours ago (limit: {self.threshold_hours}h).",
                 )
 
-        if self.fail_on_stale and self.stale_entities:
+        if fail_on_stale and self.stale_entities:
             self.errors.append(
                 f"Stale sensor check failed: "
                 f"{len(self.stale_entities)} stale sensor(s) detected (see warnings)"

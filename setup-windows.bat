@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableExtensions EnableDelayedExpansion
 
 REM Home Assistant Configuration Management - Windows Setup Script
 REM This script checks prerequisites and sets up your environment
@@ -10,6 +10,19 @@ echo   Home Assistant Configuration Management - Windows Setup
 echo ========================================================
 echo.
 
+REM Check that the script is being run from the repository root before making
+REM environment or dependency changes.
+if not exist "Makefile" (
+    echo [ERROR] Makefile not found. Run this script from the repository root.
+    pause
+    exit /b 1
+)
+if not exist "pyproject.toml" (
+    echo [ERROR] pyproject.toml not found. Run this script from the repository root.
+    pause
+    exit /b 1
+)
+
 REM ===============================
 REM Phase 1: Check All Prerequisites
 REM ===============================
@@ -17,8 +30,6 @@ echo Checking prerequisites...
 echo.
 
 set MISSING_REQUIRED=0
-set MISSING_OPTIONAL=0
-set MISSING_LIST=
 
 REM --- Check Python ---
 set PYTHON_OK=0
@@ -26,12 +37,17 @@ python --version >nul 2>&1
 if errorlevel 1 (
     echo [MISSING] Python - REQUIRED
     set MISSING_REQUIRED=1
-    set "MISSING_LIST=!MISSING_LIST!  - Python: https://www.python.org/downloads/\n"
 ) else (
     for /f "tokens=2 delims= " %%i in ('python --version 2^>nul') do set PYTHON_VERSION=%%i
     if "!PYTHON_VERSION!"=="" set PYTHON_VERSION=Unknown
-    echo [OK] Python !PYTHON_VERSION!
-    set PYTHON_OK=1
+    python -c "import sys; raise SystemExit(0 if sys.version_info >= (3,14,2) else 1)" >nul 2>&1
+    if errorlevel 1 (
+        echo [MISSING] Python !PYTHON_VERSION! found, but Python 3.14.2+ is required
+        set MISSING_REQUIRED=1
+    ) else (
+        echo [OK] Python !PYTHON_VERSION!
+        set PYTHON_OK=1
+    )
 )
 
 REM --- Check Git ---
@@ -50,12 +66,15 @@ if errorlevel 1 (
     ) else (
         echo [MISSING] Git - REQUIRED
         set MISSING_REQUIRED=1
-        set "MISSING_LIST=!MISSING_LIST!  - Git: https://git-scm.com/download/win\n"
     )
 ) else (
     echo [OK] Git
     set GIT_OK=1
 )
+
+REM Git Bash provides the POSIX tools used by the Makefile when available.
+if exist "C:\Program Files\Git\usr\bin" set "PATH=%PATH%;C:\Program Files\Git\usr\bin"
+if exist "C:\Program Files (x86)\Git\usr\bin" set "PATH=%PATH%;C:\Program Files (x86)\Git\usr\bin"
 
 REM --- Check Make ---
 set MAKE_OK=0
@@ -73,48 +92,64 @@ if errorlevel 1 (
     ) else (
         echo [MISSING] Make - REQUIRED
         set MISSING_REQUIRED=1
-        set "MISSING_LIST=!MISSING_LIST!  - Make: Use Git Bash, or install via: choco install make\n"
     )
 ) else (
     echo [OK] Make
     set MAKE_OK=1
 )
 
+REM --- Check rsync ---
+set RSYNC_OK=0
+where rsync >nul 2>&1
+if errorlevel 1 (
+    echo [MISSING] rsync - REQUIRED for make pull and make push
+    set MISSING_REQUIRED=1
+) else (
+    echo [OK] rsync
+    set RSYNC_OK=1
+)
+
+REM --- Check SSH ---
+set SSH_OK=0
+where ssh >nul 2>&1
+if errorlevel 1 (
+    echo [MISSING] SSH - REQUIRED for Home Assistant access
+    set MISSING_REQUIRED=1
+) else (
+    echo [OK] SSH
+    set SSH_OK=1
+)
+
+REM --- Check PowerShell (used for uv installation and secure token input) ---
+set POWERSHELL_OK=0
+where powershell >nul 2>&1
+if errorlevel 1 (
+    echo [MISSING] PowerShell - REQUIRED for setup
+    set MISSING_REQUIRED=1
+) else (
+    echo [OK] PowerShell
+    set POWERSHELL_OK=1
+)
+
 REM --- Check uv (Python package manager) ---
 set UV_OK=0
 uv --version >nul 2>&1
 if errorlevel 1 (
-    echo [MISSING] uv - REQUIRED for Python dependency management
-    set MISSING_REQUIRED=1
-    set "MISSING_LIST=!MISSING_LIST!  - uv: https://docs.astral.sh/uv/getting-started/installation/\n"
+    echo uv not found. Installing uv...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+    set "PATH=%USERPROFILE%\.local\bin;%PATH%"
+    uv --version >nul 2>&1
+    if errorlevel 1 (
+        echo [MISSING] uv - installation failed or uv is not on PATH
+        set MISSING_REQUIRED=1
+    ) else (
+        echo [OK] uv installed
+        set UV_OK=1
+    )
 ) else (
     for /f "tokens=2 delims= " %%i in ('uv --version 2^>nul') do set UV_VERSION=%%i
     echo [OK] uv !UV_VERSION!
     set UV_OK=1
-)
-
-REM --- Check Node.js (needed for Claude Code CLI) ---
-set NODE_OK=0
-node --version >nul 2>&1
-if errorlevel 1 (
-    echo [MISSING] Node.js - REQUIRED for Claude Code CLI
-    set MISSING_REQUIRED=1
-    set "MISSING_LIST=!MISSING_LIST!  - Node.js: https://nodejs.org/en/download/\n"
-) else (
-    for /f "tokens=1 delims= " %%i in ('node --version 2^>nul') do set NODE_VERSION=%%i
-    echo [OK] Node.js !NODE_VERSION!
-    set NODE_OK=1
-)
-
-REM --- Check Claude Code CLI ---
-set CLAUDE_OK=0
-where claude >nul 2>&1
-if errorlevel 1 (
-    echo [MISSING] Claude Code CLI - REQUIRED
-    set MISSING_OPTIONAL=1
-) else (
-    echo [OK] Claude Code CLI
-    set CLAUDE_OK=1
 )
 
 echo.
@@ -154,10 +189,19 @@ if %MISSING_REQUIRED%==1 (
         echo       Or: pip install uv
         echo.
     )
-    if %NODE_OK%==0 (
-        echo   [X] Node.js
-        echo       Download: https://nodejs.org/en/download/
-        echo       Required to install Claude Code CLI
+    if %RSYNC_OK%==0 (
+        echo   [X] rsync
+        echo       Install rsync for Windows or use WSL/Git Bash with rsync available
+        echo.
+    )
+    if %SSH_OK%==0 (
+        echo   [X] SSH
+        echo       Install Git for Windows or enable the Windows OpenSSH client
+        echo.
+    )
+    if %POWERSHELL_OK%==0 (
+        echo   [X] PowerShell
+        echo       Enable Windows PowerShell or install PowerShell 7
         echo.
     )
     echo ========================================================
@@ -165,36 +209,10 @@ if %MISSING_REQUIRED%==1 (
     echo Please install the missing dependencies and re-run this script.
     echo.
     echo TIP: For the best experience on Windows, use Git Bash instead
-    echo      of Command Prompt. Git Bash includes make and other tools.
+    echo      of Command Prompt. Ensure Git Bash or WSL provides make, rsync, and SSH.
     echo.
     pause
     exit /b 1
-)
-
-REM ===============================
-REM Phase 3: Check Claude Code CLI
-REM ===============================
-if %CLAUDE_OK%==0 (
-    echo ========================================================
-    echo   CLAUDE CODE CLI NOT FOUND
-    echo ========================================================
-    echo.
-    echo Claude Code CLI is required but not installed.
-    echo.
-    echo To install Claude Code CLI, run this command:
-    echo.
-    echo     npm install -g @anthropic-ai/claude-code
-    echo.
-    echo After installation:
-    echo   1. Close and reopen your terminal
-    echo   2. Run: claude --version
-    echo   3. Re-run this setup script
-    echo.
-    echo Note: You need a Claude Pro/Max subscription or API access.
-    echo Visit https://claude.com/solutions/coding for details.
-    echo.
-    pause
-    exit /b 0
 )
 
 echo All prerequisites found!
@@ -208,27 +226,27 @@ echo Setting up Python environment...
 REM Install dependencies using uv
 echo Installing Python dependencies with uv...
 uv sync
+if errorlevel 1 (
+    echo [ERROR] uv sync failed. Fix the dependency error and re-run this script.
+    pause
+    exit /b 1
+)
 
 echo.
 echo Verifying Python environment...
 
-REM Verify uv sync succeeded
-uv run python -c "import yaml; import voluptuous; import jsonschema; import requests" >nul 2>&1
+REM Verify critical dependencies are importable
+uv run python -c "import aiohttp, homeassistant, jsonschema, requests, ruamel.yaml, voluptuous, yaml" >nul 2>&1
 if errorlevel 1 (
-    echo [WARNING] Some dependencies failed to install. Try running: uv sync
+    echo [ERROR] Critical Python dependencies are not importable. Try running: uv sync
+    pause
+    exit /b 1
 ) else (
     echo [OK] All Python dependencies verified
 )
 
 echo.
 echo Checking project setup...
-
-REM Check if Makefile exists
-if not exist "Makefile" (
-    echo [ERROR] Makefile not found. Are you in the correct directory?
-    pause
-    exit /b 1
-)
 
 echo [OK] Makefile found
 
@@ -242,23 +260,21 @@ echo.
 
 REM Get Home Assistant host
 :get_host
+set "HA_HOST="
 set /p HA_HOST="Enter your Home Assistant hostname or IP address (e.g., homeassistant.local or 192.168.1.100): "
 if "%HA_HOST%"=="" (
     echo [ERROR] Hostname/IP cannot be empty
     goto get_host
 )
 
-REM Get SSH username
-:get_user
-set /p HA_USER="Enter the SSH username for Home Assistant (default: root): "
-if "%HA_USER%"=="" (
-    set HA_USER=root
-)
-echo Using SSH user: %HA_USER%
+set "HA_URL_DEFAULT=http://%HA_HOST%:8123"
+set "HA_URL="
+set /p HA_URL="Enter your Home Assistant API URL [!HA_URL_DEFAULT!]: "
+if "!HA_URL!"=="" set "HA_URL=!HA_URL_DEFAULT!"
 
 echo.
 echo Testing connection to %HA_HOST%...
-ping -n 1 %HA_HOST% >nul 2>&1
+ping -n 1 "%HA_HOST%" >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] Cannot reach %HA_HOST% - please verify the address
     set /p continue_setup="Continue anyway? (y/N): "
@@ -286,16 +302,16 @@ set /p ssh_option="Choose option (1-3): "
 
 if "%ssh_option%"=="1" (
     echo.
-    echo Testing SSH connection to %HA_USER%@%HA_HOST%...
+    echo Testing SSH connection to %HA_HOST%...
     REM Test SSH connection
-    ssh -o ConnectTimeout=5 -o BatchMode=yes %HA_USER%@%HA_HOST% exit >nul 2>&1
+    ssh -o ConnectTimeout=5 -o BatchMode=yes "%HA_HOST%" exit >nul 2>&1
     if errorlevel 1 (
         echo [ERROR] SSH connection failed
         echo.
         echo Please check your SSH configuration and try again.
         echo Common issues:
         echo   - SSH keys not added to Home Assistant
-        echo   - Incorrect hostname/IP or username
+        echo   - Incorrect hostname/IP or SSH config alias
         echo   - SSH addon not enabled in Home Assistant
         echo   - Firewall blocking port 22
         set SSH_CONFIGURED=false
@@ -321,7 +337,7 @@ if "%ssh_option%"=="1" (
     echo    - Add it to the SSH addon's "authorized_keys" setting
     echo.
     echo 4. Test the connection:
-    echo    ssh %HA_USER%@%HA_HOST%
+    echo    ssh %HA_HOST%
     echo.
     echo For detailed instructions, visit:
     echo https://github.com/home-assistant/addons/blob/master/ssh/DOCS.md
@@ -338,19 +354,25 @@ if "%ssh_option%"=="1" (
     set SSH_CONFIGURED=false
 )
 
-REM Update Makefile with the provided host
+REM Persist the host in .env; the Makefile loads configuration from .env.
 echo.
-echo Updating Makefile configuration...
-if exist "Makefile" (
-    REM Create backup
-    copy Makefile Makefile.backup >nul
-
-    REM Update HA_HOST in Makefile (Windows batch doesn't have sed, so we use PowerShell)
-    powershell -Command "(Get-Content Makefile) -replace '^HA_HOST = .*', 'HA_HOST = %HA_HOST%' | Set-Content Makefile"
-    echo [OK] Makefile updated with HA_HOST = %HA_HOST%
+echo Updating .env configuration...
+if not exist ".env" (
+    copy ".env.example" ".env" >nul
 ) else (
-    echo [ERROR] Makefile not found - you may need to configure manually
+    copy ".env" ".env.backup" >nul
 )
+set "SETUP_HA_HOST=%HA_HOST%"
+set "SETUP_HA_URL=%HA_URL%"
+powershell -NoProfile -Command "$path='.env'; $text=[IO.File]::ReadAllText($path); $secure=Read-Host 'Enter a long-lived access token (leave blank to configure later)' -AsSecureString; $token=''; if ($secure.Length -gt 0) { $ptr=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure); try { $token=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) } }; $updates=@{HA_HOST=$env:SETUP_HA_HOST; HA_URL=$env:SETUP_HA_URL}; if ($token) { $updates['HA_TOKEN']=$token }; foreach ($key in $updates.Keys) { $pattern='(?m)^'+[regex]::Escape($key)+'[ \t?]*=.*$'; $line=$key+'='+$updates[$key]; if ($text -match $pattern) { $text=[regex]::Replace($text,$pattern,[System.Text.RegularExpressions.MatchEvaluator]{ param($m) $line }) } else { $text=$text.TrimEnd([char]13,[char]10)+[Environment]::NewLine+$line+[Environment]::NewLine } }; [IO.File]::WriteAllText($path,$text,(New-Object Text.UTF8Encoding($false)))"
+if errorlevel 1 (
+    echo [ERROR] Could not update .env.
+    pause
+    exit /b 1
+)
+echo [OK] .env updated with HA_HOST=%HA_HOST% and HA_URL=%HA_URL%
+echo If you left the token blank, edit .env and set HA_TOKEN before validation or deployment.
+echo HA_MCP_URL is optional and only needed for AI assistant integration.
 
 echo.
 echo ========================================================
@@ -359,7 +381,7 @@ echo ========================================================
 echo.
 echo Configuration Summary:
 echo   - Home Assistant Host: %HA_HOST%
-echo   - SSH User: %HA_USER%
+echo   - Configuration: .env updated
 if "%SSH_CONFIGURED%"=="true" (
     echo   - SSH Access: [OK] Configured and tested
 ) else (
@@ -369,12 +391,11 @@ echo.
 echo Next steps:
 if "%SSH_CONFIGURED%"=="true" (
     echo   1. Pull your configuration:  make pull
-    echo   2. Start Claude Code:        claude
-    echo   3. Ask Claude to help with your Home Assistant!
+    echo   2. Start your preferred AI assistant, if desired
 ) else (
     echo   1. Complete SSH setup (see instructions above)
     echo   2. Pull your configuration:  make pull
-    echo   3. Start Claude Code:        claude
+    echo   3. Start your preferred AI assistant, if desired
 )
 echo.
 echo --------------------------------------------------------

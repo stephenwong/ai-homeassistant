@@ -689,6 +689,57 @@ def test_fail_on_stale_env_var_picked_up_after_load_env(config_dir, monkeypatch)
         assert any("failed" in e.lower() for e in v.errors)
 
 
+def test_repeated_validation_resets_run_state(config_dir, monkeypatch):
+    """A reused validator reflects the current env and states on each run."""
+    _write_entity_registry(
+        config_dir,
+        [
+            {
+                "entity_id": "sensor.test_temp",
+                "platform": "zha",
+                "disabled_by": None,
+                "hidden_by": None,
+            }
+        ],
+    )
+    stale = [
+        {
+            "entity_id": "sensor.test_temp",
+            "state": "21.5",
+            "last_updated": "2026-06-24T20:00:00+00:00",
+            "attributes": {},
+        }
+    ]
+    fresh = [
+        {
+            "entity_id": "sensor.test_temp",
+            "state": "21.5",
+            "last_updated": "2026-06-25T20:00:00+00:00",
+            "attributes": {},
+        }
+    ]
+    mock_client = _mock_states([])
+    mock_client.get_json.side_effect = [stale, fresh]
+    with (
+        patch("tools.validators.stale_sensors.HAClient", return_value=mock_client),
+        patch.object(
+            StaleSensorValidator,
+            "_get_current_time",
+            return_value=datetime(2026, 6, 25, 21, 0, 0, tzinfo=UTC),
+        ),
+    ):
+        validator = StaleSensorValidator(str(config_dir))
+        monkeypatch.setenv("HA_STALE_FAIL", "true")
+        assert validator.validate_all() is False
+
+        monkeypatch.setenv("HA_STALE_FAIL", "false")
+        assert validator.validate_all() is True
+
+    assert validator.stale_entities == []
+    assert validator.errors == []
+    assert validator.warnings == []
+
+
 def test_naive_datetime_handling():
     """Validator parses naive ISO strings and treats them as UTC timezone-aware."""
     v = StaleSensorValidator()
@@ -768,6 +819,20 @@ def test_parse_timestamp_malformed_string_appends_warning():
     v = StaleSensorValidator()
     assert v.parse_timestamp("not a date") is None
     assert any("Failed to parse" in w for w in v.warnings)
+
+
+def test_parse_timestamp_nonfinite_string_appends_warning():
+    """A non-finite numeric string is treated as malformed input."""
+    v = StaleSensorValidator()
+    assert v.parse_timestamp("inf") is None
+    assert any("Failed to parse" in w for w in v.warnings)
+
+
+def test_zero_epoch_is_a_valid_baseline_timestamp():
+    """A numeric epoch of zero is not mistaken for a missing timestamp."""
+    v = StaleSensorValidator()
+    baseline = v._baseline_timestamp({"last_changed": 0}, None)
+    assert baseline == datetime.fromtimestamp(0, tz=UTC)
 
 
 class TestParseIsoString:

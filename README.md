@@ -19,81 +19,49 @@ A toolkit for managing Home Assistant configurations — automated validation, s
 
 ```mermaid
 flowchart LR
-    subgraph HA["🏠 Home Assistant"]
-        ha_config["config/"]
-        ha_api["REST API"]
-        mcp["MCP Server"]
-    end
+    ha["🏠 Home Assistant /config"]
+    local["💻 Local config/"]
+    backup["💾 Backup"]
+    edit["✏️ Edit locally"]
+    validate["🛡️ make validate<br/>7 validators"]
+    push["🚀 make push<br/>validate + rsync + reload"]
+    mcp["🤖 MCP<br/>live lookup/debug"]
 
-    subgraph Dev["💻 Dev Machine"]
-        local_config["config/"]
-        validators["7-layer validation"]
-        backups["backups/"]
-        editor["AI-assisted editing"]
-    end
-
-    %% Pull flow
-    ha_config -->|"make pull (rsync)"| local_config
-    local_config -->|"make backup (tarball)"| backups
-
-    %% Edit & Validate
-    backups -.->|"restore if needed"| local_config
-    mcp -->|"entity lookup, state read"| editor
-    editor -->|"writes changes"| local_config
-    local_config --> validators
-    ha_api -->|"service catalog, template render"| validators
-    validators --> valid{"✓ valid?"}
-    valid -->|"no — fix"| editor
-
-    %% Push flow
-    valid -->|"yes — make push (validate + rsync)"| ha_config
-    ha_api -->|"make reload"| ha_config
+    ha -->|"make pull<br/>(rsync + validate)"| local
+    local -->|"make backup"| backup
+    backup --> edit
+    mcp -.-> edit
+    edit --> validate
+    validate -->|"fail — fix"| edit
+    validate -->|"pass"| push
+    push --> ha
 ```
 
 > **1. Pull** — `make pull` syncs config from HA via rsync, triggers validation for integrity.  
 > **2. Backup** — `make backup` creates a timestamped tarball + changelog before making changes.  
-> **3. Edit** — Modify config files locally. `ha_cli edit` preserves YAML formatting. MCP tools provide live entity lookups.  
+> **3. Edit** — Modify config files locally. `ha_cli edit` preserves YAML formatting. MCP tools provide live lookups and debugging data.<br>
 > **4. Validate** — `make validate` runs 7 validators: YAML syntax, entity/device/area references, duplicate automation IDs, service references, Jinja2 template linting, stale sensor detection, and official HA `check_config`.  
 > **5. Push** — `make push` validates then rsyncs to HA, blocking broken configs from reaching the server. HA reloads the new configuration automatically.
 
 ### 🔍 Debugging
 
 ```mermaid
-flowchart TB
-    subgraph HA["🏠 Home Assistant"]
-        ha_config["config/"]
-        ha_api["REST API"]
-        ha_logs["system logs"]
-        mcp["MCP Server"]
-    end
+flowchart LR
+    evidence["🔍 Evidence<br/>MCP · REST · SSH · backups"]
+    diagnose["🧭 Diagnose"]
+    edit["✏️ Edit locally"]
+    validate["🛡️ Validate"]
+    push["🚀 make push"]
 
-    subgraph Dev["💻 Dev Machine"]
-        local_config["config/"]
-        backups["backups/"]
-        validators["7-layer validation"]
-    end
-
-    %% Investigation loop
-    ha_config -->|"make pull (rsync)"| local_config
-    backups -.->|"make backup-search"| Dev
-    backups -.->|"extract & diff versions"| local_config
-    ha_logs -->|"ha core logs --follow"| Dev
-    ha_api -->|"state, template render"| Dev
-    mcp -->|"entity lookup, automation trace"| Dev
-    Dev -->|"trace root cause"| local_config
-
-    %% Fix & deploy (converge with normal flow)
-    local_config --> validators
-    validators --> valid{"✓ valid?"}
-    valid -->|"no — fix"| local_config
-    valid -->|"yes — make push (validate + rsync)"| ha_config
-    ha_api -->|"make reload"| ha_config
+    evidence --> diagnose --> edit --> validate
+    validate -->|"fix"| edit
+    validate -->|"pass"| push
 ```
 
 > **1. Pull** — `make pull` syncs the latest config to ensure you're investigating the current state.  
 > **2. Search backups** — `make backup-search PATTERN='text'` finds when an entity or automation last changed.  
 > **3. Compare versions** — Extract old config from a backup tarball (`tar -xzOf backups/... config/automations.yaml`) and diff against the current version.  
-> **4. Inspect logs** — `ssh homeassistant "ha core logs --follow"` for real-time runtime errors, or query specific entity state and history via the REST API.  
+> **4. Inspect logs** — Prefer MCP log/history tools; use `ssh homeassistant "ha core logs --follow"` or the REST API as fallbacks.<br>
 > **5. Trace root cause** — Use MCP tools for live entity state, automation traces, and template rendering.  
 > **6. Fix, validate, push** — Once the root cause is found, apply the fix and resume the normal create/edit flow above.
 
@@ -123,14 +91,14 @@ flowchart TB
         ha_yaml["*.yaml"]
     end
 
-    subgraph local["💻 Local config/ (git-tracked)"]
+    subgraph local["💻 Local config/ (runtime snapshot)"]
         direction LR
         loc_storage[".storage/<br/>read-only snapshot"]
         loc_z2m["zigbee2mqtt/"]
         loc_yaml["*.yaml"]
     end
 
-    %% Pull — permissive (thick arrows, everything comes down)
+    %% Pull — permissive but safety-filtered (thick arrows)
     ha_storage ==>|"make pull"| loc_storage
     ha_z2m ==>|"make pull"| loc_z2m
     ha_yaml ==>|"make pull"| loc_yaml
@@ -410,7 +378,7 @@ flowchart TB
             direction LR
             V4["4. Service Refs<br/>GET /api/services"]
             V5["5. Templates<br/>POST /api/template"]
-            V6["6. Stale Sensors<br/>GET /api/states"]
+            V6["6. Stale Sensors<br/>GET /api/states<br/>(warn-only by default)"]
         end
 
         V7["7. Official HA check_config<br/>local subprocess"]

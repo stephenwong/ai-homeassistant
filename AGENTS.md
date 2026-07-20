@@ -176,6 +176,7 @@ from tools.validators.entity_definitions import EntityDefinitionExtractor
 ## Development Workflow
 
 - **Before work:** `home-assistant-backup` skill (pull → backup → prune)
+- **Graphify freshness:** Before using graphify for any query, path, explain, or graph-backed analysis, run `graphify . --update --code-only` from the repository root. Treat `graphify-out/graph.json` as stale until that refresh completes; never use the existing-graph fast path without first updating it.
 - **Automations:** `home-assistant-automation` skill; scripts/scenes: `home-assistant-best-practices` skill
 - **Debugging:** `home-assistant-debugging` skill
 - **Python changes:** **Always TDD** — write tests first, confirm red, then implement.
