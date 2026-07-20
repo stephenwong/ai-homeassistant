@@ -314,6 +314,21 @@ class TestRunAdd:
         assert run(self._args(tmp_path, json_str='{"alias":"New"}')) == 0
         assert calls == 1
 
+    def test_add_save_oserror_reports_write_failure(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from tools.ha.yaml_editor import YAMLEditor
+
+        _write_file(tmp_path, "automations", "[]")
+
+        def fail_save(_editor):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(YAMLEditor, "save", fail_save)
+        result = run(self._args(tmp_path, json_str='{"alias":"New"}'))
+        assert result == 1
+        assert "could not write" in capsys.readouterr().err.lower()
+
 
 class TestRunRemove:
     def _args(self, cfg_dir, alias=None):

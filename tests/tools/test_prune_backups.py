@@ -266,7 +266,7 @@ class TestCleanOrphanedChangelogs:
         (backup_dir / "ha_config_20260201_120000.tar.gz").write_bytes(b"data")
         (backup_dir / "ha_config_20260201_120000.changelog").write_text("matched")
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             count = clean_orphaned_changelogs()
             assert count == 1
             assert not orphan.exists()
@@ -278,11 +278,11 @@ class TestCleanOrphanedChangelogs:
         (backup_dir / "ha_config_20260201_120000.tar.gz").write_bytes(b"data")
         (backup_dir / "ha_config_20260201_120000.changelog").write_text("matched")
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             assert clean_orphaned_changelogs() == 0
 
     def test_nonexistent_dir(self, tmp_path):
-        with patch("tools.prune_backups.BACKUP_DIR", tmp_path / "nonexistent"):
+        with patch("tools.backup_common.BACKUP_DIR", tmp_path / "nonexistent"):
             assert clean_orphaned_changelogs() == 0
 
     def test_dry_run_does_not_delete(self, tmp_path):
@@ -291,7 +291,7 @@ class TestCleanOrphanedChangelogs:
         orphan = backup_dir / "ha_config_20260101_120000.changelog"
         orphan.write_text("orphan")
 
-        with patch("tools.prune_backups.BACKUP_DIR", backup_dir):
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
             count = clean_orphaned_changelogs(dry_run=True)
             assert count == 1
             assert orphan.exists()  # Not deleted
@@ -374,7 +374,7 @@ class TestMain:
 
         with (
             patch("tools.backup_common.BACKUP_DIR", backup_dir),
-            patch("tools.prune_backups.BACKUP_DIR", backup_dir),
+            patch("tools.backup_common.BACKUP_DIR", backup_dir),
         ):
             from tools.prune_backups import main
 
@@ -427,7 +427,7 @@ class TestMain:
 
         with (
             patch("tools.backup_common.BACKUP_DIR", backup_dir),
-            patch("tools.prune_backups.BACKUP_DIR", backup_dir),
+            patch("tools.backup_common.BACKUP_DIR", backup_dir),
         ):
             from tools.prune_backups import main
 
@@ -476,7 +476,7 @@ class TestMain:
 
         with (
             patch("tools.backup_common.BACKUP_DIR", backup_dir),
-            patch("tools.prune_backups.BACKUP_DIR", backup_dir),
+            patch("tools.backup_common.BACKUP_DIR", backup_dir),
         ):
             from tools.prune_backups import main
 
@@ -508,7 +508,7 @@ class TestMain:
 
         with (
             patch("tools.backup_common.BACKUP_DIR", backup_dir),
-            patch("tools.prune_backups.BACKUP_DIR", backup_dir),
+            patch("tools.backup_common.BACKUP_DIR", backup_dir),
             patch.object(pathlib.Path, "unlink", _mock_unlink),
         ):
             result = pb.main(["--apply", "--min-keep", "1"])
@@ -585,7 +585,7 @@ class TestL67RootPerms:
             (backup_dir / f"ha_config_{ts}.tar.gz").write_bytes(b"x" * 512)
 
         monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
-        monkeypatch.setattr("tools.prune_backups.BACKUP_DIR", backup_dir)
+        monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
 
         import pathlib
 
@@ -619,7 +619,7 @@ class TestL67RootPerms:
         (backup_dir / fname2).write_bytes(b"x" * 512)
 
         monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
-        monkeypatch.setattr("tools.prune_backups.BACKUP_DIR", backup_dir)
+        monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
 
         import pathlib
 

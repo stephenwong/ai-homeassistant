@@ -89,20 +89,22 @@ def _is_tty() -> bool:
         return False
 
 
+def _int_at_least(value: str, minimum: int, message: str) -> int:
+    """Parse an integer and reject values below *minimum*."""
+    n = int(value)
+    if n < minimum:
+        raise argparse.ArgumentTypeError(message)
+    return n
+
+
 def positive_int(value: str) -> int:
     """Argparse type: reject values < 1."""
-    n = int(value)
-    if n < 1:
-        raise argparse.ArgumentTypeError("value must be >= 1")
-    return n
+    return _int_at_least(value, 1, "value must be >= 1")
 
 
 def non_negative_int(value: str) -> int:
     """Argparse type: reject values < 0."""
-    n = int(value)
-    if n < 0:
-        raise argparse.ArgumentTypeError("value must be >= 0")
-    return n
+    return _int_at_least(value, 0, "value must be >= 0")
 
 
 def positive_float(value: str) -> float:
@@ -188,7 +190,10 @@ def add_output_shape_args(
             "--max-chars",
             metavar="N",
             type=non_negative_int,
-            help="Truncate JSON above N chars (0 disables; default 8000 in summary)",
+            help=(
+                "Truncate compact JSON above N characters "
+                f"(0 disables; default {DEFAULT_SUMMARY_MAX_CHARS} in summary)"
+            ),
         )
 
 

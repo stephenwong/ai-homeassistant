@@ -122,6 +122,36 @@ class TestRunOne:
         assert result.cached is True
         assert result.duration == 0.42
 
+    def test_cache_hit_preserves_saved_diagnostics(self, config_dir):
+        """A cached pass retains diagnostics from its original validation."""
+        import hashlib
+
+        from tools.validators.yaml import YAMLValidator
+
+        fake_source = "class YAMLValidator:\n    pass"
+        fake_src_hash = hashlib.sha1(fake_source.encode()).hexdigest()
+        hash_val = f"abc123:{fake_src_hash}"
+        with (
+            patch("tools.commands.validate.compute_hash", return_value="abc123"),
+            patch(
+                "tools.commands.validate.inspect.getsource", return_value=fake_source
+            ),
+            patch(
+                "tools.commands.validate.load_cache",
+                return_value={
+                    "hash": hash_val,
+                    "passed": True,
+                    "duration": 0.42,
+                    "stderr": "WARN: previous warning",
+                },
+            ),
+        ):
+            result = _run_one(
+                YAMLValidator, "YAML", config_dir, quiet=True, force=False
+            )
+        assert result.cached is True
+        assert result.stderr == "WARN: previous warning"
+
     def test_cache_miss_runs_validator(self, config_dir):
         """Hash mismatch runs full validation."""
         from tools.validators.yaml import YAMLValidator

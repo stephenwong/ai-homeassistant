@@ -14,21 +14,22 @@ import sys
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import TypedDict
 
-from tools.backup_common import BACKUP_DIR, changelog_path_for, get_backups
+from tools import backup_common
+from tools.backup_common import BackupRecord, changelog_path_for, get_backups
 
 
 class RetentionGroups(TypedDict):
     """Backups grouped according to the retention policy."""
 
-    keep_all: list[dict[str, Any]]
-    daily: defaultdict[str, list[dict[str, Any]]]
-    weekly: defaultdict[str, list[dict[str, Any]]]
+    keep_all: list[BackupRecord]
+    daily: defaultdict[str, list[BackupRecord]]
+    weekly: defaultdict[str, list[BackupRecord]]
 
 
 def group_by_retention_period(
-    backups: list[dict[str, Any]], now: datetime
+    backups: list[BackupRecord], now: datetime
 ) -> RetentionGroups:
     """Group backups into retention periods."""
     groups: RetentionGroups = {
@@ -56,9 +57,9 @@ def group_by_retention_period(
 
 
 def _keep_latest_per_group(
-    grouped: Mapping[str, list[dict[str, Any]]],
-    to_keep: list[dict[str, Any]],
-    to_delete: list[dict[str, Any]],
+    grouped: Mapping[str, list[BackupRecord]],
+    to_keep: list[BackupRecord],
+    to_delete: list[BackupRecord],
 ) -> None:
     """Keep the latest entry from each group; rest go to delete list."""
     for items in grouped.values():
@@ -71,10 +72,10 @@ def _keep_latest_per_group(
 
 def apply_retention(
     groups: RetentionGroups,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[BackupRecord], list[BackupRecord]]:
     """Apply retention rules and return lists of files to keep/delete."""
-    to_keep: list[dict[str, Any]] = []
-    to_delete: list[dict[str, Any]] = []
+    to_keep: list[BackupRecord] = []
+    to_delete: list[BackupRecord] = []
 
     # Keep all recent backups (0-7 days)
     to_keep.extend(groups["keep_all"])
@@ -95,13 +96,22 @@ def format_size(size_bytes: int | float) -> str:
     return f"{size_bytes:.1f}TB"
 
 
+def _backup_size_and_age(backup: BackupRecord, now: datetime) -> tuple[int, int]:
+    """Return a backup's best-effort size in bytes and age in days."""
+    try:
+        size = backup["path"].stat().st_size
+    except OSError:
+        size = 0
+    return size, (now - backup["timestamp"]).days
+
+
 def clean_orphaned_changelogs(dry_run: bool = False) -> int:
     """Remove changelog files that have no matching backup tar.gz."""
-    if not BACKUP_DIR.exists():
+    if not backup_common.BACKUP_DIR.exists():
         return 0
     orphans = []
-    for changelog in BACKUP_DIR.glob("*.changelog"):
-        tar_path = BACKUP_DIR / (changelog.stem + ".tar.gz")
+    for changelog in backup_common.BACKUP_DIR.glob("*.changelog"):
+        tar_path = backup_common.backup_path_for_changelog(changelog)
         if not tar_path.exists():
             orphans.append(changelog)
     if orphans:
@@ -122,23 +132,15 @@ def clean_orphaned_changelogs(dry_run: bool = False) -> int:
     return len(orphans)
 
 
-def _format_delete_line(backup: dict, now: datetime) -> str:
+def _format_delete_line(backup: BackupRecord, now: datetime) -> str:
     """Format a to-be-deleted backup for display."""
-    try:
-        size = backup["path"].stat().st_size
-    except OSError:
-        size = 0
-    age_days = (now - backup["timestamp"]).days
+    size, age_days = _backup_size_and_age(backup, now)
     return f"  - {backup['filename']} ({format_size(size)}, {age_days} days old)"
 
 
-def _format_keep_line(backup: dict, now: datetime) -> str:
+def _format_keep_line(backup: BackupRecord, now: datetime) -> str:
     """Format a retained backup for display."""
-    try:
-        size = backup["path"].stat().st_size
-    except OSError:
-        size = 0
-    age_days = (now - backup["timestamp"]).days
+    size, age_days = _backup_size_and_age(backup, now)
     if age_days == 0:
         age_str = "today"
     elif age_days == 1:
@@ -149,7 +151,7 @@ def _format_keep_line(backup: dict, now: datetime) -> str:
 
 
 def _validate_deletion_safety(
-    backups: list[dict], to_delete: list[dict], min_keep: int
+    backups: list[BackupRecord], to_delete: list[BackupRecord], min_keep: int
 ) -> str | None:
     """Return an error message if the deletion plan is unsafe, else None."""
     if len(to_delete) >= len(backups):
@@ -167,7 +169,7 @@ def _validate_deletion_safety(
     return None
 
 
-def _delete_backups(to_delete: list[dict]) -> int:
+def _delete_backups(to_delete: list[BackupRecord]) -> int:
     """Delete each backup and its changelog sibling; return error count."""
     errors = 0
     for backup in to_delete:
@@ -191,14 +193,16 @@ def _delete_backups(to_delete: list[dict]) -> int:
     return errors
 
 
-def _print_retention_summary(to_keep: list[dict], to_delete: list[dict]) -> None:
+def _print_retention_summary(
+    to_keep: list[BackupRecord], to_delete: list[BackupRecord]
+) -> None:
     """Print the high-level keep/delete counts."""
     print("\nRetention Summary:", file=sys.stderr)
     print(f"  - Keeping {len(to_keep)} backup(s)", file=sys.stderr)
     print(f"  - Deleting {len(to_delete)} backup(s)", file=sys.stderr)
 
 
-def _print_delete_preview(to_delete: list[dict], now: datetime) -> None:
+def _print_delete_preview(to_delete: list[BackupRecord], now: datetime) -> None:
     """Print the delete preview and total space freed."""
     print("\nBackups to delete:", file=sys.stderr)
     total_size = 0
@@ -209,7 +213,7 @@ def _print_delete_preview(to_delete: list[dict], now: datetime) -> None:
     print(f"\nTotal space to free: {format_size(total_size)}")
 
 
-def _print_keep_summary(to_keep: list[dict], now: datetime) -> None:
+def _print_keep_summary(to_keep: list[BackupRecord], now: datetime) -> None:
     """Print the retained backup summary."""
     print("\nRetained backups:", file=sys.stderr)
     for backup in sorted(to_keep, key=lambda x: x["timestamp"], reverse=True):

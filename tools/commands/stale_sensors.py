@@ -3,7 +3,11 @@
 import argparse
 
 from tools.common import add_summary_args, positive_int, resolve_summary
-from tools.validators.stale_sensors import StaleSensorValidator
+from tools.validators.stale_sensors import (
+    DEFAULT_ONLY_DOMAINS,
+    DEFAULT_THRESHOLD_HOURS,
+    StaleSensorValidator,
+)
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -23,8 +27,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--threshold",
         "-t",
         type=positive_int,
-        default=24,
-        help="Staleness threshold in hours (default: 24)",
+        default=DEFAULT_THRESHOLD_HOURS,
+        help=f"Staleness threshold in hours (default: {DEFAULT_THRESHOLD_HOURS})",
     )
     parser.add_argument(
         "--exclude-domains",
@@ -37,8 +41,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     parser.add_argument(
         "--only-domains",
-        default="sensor",
-        help="Comma-separated domains to analyze (default: sensor)",
+        default=",".join(sorted(DEFAULT_ONLY_DOMAINS)),
+        help=(
+            "Comma-separated domains to analyze "
+            f"(default: {','.join(sorted(DEFAULT_ONLY_DOMAINS))})"
+        ),
     )
     parser.add_argument(
         "--ignore-restored",
@@ -66,7 +73,7 @@ def run(args: argparse.Namespace) -> int:
     summary = resolve_summary(args)
     only_domains = _parse_csv_arg(args.only_domains)
     if only_domains is None:
-        only_domains = {"sensor"}
+        only_domains = set(DEFAULT_ONLY_DOMAINS)
 
     validator = StaleSensorValidator(
         config_dir=args.config,

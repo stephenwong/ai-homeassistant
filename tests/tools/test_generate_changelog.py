@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.helpers import make_tar
+from tools.backup_common import backup_path_for_changelog
 from tools.generate_changelog import (
     changelog_path_for,
     extract_files,
@@ -39,21 +41,9 @@ def test_should_include(path, expected):
     assert should_include(path) is expected
 
 
-def _make_tar(tmp_path, files_dict):
-    """Create a tar.gz archive with given files."""
-    tar_path = tmp_path / "test.tar.gz"
-    with tarfile.open(tar_path, "w:gz") as tar:
-        for name, content in files_dict.items():
-            data = content.encode("utf-8")
-            info = tarfile.TarInfo(name=name)
-            info.size = len(data)
-            tar.addfile(info, io.BytesIO(data))
-    return tar_path
-
-
 class TestExtractFiles:
     def test_extracts_yaml_files(self, tmp_path):
-        tar_path = _make_tar(
+        tar_path = make_tar(
             tmp_path,
             {"config/automations.yaml": "- alias: Test\n"},
         )
@@ -62,7 +52,7 @@ class TestExtractFiles:
         assert files["config/automations.yaml"] == "- alias: Test\n"
 
     def test_skips_storage_files(self, tmp_path):
-        tar_path = _make_tar(
+        tar_path = make_tar(
             tmp_path,
             {
                 "config/.storage/core.entity_registry": '{"data": {}}',
@@ -107,7 +97,7 @@ class TestExtractFiles:
 
     def test_same_path_not_re_extracted(self, tmp_path):
         """extract_files caches results so the same archive is only opened once."""
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "content\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "content\n"})
         extract_files.cache_clear()
         with patch(
             "tools.generate_changelog.tarfile.open", wraps=tarfile.open
@@ -157,7 +147,7 @@ class TestCountDiff:
 
 class TestGenerateChangelog:
     def test_initial_backup(self, tmp_path):
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
         backup = {
             "path": tar_path,
             "filename": "ha_config_20260201_120000.tar.gz",
@@ -172,8 +162,8 @@ class TestGenerateChangelog:
         sub1.mkdir()
         sub2 = tmp_path / "d2"
         sub2.mkdir()
-        tar_path_1 = _make_tar(sub1, {"config/test.yaml": "same"})
-        tar_path_2 = _make_tar(sub2, {"config/test.yaml": "same"})
+        tar_path_1 = make_tar(sub1, {"config/test.yaml": "same"})
+        tar_path_2 = make_tar(sub2, {"config/test.yaml": "same"})
 
         prev = {
             "path": tar_path_1,
@@ -277,10 +267,16 @@ class TestChangelogPathFor:
             result = changelog_path_for(backup)
             assert result == Path("/tmp/backups/ha_config_20260201_120000.changelog")
 
+    def test_generates_paired_backup_path(self):
+        changelog = Path("/tmp/backups/ha_config_20260201_120000.changelog")
+        with patch("tools.backup_common.BACKUP_DIR", Path("/tmp/backups")):
+            result = backup_path_for_changelog(changelog)
+            assert result == Path("/tmp/backups/ha_config_20260201_120000.tar.gz")
+
 
 class TestGenerateForBackup:
     def test_generates_for_single_backup(self, tmp_path):
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
         backup = {
             "path": tar_path,
             "filename": "ha_config_20260201_120000.tar.gz",
@@ -295,11 +291,11 @@ class TestGenerateForBackup:
             assert "Initial backup" in content
 
     def test_generates_with_predecessor(self, tmp_path):
-        tar1 = _make_tar(tmp_path, {"config/test.yaml": "old\n"})
+        tar1 = make_tar(tmp_path, {"config/test.yaml": "old\n"})
         # Need a second tar at different path
         sub = tmp_path / "sub"
         sub.mkdir()
-        tar2 = _make_tar(sub, {"config/test.yaml": "new\n"})
+        tar2 = make_tar(sub, {"config/test.yaml": "new\n"})
 
         prev = {
             "path": tar1,
@@ -332,10 +328,10 @@ class TestMain:
     def test_generate_all(self, tmp_path, monkeypatch, capsys):
         from tools.generate_changelog import main
 
-        tar1 = _make_tar(tmp_path, {"config/test.yaml": "content1\n"})
+        tar1 = make_tar(tmp_path, {"config/test.yaml": "content1\n"})
         sub = tmp_path / "sub"
         sub.mkdir()
-        tar2 = _make_tar(sub, {"config/test.yaml": "content2\n"})
+        tar2 = make_tar(sub, {"config/test.yaml": "content2\n"})
 
         backups = [
             {
@@ -363,7 +359,7 @@ class TestMain:
     def test_generate_all_skips_existing(self, tmp_path, monkeypatch, capsys):
         from tools.generate_changelog import main
 
-        tar1 = _make_tar(tmp_path, {"config/test.yaml": "content1\n"})
+        tar1 = make_tar(tmp_path, {"config/test.yaml": "content1\n"})
         backups = [
             {
                 "path": tar1,
@@ -387,7 +383,7 @@ class TestMain:
     def test_specific_backup(self, tmp_path, monkeypatch, capsys):
         from tools.generate_changelog import main
 
-        tar1 = _make_tar(tmp_path, {"config/test.yaml": "content\n"})
+        tar1 = make_tar(tmp_path, {"config/test.yaml": "content\n"})
         backups = [
             {
                 "path": tar1,
@@ -449,7 +445,7 @@ class TestMain:
         """L61: --force overwrites an existing .changelog."""
         from tools.generate_changelog import main
 
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "content1\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "content1\n"})
         backups = [
             {
                 "path": tar_path,
@@ -480,7 +476,7 @@ class TestL59AtomicWrite:
         """L59: if write fails, no partial .changelog sticks (corruption-on-stick)."""
         from tools.generate_changelog import generate_for_backup
 
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
         backup = {
             "path": tar_path,
             "filename": "ha_config_20260201_120000.tar.gz",
@@ -517,7 +513,7 @@ class TestL60ValueError:
         """L60: passing an unknown backup must raise, not silently print 'Initial'."""
         from tools.generate_changelog import generate_for_backup
 
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
         backup = {
             "path": tar_path,
             "filename": "ha_config_20260201_120000.tar.gz",
@@ -544,7 +540,7 @@ class TestL62Format:
 
         from tools.generate_changelog import generate_changelog
 
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "key: value\n"})
         tz_aware = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone(timedelta(hours=11)))
         backup = {
             "path": tar_path,
@@ -571,7 +567,7 @@ class TestL63Gaps:
         from tools.generate_changelog import generate_for_backup
 
         content = "key: value\nemoji: 🔥\n"
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": content})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": content})
         backup = {
             "path": tar_path,
             "filename": "ha_config_20260201_120000.tar.gz",
@@ -601,7 +597,7 @@ class TestL63Gaps:
         """L63: running generate twice on the same backup produces identical content."""
         from tools.generate_changelog import generate_changelog
 
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "content\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "content\n"})
         backup = {
             "path": tar_path,
             "filename": "ha_config_20260201_120000.tar.gz",
@@ -622,8 +618,8 @@ class TestL63Gaps:
 
         sub = tmp_path / "sub"
         sub.mkdir()
-        tar1 = _make_tar(sub, {"config/test.yaml": "old\n"})
-        tar2 = _make_tar(tmp_path, {"config/test.yaml": "new\n"})
+        tar1 = make_tar(sub, {"config/test.yaml": "old\n"})
+        tar2 = make_tar(tmp_path, {"config/test.yaml": "new\n"})
 
         older = {
             "path": tar1,
@@ -650,6 +646,6 @@ class TestL63Gaps:
             assert "20260101" in content2
 
     def test_make_tar_uses_custom_name(self, tmp_path):
-        """L63: _make_tar creates archives with the given name."""
-        path = _make_tar(tmp_path, {"a.yaml": "x"})
-        assert path.name == "test.tar.gz"
+        """The shared tar helper accepts a custom archive name."""
+        path = make_tar(tmp_path, {"a.yaml": "x"}, name="custom.tar.gz")
+        assert path.name == "custom.tar.gz"

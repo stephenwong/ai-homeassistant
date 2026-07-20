@@ -18,6 +18,16 @@ class TestAddParser:
         assert args.command == "stale-sensors"
         assert callable(args.func)
 
+    def test_default_help_uses_shared_threshold(self, capsys):
+        from tools.validators.stale_sensors import DEFAULT_THRESHOLD_HOURS
+
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        stale_cmd.add_parser(subparsers)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["stale-sensors", "--help"])
+        assert f"default: {DEFAULT_THRESHOLD_HOURS}" in capsys.readouterr().out
+
     def test_accepts_all_flags(self):
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
@@ -48,7 +58,7 @@ class TestAddParser:
         assert args.fail_on_stale is True
 
     def test_negative_threshold_rejected(self):
-        """L30: --threshold -1 must be rejected at argparse time."""
+        """A negative threshold is rejected at argparse time."""
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
         stale_cmd.add_parser(subparsers)
@@ -56,7 +66,7 @@ class TestAddParser:
             parser.parse_args(["stale-sensors", "--threshold", "-1"])
 
     def test_zero_threshold_rejected(self):
-        """L30: --threshold 0 is meaningless — reject."""
+        """A zero threshold is rejected at argparse time."""
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
         stale_cmd.add_parser(subparsers)
@@ -64,7 +74,7 @@ class TestAddParser:
             parser.parse_args(["stale-sensors", "--threshold", "0"])
 
     def test_exclude_platforms_help_documents_override(self, capsys):
-        """L31: --exclude-platforms help text must mention OVERRIDES."""
+        """The platform help text documents that supplied values override defaults."""
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
         stale_cmd.add_parser(subparsers)
@@ -110,7 +120,7 @@ class TestRun:
 
     @patch("tools.commands.stale_sensors.StaleSensorValidator")
     def test_run_returns_validate_all_result(self, mock_val_class):
-        """L29: run() must return 1 iff validate_all() returned False."""
+        """The command returns 1 exactly when validate_all() returns false."""
         mock_val = MagicMock()
         mock_val_class.return_value = mock_val
 
@@ -134,7 +144,7 @@ class TestRun:
 
     @patch("tools.commands.stale_sensors.StaleSensorValidator")
     def test_run_delegates_to_validator_explicit_summary(self, mock_val_class):
-        """L32: explicit summary= kwarg — no TTY reliance."""
+        """The command passes its resolved summary mode to the validator."""
         mock_val = MagicMock()
         mock_val.validate_all.return_value = True
         mock_val.warnings = []
@@ -157,7 +167,7 @@ class TestRun:
 
     @patch("tools.commands.stale_sensors.StaleSensorValidator")
     def test_exclude_domains_subtracts_from_default(self, mock_val_class):
-        """L32: --exclude-domains sensor must remove 'sensor' from the scanned set."""
+        """Excluded domains are passed separately for validator subtraction."""
         mock_val = MagicMock()
         mock_val.validate_all.return_value = True
         mock_val.warnings = []

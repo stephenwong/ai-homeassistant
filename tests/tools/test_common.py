@@ -229,6 +229,14 @@ class TestAddOutputShapeArgs:
         assert not hasattr(ns, "first")
         assert not hasattr(ns, "max_chars")
 
+    def test_max_chars_help_uses_shared_default(self):
+        from tools.common import DEFAULT_SUMMARY_MAX_CHARS, add_output_shape_args
+
+        p = argparse.ArgumentParser()
+        add_output_shape_args(p)
+        action = next(a for a in p._actions if a.dest == "max_chars")
+        assert str(DEFAULT_SUMMARY_MAX_CHARS) in action.help
+
 
 class TestAddSummaryArgs:
     def test_registers_both_flags(self):
@@ -482,7 +490,7 @@ class TestLoadYamlChecked:
 
 
 class TestArgparseTypes:
-    """TQ1: pin behavior of positive_int, non_negative_int, positive_float."""
+    """Argparse integer and float types enforce their documented bounds."""
 
     def test_positive_int_accepts_valid(self):
         from tools.common import positive_int

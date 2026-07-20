@@ -22,12 +22,18 @@ def _write_registry(storage_dir, filename, list_key, entries):
     (storage_dir / filename).write_text(json.dumps(data))
 
 
+def _write_registries(config_dir, *, entities, devices, areas):
+    """Create the three registry files used by reference-validator tests."""
+    storage_dir = config_dir / ".storage"
+    storage_dir.mkdir()
+    _write_registry(storage_dir, "core.entity_registry", "entities", entities)
+    _write_registry(storage_dir, "core.device_registry", "devices", devices)
+    _write_registry(storage_dir, "core.area_registry", "areas", areas)
+
+
 @pytest.fixture
 def config_dir(tmp_path):
     """Create config directory with mock registries."""
-    storage_dir = tmp_path / ".storage"
-    storage_dir.mkdir()
-
     entity_registry_data = {
         "version": 1,
         "minor_version": 1,
@@ -96,23 +102,11 @@ def config_dir(tmp_path):
         "data": {"areas": [{"id": "living_room", "name": "Living Room"}]},
     }
 
-    _write_registry(
-        storage_dir,
-        "core.entity_registry",
-        "entities",
-        entity_registry_data["data"]["entities"],
-    )
-    _write_registry(
-        storage_dir,
-        "core.device_registry",
-        "devices",
-        device_registry_data["data"]["devices"],
-    )
-    _write_registry(
-        storage_dir,
-        "core.area_registry",
-        "areas",
-        area_registry_data["data"]["areas"],
+    _write_registries(
+        tmp_path,
+        entities=entity_registry_data["data"]["entities"],
+        devices=device_registry_data["data"]["devices"],
+        areas=area_registry_data["data"]["areas"],
     )
 
     return tmp_path
@@ -508,8 +502,6 @@ class TestConfigDefinedEntitiesEfficiency:
 def setup_config(tmp_path):
     """Create a full config directory with registries."""
     config_dir = tmp_path
-    storage_dir = config_dir / ".storage"
-    storage_dir.mkdir()
 
     entity_data = {
         "data": {
@@ -560,23 +552,11 @@ def setup_config(tmp_path):
         }
     }
 
-    _write_registry(
-        storage_dir,
-        "core.entity_registry",
-        "entities",
-        entity_data["data"]["entities"],
-    )
-    _write_registry(
-        storage_dir,
-        "core.device_registry",
-        "devices",
-        device_data["data"]["devices"],
-    )
-    _write_registry(
-        storage_dir,
-        "core.area_registry",
-        "areas",
-        area_data["data"]["areas"],
+    _write_registries(
+        config_dir,
+        entities=entity_data["data"]["entities"],
+        devices=device_data["data"]["devices"],
+        areas=area_data["data"]["areas"],
     )
 
     return config_dir
@@ -1496,40 +1476,3 @@ class TestValidateFileReferencesHelpers:
         assert result is False
         assert any("Unknown device 'device_unknown'" in e for e in validator.errors)
         assert any("disabled device 'device_known'" in w for w in validator.warnings)
-
-
-class TestRegistrySpec:
-    """Direct unit tests for the RegistrySpec NamedTuple and the three
-    module-level spec constants."""
-
-    def test_spec_fields_match_named_tuple_shape(self):
-        from tools.validators.references import RegistrySpec
-
-        spec = RegistrySpec(
-            filename="core.entity_registry",
-            list_key="entities",
-            key_field="entity_id",
-            cache_attr="_entities",
-            missing_bucket="errors",
-            label="Entity registry",
-        )
-        assert spec.filename == "core.entity_registry"
-        assert spec.cache_attr == "_entities"
-
-    def test_entity_spec_uses_errors_bucket(self):
-        from tools.validators.references import _ENTITY_REGISTRY_SPEC
-
-        assert _ENTITY_REGISTRY_SPEC.missing_bucket == "errors"
-        assert _ENTITY_REGISTRY_SPEC.cache_attr == "_entities"
-        assert _ENTITY_REGISTRY_SPEC.key_field == "entity_id"
-
-    def test_device_spec_uses_id_key_field(self):
-        from tools.validators.references import _DEVICE_REGISTRY_SPEC
-
-        assert _DEVICE_REGISTRY_SPEC.key_field == "id"
-        assert _DEVICE_REGISTRY_SPEC.list_key == "devices"
-
-    def test_area_spec_uses_warnings_bucket(self):
-        from tools.validators.references import _AREA_REGISTRY_SPEC
-
-        assert _AREA_REGISTRY_SPEC.missing_bucket == "warnings"

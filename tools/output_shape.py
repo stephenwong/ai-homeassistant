@@ -29,7 +29,8 @@ def apply_output_shape(
         data: Parsed JSON (list, dict, or scalar).
         first: Keep only first N items (must be >= 1; raises ValueError otherwise).
         pick: Comma-separated field names to retain (per-item projection).
-        max_chars: Drop trailing list items until COMPACT JSON fits within N chars.
+        max_chars: Drop trailing list items until COMPACT JSON fits within N
+            characters.
             Note: the print layer may render with --pretty (indent=2), whose size
             exceeds the compact size — so pretty output can overshoot max_chars.
             This is intentional (compact is the token-cost proxy).

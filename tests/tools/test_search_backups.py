@@ -6,24 +6,14 @@ import tarfile
 from datetime import datetime
 from unittest.mock import patch
 
+from tests.helpers import make_tar
+from tools.backup_common import BackupRecord
 from tools.search_backups import is_likely_unsafe_regex, search_backup
 
 
-def _make_backup(tmp_path, files_dict, name="test.tar.gz"):
-    """Create a tar.gz backup with given files."""
-    tar_path = tmp_path / name
-    with tarfile.open(tar_path, "w:gz") as tar:
-        for fname, content in files_dict.items():
-            data = content.encode("utf-8")
-            info = tarfile.TarInfo(name=fname)
-            info.size = len(data)
-            tar.addfile(info, io.BytesIO(data))
-    return tar_path
-
-
-def _make_backup_record(tmp_path, files_dict, *, name="test.tar.gz"):
+def _make_backup_record(tmp_path, files_dict, *, name="test.tar.gz") -> BackupRecord:
     """Create a backup and its standard metadata for main-flow tests."""
-    tar_path = _make_backup(tmp_path, files_dict, name=name)
+    tar_path = make_tar(tmp_path, files_dict, name=name)
     return {
         "path": tar_path,
         "filename": tar_path.name,
@@ -42,7 +32,7 @@ def _run_main(monkeypatch, backups, *arguments):
 
 class TestSearchBackup:
     def test_finds_pattern_in_yaml(self, tmp_path):
-        tar_path = _make_backup(
+        tar_path = make_tar(
             tmp_path,
             {"config/automations.yaml": "- alias: Test\n  entity_id: sensor.test\n"},
         )
@@ -57,7 +47,7 @@ class TestSearchBackup:
         assert matches[0]["line_num"] == 2
 
     def test_yaml_only_filter(self, tmp_path):
-        tar_path = _make_backup(
+        tar_path = make_tar(
             tmp_path,
             {
                 "config/test.yaml": "pattern_match\n",
@@ -77,9 +67,7 @@ class TestSearchBackup:
 
     def test_zero_context_accepted(self, tmp_path):
         """The default zero-context search does not crash."""
-        tar_path = _make_backup(
-            tmp_path, files_dict={"x.yaml": "line1\npattern\nline3\n"}
-        )
+        tar_path = make_tar(tmp_path, {"x.yaml": "line1\npattern\nline3\n"})
         backup = {
             "path": tar_path,
             "filename": tar_path.name,
@@ -89,7 +77,7 @@ class TestSearchBackup:
         assert len(matches) >= 1
 
     def test_all_files_filter(self, tmp_path):
-        tar_path = _make_backup(
+        tar_path = make_tar(
             tmp_path,
             {
                 "config/test.yaml": "pattern_match\n",
@@ -107,7 +95,7 @@ class TestSearchBackup:
         assert len(matches) == 2
 
     def test_context_lines(self, tmp_path):
-        tar_path = _make_backup(
+        tar_path = make_tar(
             tmp_path,
             {
                 "config/test.yaml": "line1\nline2\nMATCH\nline4\nline5\n",
@@ -124,7 +112,7 @@ class TestSearchBackup:
         assert matches[0]["context_after"] == ["line4"]
 
     def test_no_matches(self, tmp_path):
-        tar_path = _make_backup(
+        tar_path = make_tar(
             tmp_path,
             {"config/test.yaml": "nothing interesting here\n"},
         )
@@ -149,7 +137,7 @@ class TestSearchBackup:
         assert unreadable is True
 
     def test_multiple_matches_in_file(self, tmp_path):
-        tar_path = _make_backup(
+        tar_path = make_tar(
             tmp_path,
             {"config/test.yaml": "match1\nno\nmatch2\n"},
         )
@@ -381,7 +369,7 @@ class TestMatchResultShape:
         """Returned matches contain public context fields, not internal bookkeeping."""
         import re
 
-        tar_path = _make_backup(
+        tar_path = make_tar(
             tmp_path,
             {"config/test.yaml": "line1\nsensor.test\nline3\n"},
         )

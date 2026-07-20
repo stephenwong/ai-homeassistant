@@ -217,40 +217,25 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
         ftype = "dict" if editor.path.name == "scripts.yaml" else "list"
     try:
 
-        def add_script(ed: YAMLEditor, _: str) -> str | int:
+        def add_script(ed: YAMLEditor) -> str:
             key = str(entry.get("id") or entry.get("alias") or "")
             if not key:
-                return fail_stderr(
-                    "--add requires 'id' or 'alias' key for script files"
-                )
+                raise ValueError("--add requires 'id' or 'alias' key for script files")
             ed.add_script(key, entry)
             return key
 
-        def add_automation(ed: YAMLEditor, _: str) -> str:
+        def add_automation(ed: YAMLEditor) -> str:
             ed.add_automation(entry)
             return str(entry.get("alias") or entry.get("id") or "(no alias)")
 
-        if editor.path.exists():
-            label = _dispatch_by_filetype(
-                editor,
-                "",
-                file_type=ftype,
-                on_dict=add_script,
-                on_list=add_automation,
-            )
-        elif ftype == "dict":
-            label = add_script(editor, "")
-        else:
-            label = add_automation(editor, "")
-        if isinstance(label, int):
-            return label
+        add_entry: Callable[[YAMLEditor], str] = (
+            add_script if ftype == "dict" else add_automation
+        )
+        label = add_entry(editor)
     except (TypeError, ValueError) as e:
         return fail_stderr(str(e))
 
-    editor.save()
-    if not quiet:
-        print(f"Added: {label}")
-    return 0
+    return _save_and_report(editor, f"Added: {label}", quiet)
 
 
 def _run_set(editor: YAMLEditor, alias: str, kvs: list[str], quiet: bool) -> int:
@@ -292,7 +277,15 @@ def _run_mutation(
     except (ValueError, TypeError) as e:
         return fail_stderr(str(e))
 
-    editor.save()
+    return _save_and_report(editor, success_message, quiet)
+
+
+def _save_and_report(editor: YAMLEditor, success_message: str, quiet: bool) -> int:
+    """Save an edit and translate expected write failures to CLI diagnostics."""
+    try:
+        editor.save()
+    except OSError as e:
+        return fail_stderr(f"could not write {editor.path}: {e}")
     if not quiet:
         print(success_message)
     return 0

@@ -5,24 +5,13 @@ import tarfile
 
 import pytest
 
+from tests.helpers import make_tar
 from tools.backup_common import iter_tarball_file_members
-
-
-def _make_tar(tmp_path, files_dict, name="test.tar.gz"):
-    """Create a tar.gz archive with given files."""
-    tar_path = tmp_path / name
-    with tarfile.open(tar_path, "w:gz") as tar:
-        for fname, content in files_dict.items():
-            data = content.encode("utf-8")
-            info = tarfile.TarInfo(name=fname)
-            info.size = len(data)
-            tar.addfile(info, io.BytesIO(data))
-    return tar_path
 
 
 class TestIterTarballFileMembers:
     def test_yields_regular_files_only(self, tmp_path):
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "content\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "content\n"})
         result = list(iter_tarball_file_members(tar_path))
         assert len(result) == 1
         name, _file = result[0]
@@ -68,7 +57,7 @@ class TestIterTarballFileMembers:
         assert result[0][0] == "config/real.yaml"
 
     def test_content_readable_from_yielded_file(self, tmp_path):
-        tar_path = _make_tar(tmp_path, {"config/test.yaml": "hello world\n"})
+        tar_path = make_tar(tmp_path, {"config/test.yaml": "hello world\n"})
         for _name, extracted in iter_tarball_file_members(tar_path):
             content = extracted.read().decode("utf-8")
             assert content == "hello world\n"

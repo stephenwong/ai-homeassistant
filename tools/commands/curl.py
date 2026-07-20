@@ -10,7 +10,7 @@ Token-efficiency flags for agents:
   ``--pick F``   — keep only specified JSON keys (per-item projection)
   ``--entity ID`` — fetch a single entity by id (server-side)
   ``--domain D``  — filter list response by domain (client-side)
-  ``--max-chars N`` — truncate JSON output when it exceeds N bytes
+  ``--max-chars N`` — truncate compact JSON output when it exceeds N characters
 """
 
 import argparse
@@ -36,7 +36,7 @@ from tools.ha.client import HAClient
 from tools.output_shape import apply_output_shape, print_json
 
 
-def _has_transform_flags(args: argparse.Namespace) -> bool:
+def _has_explicit_output_flags(args: argparse.Namespace) -> bool:
     """Check if the curl command has any output-transforming flags active."""
     return bool(
         args.count
@@ -277,7 +277,7 @@ def _emit_output(
     if (
         request.method == "GET"
         and request.endpoint == "/api/states"
-        and not _has_transform_flags(args)
+        and not _has_explicit_output_flags(args)
         and not args.pretty
         and summary
         and not args.no_guard

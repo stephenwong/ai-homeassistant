@@ -13,6 +13,7 @@ from typing import Any
 
 import yaml
 
+from tools.validators._storage import _load_json
 from tools.validators.base import HAYamlLoader
 
 _OBJECT_ID_RE = re.compile(r"^[a-z0-9_]+$")
@@ -150,8 +151,7 @@ class EntityDefinitionExtractor:
             return self._restore_entities
 
         try:
-            with open(restore_file, encoding="utf-8") as f:
-                payload = json.load(f)
+            payload = _load_json(restore_file)
         except (OSError, json.JSONDecodeError) as e:
             self.warnings.append(f"Failed to load restore state: {e}")
             self._restore_entities = set()
@@ -531,16 +531,15 @@ class EntityDefinitionExtractor:
         zone_storage = self.storage_dir / "core.zone"
         if zone_storage.exists():
             try:
-                with open(zone_storage, encoding="utf-8") as f:
-                    data = json.load(f)
-                    items = data.get("data", {}).get("items", [])
-                    for item in items:
-                        if isinstance(item, dict):
-                            name = item.get("name", "")
-                            if name:
-                                entity_id = self._make_entity_id("zone", name)
-                                if entity_id:
-                                    entities.add(entity_id)
+                data = _load_json(zone_storage)
+                items = data.get("data", {}).get("items", [])
+                for item in items:
+                    if isinstance(item, dict):
+                        name = item.get("name", "")
+                        if name:
+                            entity_id = self._make_entity_id("zone", name)
+                            if entity_id:
+                                entities.add(entity_id)
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
                 self._record_extraction_warning(zone_storage, e)
 

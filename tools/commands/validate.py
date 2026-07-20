@@ -60,6 +60,97 @@ def _build_diagnostic_stderr(instance: Any) -> str:
     return "\n".join(lines)
 
 
+def _cache_key(instance: Any, cls: type) -> str | None:
+    """Calculate the file-plus-source cache key for a validator."""
+    file_deps = instance.file_deps()
+    if not file_deps:
+        return None
+
+    data_hash: str | None = None
+    with contextlib.suppress(OSError):
+        data_hash = compute_hash(instance.config_dir, file_deps)
+    if not data_hash:
+        return None
+
+    # Fold validator source into the cache key so logic edits invalidate it.
+    try:
+        src_hash = hashlib.sha1(inspect.getsource(cls).encode("utf-8")).hexdigest()
+    except OSError, TypeError:
+        src_hash = "no-source"
+    return f"{data_hash}:{src_hash}"
+
+
+def _load_cached_result(
+    instance: Any,
+    name: str,
+    description: str,
+    file_hash: str | None,
+    force: bool,
+) -> ValidatorResult | None:
+    """Return a matching cached result, or ``None`` on a cache miss."""
+    if force or file_hash is None:
+        return None
+    try:
+        cached = load_cache(instance.config_dir, name)
+        if cached and cached["hash"] == file_hash:
+            return ValidatorResult(
+                description=description,
+                passed=bool(cached["passed"]),
+                stderr=cached.get("stderr", ""),
+                duration=cached.get("duration", 0.0),
+                cached=True,
+            )
+    except OSError, ValueError:
+        pass
+    return None
+
+
+def _run_validator(
+    instance: Any, description: str, start: float
+) -> tuple[bool, str] | ValidatorResult:
+    """Execute one validator and translate its expected failure boundaries."""
+    try:
+        passed = bool(instance.validate_all())
+        stderr = _build_diagnostic_stderr(instance)
+    except SystemExit as e:
+        passed = e.code in (0, None)
+        stderr = (
+            _build_diagnostic_stderr(instance)
+            or f"Validator raised SystemExit({e.code!r})"
+        )
+    except Exception as e:
+        return ValidatorResult(
+            description=description,
+            passed=False,
+            stderr=f"Failed to run validator: {e}",
+            duration=time.time() - start,
+        )
+    return passed, stderr
+
+
+def _save_success_cache(
+    instance: Any,
+    name: str,
+    description: str,
+    file_hash: str | None,
+    duration: float,
+    stderr: str,
+) -> None:
+    """Best-effort save of a passing validator result."""
+    if file_hash is None:
+        return
+    with contextlib.suppress(OSError, TypeError, ValueError):
+        save_cache(
+            instance.config_dir,
+            name,
+            description,
+            file_hash,
+            True,
+            duration,
+            stderr=stderr,
+        )
+
+
 def _run_one(
     cls: type,
     description: str,
@@ -88,66 +179,25 @@ def _run_one(
         name = cls.__name__
 
         # Compute hash once — reuse for both cache check and cache save.
-        # Skip caching entirely if the validator declares no file dependencies
-        # (e.g. HAOfficialValidator, whose result depends on the HA environment).
-        file_deps = instance.file_deps()
-        fhash: str | None = None
-        if file_deps:
-            data_hash: str | None = None
-            with contextlib.suppress(OSError):
-                data_hash = compute_hash(instance.config_dir, file_deps)
-            # M1: fold validator source into the cache key so logic edits
-            # invalidate the cache even when data files are unchanged.
-            if data_hash:
-                try:
-                    src_hash = hashlib.sha1(
-                        inspect.getsource(cls).encode("utf-8")
-                    ).hexdigest()
-                except OSError, TypeError:
-                    src_hash = "no-source"
-                fhash = f"{data_hash}:{src_hash}"
+        # Validators with no file dependencies are never cached.
+        fhash = _cache_key(instance, cls)
 
         # --- cache check (skip when --force or when file_deps is empty) ---
-        if not force and fhash is not None:
-            try:
-                cached = load_cache(instance.config_dir, name)
-                if cached and cached["hash"] == fhash:
-                    return ValidatorResult(
-                        description=description,
-                        passed=bool(cached["passed"]),
-                        stderr="",
-                        duration=cached.get("duration", 0.0),
-                        cached=True,
-                    )
-            except OSError, ValueError:
-                pass  # cache failures are non-fatal; fall through to real run
+        cached_result = _load_cached_result(instance, name, description, fhash, force)
+        if cached_result is not None:
+            return cached_result
 
         # --- cache miss or forced — actually run the validator ---
-        try:
-            passed = bool(instance.validate_all())
-            stderr = _build_diagnostic_stderr(instance)
-        except SystemExit as e:
-            passed = e.code in (0, None)
-            stderr = (
-                _build_diagnostic_stderr(instance)
-                or f"Validator raised SystemExit({e.code!r})"
-            )
-        except Exception as e:
-            return ValidatorResult(
-                description=description,
-                passed=False,
-                stderr=f"Failed to run validator: {e}",
-                duration=time.time() - start,
-            )
+        execution = _run_validator(instance, description, start)
+        if isinstance(execution, ValidatorResult):
+            return execution
+        passed, stderr = execution
 
         duration = time.time() - start
 
         # --- save to cache (only on success; failures always re-run) ---
-        if passed and fhash is not None:
-            with contextlib.suppress(OSError, TypeError, ValueError):
-                save_cache(
-                    instance.config_dir, name, description, fhash, True, duration
-                )
+        if passed:
+            _save_success_cache(instance, name, description, fhash, duration, stderr)
 
         return ValidatorResult(
             description=description,

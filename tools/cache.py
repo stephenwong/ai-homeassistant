@@ -140,6 +140,7 @@ def save_cache(
     file_hash: str,
     passed: bool,
     duration: float,
+    stderr: str = "",
 ) -> None:
     """Save a validator result to the cache atomically.
 
@@ -154,5 +155,6 @@ def save_cache(
         "passed": passed,
         "timestamp": datetime.now(UTC).isoformat(),
         "duration": round(duration, 4),
+        "stderr": stderr,
     }
     atomic_write_text(cache_path(config_dir, name), json.dumps(data))

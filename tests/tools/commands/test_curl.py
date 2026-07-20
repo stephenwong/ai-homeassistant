@@ -233,6 +233,21 @@ class TestArgparse:
         pytest.fail("--no-guard help description not found in output")
 
 
+class TestExplicitOutputFlags:
+    @pytest.mark.parametrize(
+        "overrides,expected",
+        [
+            ({"first": None, "pick": None, "max_chars": None}, False),
+            ({"first": 5, "pick": None, "max_chars": None}, True),
+            ({"first": None, "pick": "a", "max_chars": None}, True),
+            ({"first": None, "pick": None, "max_chars": 100}, True),
+        ],
+    )
+    def test_flag_matrix(self, overrides, expected):
+        args = make_args(**overrides)
+        assert curl_cmd._has_explicit_output_flags(args) is expected
+
+
 # ---------------------------------------------------------------------------
 # Summary mode — info stderr suppression
 # ---------------------------------------------------------------------------
@@ -799,11 +814,6 @@ class TestPick:
 
 
 # ---------------------------------------------------------------------------
-# --abbrev (short-key rename)
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # --entity (server-side single fetch)
 # ---------------------------------------------------------------------------
 
@@ -997,12 +1007,12 @@ class TestDomain:
 
 
 # ---------------------------------------------------------------------------
-# --max-chars (byte-length truncation)
+# --max-chars (compact-JSON character-length truncation)
 # ---------------------------------------------------------------------------
 
 
 class TestMaxChars:
-    """Tests for --max-chars <N> — truncate JSON output when it exceeds N bytes."""
+    """Tests for --max-chars <N> using compact-JSON character length."""
 
     def test_truncates_list_when_exceeds_limit(self, mock_client, capsys):
         data = [{"id": i, "data": "x" * 50} for i in range(20)]
@@ -1229,7 +1239,7 @@ class TestRaw:
 
 
 class TestMaxCharsInteractions:
-    """TQ2: --max-chars combined with other flags."""
+    """--max-chars combined with other flags."""
 
     def test_pretty_with_max_chars_bounds_compact_size(self, mock_client, capsys):
         """--pretty + --max-chars: compact size must be bounded (pretty may exceed)."""
@@ -1239,7 +1249,7 @@ class TestMaxCharsInteractions:
         assert curl_cmd.run(args) == 0
         out = capsys.readouterr().out
         parsed = json.loads(out)
-        compact = len(json.dumps(parsed, separators=(",", ":")))
+        compact = len(json.dumps(parsed, separators=(",", ":"), ensure_ascii=False))
         assert compact <= 200, f"compact size {compact} exceeds max_chars=200"
 
     def test_no_guard_disables_env_max_chars(self, mock_client, monkeypatch, capsys):
@@ -1295,22 +1305,9 @@ class TestValidateArgs:
     """
 
     def _args(self, **overrides):
-        defaults = dict(
-            method="GET",
-            raw=False,
-            pretty=False,
-            pick=None,
-            count=False,
-            keys=False,
-            first=None,
-            entity=None,
-            domain=None,
-            endpoint=None,
-            no_guard=False,
-            max_chars=None,
-        )
+        defaults = {"endpoint": None}
         defaults.update(overrides)
-        return Namespace(**defaults)
+        return make_args(**defaults)
 
     def test_raw_and_pretty_returns_1(self):
         from tools.commands.curl import _CurlError, _validate_args
@@ -1421,20 +1418,7 @@ class TestEmitOutput:
     def test_count_handler_prints_length_and_returns_0(self, capsys):
         from tools.commands.curl import _emit_output
 
-        args = Namespace(
-            count=True,
-            keys=False,
-            raw=False,
-            first=None,
-            pick=None,
-            domain=None,
-            entity=None,
-            no_guard=False,
-            max_chars=None,
-            pretty=False,
-            method="GET",
-            endpoint="/api/any",
-        )
+        args = make_args(count=True, endpoint="/api/any")
         from tools.commands.curl import _CurlRequest
 
         result = _emit_output(
@@ -1451,20 +1435,7 @@ class TestEmitOutput:
     def test_raw_handler_prints_raw_text(self, capsys):
         from tools.commands.curl import _emit_output
 
-        args = Namespace(
-            count=False,
-            keys=False,
-            raw=True,
-            first=None,
-            pick=None,
-            domain=None,
-            entity=None,
-            no_guard=False,
-            max_chars=None,
-            pretty=False,
-            method="GET",
-            endpoint="/api/any",
-        )
+        args = make_args(raw=True, endpoint="/api/any")
         from tools.commands.curl import _CurlRequest
 
         result = _emit_output(

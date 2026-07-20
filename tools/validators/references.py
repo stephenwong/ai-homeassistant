@@ -40,6 +40,23 @@ class DomainSummary(TypedDict):
     examples: list[str]
 
 
+def _print_entity_summary(summary: dict[str, DomainSummary]) -> None:
+    """Print the detailed available-entity summary to stderr."""
+    if not summary:
+        return
+    print("AVAILABLE ENTITIES BY DOMAIN:", file=sys.stderr)
+    for domain, info in sorted(summary.items()):
+        enabled_count = info["enabled"]
+        disabled_count = info["disabled"]
+        print(
+            f"  {domain}: {enabled_count} enabled, {disabled_count} disabled",
+            file=sys.stderr,
+        )
+        if info["examples"]:
+            print(f"    Examples: {', '.join(info['examples'])}", file=sys.stderr)
+    print(file=sys.stderr)
+
+
 class RegistrySpec(NamedTuple):
     """Configuration for loading and caching a HA ``.storage/`` registry.
 
@@ -575,21 +592,7 @@ class ReferenceValidator(ValidatorBase):
         super().print_results()
 
         # Print entity summary
-        summary = self.get_entity_summary()
-        if summary:
-            print("AVAILABLE ENTITIES BY DOMAIN:", file=sys.stderr)
-            for domain, info in sorted(summary.items()):
-                enabled_count = info["enabled"]
-                disabled_count = info["disabled"]
-                print(
-                    f"  {domain}: {enabled_count} enabled, {disabled_count} disabled",
-                    file=sys.stderr,
-                )
-                if info["examples"]:
-                    print(
-                        f"    Examples: {', '.join(info['examples'])}", file=sys.stderr
-                    )
-            print(file=sys.stderr)
+        _print_entity_summary(self.get_entity_summary())
 
 
 def _add_reference_args(parser):

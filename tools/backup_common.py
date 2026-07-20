@@ -10,15 +10,28 @@ import tarfile
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
-from typing import IO
+from typing import IO, TypedDict
 
 BACKUP_DIR = Path(__file__).parent.parent / "backups"
 _BACKUP_RE = re.compile(r"^ha_config_(\d{8})_(\d{6})\.tar\.gz$")
 
 
-def changelog_path_for(backup: dict) -> Path:
+class BackupRecord(TypedDict):
+    """Metadata describing one parsed backup archive."""
+
+    path: Path
+    filename: str
+    timestamp: datetime
+
+
+def changelog_path_for(backup: BackupRecord) -> Path:
     """Return the changelog path paired with *backup* (sibling of the tarball)."""
     return BACKUP_DIR / (backup["filename"].removesuffix(".tar.gz") + ".changelog")
+
+
+def backup_path_for_changelog(changelog: Path) -> Path:
+    """Return the backup path paired with a changelog file."""
+    return BACKUP_DIR / (changelog.name.removesuffix(".changelog") + ".tar.gz")
 
 
 def parse_backup_filename(filename: str) -> datetime | None:
@@ -36,12 +49,12 @@ def parse_backup_filename(filename: str) -> datetime | None:
         return None
 
 
-def get_backups() -> list[dict]:
+def get_backups() -> list[BackupRecord]:
     """Get all backup files with their timestamps."""
     if not BACKUP_DIR.exists():
         return []
 
-    backups = []
+    backups: list[BackupRecord] = []
     for file in BACKUP_DIR.glob("*.tar.gz"):
         timestamp = parse_backup_filename(file.name)
         if timestamp:

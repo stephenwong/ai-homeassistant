@@ -18,7 +18,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import NotRequired, TypedDict
 
-from tools.backup_common import get_backups, iter_tarball_file_members
+from tools.backup_common import BackupRecord, get_backups, iter_tarball_file_members
 from tools.common import get_env_int, non_negative_int
 
 
@@ -89,7 +89,10 @@ def _search_file(
 
 
 def search_backup(
-    backup: dict, pattern: re.Pattern, yaml_only: bool = True, context_lines: int = 0
+    backup: BackupRecord,
+    pattern: re.Pattern,
+    yaml_only: bool = True,
+    context_lines: int = 0,
 ) -> tuple[list[_MatchResult], bool]:
     """Search a single backup archive for a pattern. Returns (matches, unreadable)."""
     matches: list[_MatchResult] = []
@@ -120,15 +123,15 @@ def search_backup(
 
 
 def _search_backups(
-    backups: list[dict],
+    backups: list[BackupRecord],
     pattern: re.Pattern,
     *,
     yaml_only: bool,
     context_lines: int,
     max_workers: int,
-) -> list[tuple[dict, tuple[list[_MatchResult], bool]]]:
+) -> list[tuple[BackupRecord, tuple[list[_MatchResult], bool]]]:
     """Search backups concurrently while retaining newest-first ordering."""
-    results: list[tuple[dict, tuple[list[_MatchResult], bool]]] = []
+    results: list[tuple[BackupRecord, tuple[list[_MatchResult], bool]]] = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             (
@@ -150,7 +153,7 @@ def _search_backups(
 
 
 def _render_results(
-    results: list[tuple[dict, tuple[list[_MatchResult], bool]]],
+    results: list[tuple[BackupRecord, tuple[list[_MatchResult], bool]]],
     *,
     files_only: bool,
     context_lines: int,

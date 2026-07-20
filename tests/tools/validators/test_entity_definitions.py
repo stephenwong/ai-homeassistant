@@ -17,7 +17,7 @@ def test_extracts_builtin_entities(tmp_path):
 
 
 def test_template_sensor_with_null_sensors_does_not_crash(tmp_path):
-    """M13: `sensors:` with no value (null) must not crash extraction."""
+    """A null template sensor mapping does not crash extraction."""
     (tmp_path / ".storage").mkdir(exist_ok=True)
     (tmp_path / "configuration.yaml").write_text(
         "sensor:\n  - platform: template\n    sensors:\n"
@@ -30,7 +30,7 @@ def test_template_sensor_with_null_sensors_does_not_crash(tmp_path):
 
 
 def test_extracts_timer_counter_schedule_helpers(tmp_path):
-    """M26 part 1: timer/counter/schedule input helpers must be extracted."""
+    """Timer, counter, and schedule helpers are extracted."""
     (tmp_path / ".storage").mkdir(exist_ok=True)
     (tmp_path / "configuration.yaml").write_text(
         "timer:\n"
@@ -54,8 +54,7 @@ def test_extracts_timer_counter_schedule_helpers(tmp_path):
 
 
 def test_extracts_single_dict_template_form(tmp_path):
-    """M26 part 2: `template: - sensor: {name: X}` (dict, not list) is valid HA
-    and must be extracted, same as the list form."""
+    """A single-dict template form is extracted like the list form."""
     (tmp_path / ".storage").mkdir(exist_ok=True)
     (tmp_path / "configuration.yaml").write_text(
         "template:\n  - sensor:\n      name: My Sensor\n      state: '42'\n"
@@ -207,7 +206,7 @@ def test_scene_name_slugified(tmp_path):
 
 
 def test_scene_falls_back_when_no_name_field(tmp_path):
-    """W3.2 characterization: a scene without `name` is silently skipped."""
+    """A scene without a name is silently skipped."""
     (tmp_path / ".storage").mkdir(exist_ok=True)
     (tmp_path / "scenes.yaml").write_text(
         "- entities:\n    light.kitchen: 'on'\n"  # no `name`
@@ -341,7 +340,7 @@ def test_shared_info_append(tmp_path):
 
 @pytest.mark.parametrize("domain", ["cover", "fan", "lock", "vacuum", "weather"])
 def test_extracts_additional_template_domains(tmp_path, domain):
-    """Template integration supports more domains than sensor/binary_sensor (H6)."""
+    """Template integration supports the configured additional domains."""
     (tmp_path / ".storage").mkdir(exist_ok=True)
     (tmp_path / "configuration.yaml").write_text(
         f"template:\n  - {domain}:\n      - name: My Device\n        state: open\n"
@@ -353,7 +352,7 @@ def test_extracts_additional_template_domains(tmp_path, domain):
 
 
 def test_extracts_entities_from_packages(tmp_path):
-    """packages: block must be recursed into (H7)."""
+    """The packages block is recursively searched for entity definitions."""
     (tmp_path / ".storage").mkdir(exist_ok=True)
     (tmp_path / "configuration.yaml").write_text(
         "packages:\n"
@@ -372,7 +371,7 @@ def test_extracts_entities_from_packages(tmp_path):
 
 
 def test_resolves_include_dir_list_for_automation(tmp_path):
-    """configuration.yaml using !include_dir_list for automation must resolve (H8)."""
+    """An automation !include_dir_list is resolved from configuration.yaml."""
     auto_dir = tmp_path / "automations_pkg"
     auto_dir.mkdir()
     # !include_dir_list: each file is a single item (dict).

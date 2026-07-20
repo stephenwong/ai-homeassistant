@@ -5,6 +5,12 @@ from pathlib import Path
 from typing import Any
 
 
+def _load_json(storage_path: Path) -> Any:
+    """Open and parse a storage JSON file, leaving policy to the caller."""
+    with open(storage_path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def load_storage_registry(
     storage_path: Path,
     *,
@@ -39,6 +45,5 @@ def load_storage_registry(
             (e.g. ``data["data"]`` is a list, items are not iterable, an
             item is missing *key_field*).
     """
-    with open(storage_path, encoding="utf-8") as f:
-        data = json.load(f)
+    data = _load_json(storage_path)
     return {item[key_field]: item for item in data.get("data", {}).get(list_key, [])}

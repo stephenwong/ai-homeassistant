@@ -15,6 +15,7 @@ import tarfile
 from pathlib import Path
 
 from tools.backup_common import (
+    BackupRecord,
     changelog_path_for,
     get_backups,
     iter_tarball_file_members,
@@ -97,7 +98,35 @@ def _count_diff(lines: list[str]) -> tuple[int, int]:
     return added, removed
 
 
-def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
+def _describe_file_change(
+    name: str, previous: str | None, current: str | None
+) -> tuple[str | None, str | None]:
+    """Return a changed-file summary and its optional unified diff."""
+    if current is not None and previous is None:
+        line_count = len(current.splitlines())
+        diff = _unified_diff(name, [], current.splitlines())
+        return f"  A {name} (+{line_count})", "\n".join(diff)
+
+    if current is None and previous is not None:
+        line_count = len(previous.splitlines())
+        diff = _unified_diff(name, previous.splitlines(), [])
+        return f"  D {name} (-{line_count})", "\n".join(diff)
+
+    if current is not None and previous is not None and current != previous:
+        diff_lines = _unified_diff(name, previous.splitlines(), current.splitlines())
+        if diff_lines:
+            added, removed = _count_diff(diff_lines)
+            return (
+                f"  M {name} (+{added}, -{removed})",
+                "\n".join(diff_lines),
+            )
+
+    return None, None
+
+
+def generate_changelog(
+    backup: BackupRecord, previous_backup: BackupRecord | None
+) -> str:
     """Generate changelog content comparing two backups."""
     lines = []
     lines.append(f"Backup: {backup['filename']}")
@@ -128,31 +157,12 @@ def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
     diffs = []
 
     for name in all_names:
-        in_current = name in current_files
-        in_previous = name in previous_files
-
-        if in_current and not in_previous:
-            # Added
-            line_count = len(current_files[name].splitlines())
-            changed_files.append(f"  A {name} (+{line_count})")
-            diff = _unified_diff(name, [], current_files[name].splitlines())
-            diffs.append("\n".join(diff))
-        elif not in_current and in_previous:
-            # Deleted
-            line_count = len(previous_files[name].splitlines())
-            changed_files.append(f"  D {name} (-{line_count})")
-            diff = _unified_diff(name, previous_files[name].splitlines(), [])
-            diffs.append("\n".join(diff))
-        elif in_current and in_previous:
-            if current_files[name] != previous_files[name]:
-                # Modified
-                old_lines = previous_files[name].splitlines()
-                new_lines = current_files[name].splitlines()
-                diff_lines = _unified_diff(name, old_lines, new_lines)
-                if diff_lines:
-                    added, removed = _count_diff(diff_lines)
-                    changed_files.append(f"  M {name} (+{added}, -{removed})")
-                    diffs.append("\n".join(diff_lines))
+        summary, diff = _describe_file_change(
+            name, previous_files.get(name), current_files.get(name)
+        )
+        if summary is not None:
+            changed_files.append(summary)
+            diffs.append(diff or "")
 
     if not changed_files:
         lines.append("No changes detected.")
@@ -171,7 +181,9 @@ def generate_changelog(backup: dict, previous_backup: dict | None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _write_changelog(backup: dict, previous_backup: dict | None) -> Path:
+def _write_changelog(
+    backup: BackupRecord, previous_backup: BackupRecord | None
+) -> Path:
     """Write a changelog for *backup* against its already-selected predecessor."""
     changelog_file = changelog_path_for(backup)
     content = generate_changelog(backup, previous_backup)
@@ -179,7 +191,7 @@ def _write_changelog(backup: dict, previous_backup: dict | None) -> Path:
     return changelog_file
 
 
-def generate_for_backup(backup: dict, backups_list: list[dict]) -> Path:
+def generate_for_backup(backup: BackupRecord, backups_list: list[BackupRecord]) -> Path:
     """Generate changelog for a single backup, finding its predecessor."""
     # Find previous backup
     previous = None

@@ -18,6 +18,8 @@ from tools.validators._storage import load_storage_registry
 from tools.validators.base import ValidatorBase
 
 _EPOCH_MS_THRESHOLD = 1e11
+DEFAULT_THRESHOLD_HOURS = 24
+DEFAULT_ONLY_DOMAINS = frozenset({"sensor"})
 
 
 class StaleSensorValidator(ValidatorBase):
@@ -30,7 +32,7 @@ class StaleSensorValidator(ValidatorBase):
         config_dir: str = "config",
         quiet: bool = False,
         summary: bool = False,
-        threshold_hours: int = 24,
+        threshold_hours: int = DEFAULT_THRESHOLD_HOURS,
         only_domains: set[str] | None = None,
         exclude_platforms: set[str] | None = None,
         ignore_restored: bool = False,
@@ -53,7 +55,9 @@ class StaleSensorValidator(ValidatorBase):
         """
         super().__init__(config_dir, quiet=quiet, summary=summary)
         self.threshold_hours = threshold_hours
-        base_domains = only_domains if only_domains is not None else {"sensor"}
+        base_domains = (
+            only_domains if only_domains is not None else set(DEFAULT_ONLY_DOMAINS)
+        )
         self.only_domains = base_domains - (exclude_domains or set())
         self.fail_on_stale = fail_on_stale
         self.stale_entities: list[str] = []
@@ -244,6 +248,68 @@ class StaleSensorValidator(ValidatorBase):
         self.stale_entities.append(entity_id)
         self.warnings.append(warning)
 
+    def _scan_states(
+        self,
+        states: list[Any],
+        registry: dict[str, Any] | None,
+        current_time: datetime,
+    ) -> tuple[list[str], list[str]]:
+        """Scan API states and return newly stale IDs and diagnostic warnings."""
+        stale_start = len(self.stale_entities)
+        warning_start = len(self.warnings)
+
+        for state in states:
+            if not isinstance(state, dict):
+                continue
+
+            eligible = self._eligible_state(state, registry)
+            if eligible is None:
+                continue
+            domain, entity_id, attrs = eligible
+
+            # Unavailable/unknown sensors are not reporting; surface them
+            # immediately rather than waiting for threshold_hours.
+            st_value = state.get("state")
+            if st_value in ("unavailable", "unknown", None):
+                self._record_stale(
+                    entity_id,
+                    f"{entity_id}: State is {st_value!r} — device not reporting.",
+                )
+                continue
+
+            # Heartbeat check: Z2M or custom attributes represent
+            # actual radio communication time.
+            # Binary sensors are only validated if a heartbeat attribute
+            # is explicitly present.
+            heartbeat_ts = self._heartbeat_timestamp(attrs)
+
+            if domain == "binary_sensor" and heartbeat_ts is None:
+                # Skip binary sensors without device heartbeats
+                # to avoid rare-event false positives.
+                continue
+
+            # Determine baseline timestamp to compare
+            baseline_ts = self._baseline_timestamp(state, heartbeat_ts)
+
+            if baseline_ts is None:
+                continue
+
+            # Calculate difference
+            delta = current_time - baseline_ts
+            elapsed_hours = delta.total_seconds() / 3600.0
+
+            if elapsed_hours > self.threshold_hours:
+                self._record_stale(
+                    entity_id,
+                    f"{entity_id}: Stale state detected. Last update was "
+                    f"{elapsed_hours:.1f} hours ago (limit: {self.threshold_hours}h).",
+                )
+
+        return (
+            self.stale_entities[stale_start:],
+            self.warnings[warning_start:],
+        )
+
     def _validate(self) -> bool:
         """Query Home Assistant for stale sensors.
 
@@ -300,52 +366,7 @@ class StaleSensorValidator(ValidatorBase):
         registry = self._load_registry()
         current_time = self._get_current_time()
 
-        for state in states:
-            if not isinstance(state, dict):
-                continue
-
-            eligible = self._eligible_state(state, registry)
-            if eligible is None:
-                continue
-            domain, entity_id, attrs = eligible
-
-            # Unavailable/unknown sensors are not reporting; surface them
-            # immediately rather than waiting for threshold_hours.
-            st_value = state.get("state")
-            if st_value in ("unavailable", "unknown", None):
-                self._record_stale(
-                    entity_id,
-                    f"{entity_id}: State is {st_value!r} — device not reporting.",
-                )
-                continue
-
-            # Heartbeat check: Z2M or custom attributes represent
-            # actual radio communication time.
-            # Binary sensors are only validated if a heartbeat attribute
-            # is explicitly present.
-            heartbeat_ts = self._heartbeat_timestamp(attrs)
-
-            if domain == "binary_sensor" and heartbeat_ts is None:
-                # Skip binary sensors without device heartbeats
-                # to avoid rare-event false positives.
-                continue
-
-            # Determine baseline timestamp to compare
-            baseline_ts = self._baseline_timestamp(state, heartbeat_ts)
-
-            if baseline_ts is None:
-                continue
-
-            # Calculate difference
-            delta = current_time - baseline_ts
-            elapsed_hours = delta.total_seconds() / 3600.0
-
-            if elapsed_hours > self.threshold_hours:
-                self._record_stale(
-                    entity_id,
-                    f"{entity_id}: Stale state detected. Last update was "
-                    f"{elapsed_hours:.1f} hours ago (limit: {self.threshold_hours}h).",
-                )
+        self._scan_states(states, registry, current_time)
 
         if fail_on_stale and self.stale_entities:
             self.errors.append(

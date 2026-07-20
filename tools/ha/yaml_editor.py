@@ -94,23 +94,40 @@ class YAMLEditor:
     # Automation list helpers (automations.yaml and scenes.yaml)
     # ------------------------------------------------------------------
 
-    def _require_list(self, operation: str) -> None:
-        """Raise TypeError if data is not a list (e.g. scripts.yaml)."""
+    def _require_list(self, operation: str) -> list:
+        """Return the loaded list or raise TypeError for another shape."""
         self._ensure_loaded()
         if not isinstance(self._data, list):
             raise TypeError(
                 f"Cannot {operation} on {self.path.name}: "
                 f"expected a list, got {type(self._data).__name__}"
             )
+        return self._data
 
-    def _require_dict(self, operation: str) -> None:
-        """Raise TypeError if data is not a dict."""
+    def _require_dict(self, operation: str) -> dict:
+        """Return the loaded dict or raise TypeError for another shape."""
         self._ensure_loaded()
         if not isinstance(self._data, dict):
             raise TypeError(
                 f"Cannot {operation} on {self.path.name}: "
                 f"expected a dict, got {type(self._data).__name__}"
             )
+        return self._data
+
+    def _find_automation(self, alias: str, operation: str) -> tuple[list, int]:
+        """Return the automation list and alias index, or raise its old error."""
+        data = self._require_list(operation)
+        idx = self.find_automation(alias)
+        if idx is None:
+            raise ValueError(f"Automation with alias '{alias}' not found")
+        return data, idx
+
+    def _find_script(self, key: str, operation: str) -> dict:
+        """Return a script mapping, or raise its old missing-key error."""
+        data = self._require_dict(operation)
+        if key not in data:
+            raise ValueError(f"Script '{key}' not found")
+        return data
 
     def find_automation(self, alias: str) -> int | None:
         """Return the index of an automation by alias, or None if not found."""
@@ -133,12 +150,11 @@ class YAMLEditor:
         self._ensure_loaded()
         if self._data is None:
             self._data = CommentedSeq()
-        self._require_list("add automation")
-        assert isinstance(self._data, list)
+        data = self._require_list("add automation")
         alias = automation.get("alias") if isinstance(automation, dict) else None
         if alias is not None and self.find_automation(alias) is not None:
             raise ValueError(f"Automation with alias '{alias}' already exists")
-        self._data.append(automation)
+        data.append(automation)
 
     def add_script(self, key: str, script: dict) -> None:
         """Add a script entry to a dict-based file. Does NOT save.
@@ -149,11 +165,10 @@ class YAMLEditor:
         self._ensure_loaded()
         if self._data is None:
             self._data = CommentedMap()
-        self._require_dict("add script")
-        assert isinstance(self._data, dict)
-        if key in self._data:
+        data = self._require_dict("add script")
+        if key in data:
             raise ValueError(f"Script '{key}' already exists")
-        self._data[key] = script
+        data[key] = script
 
     def update_automation(self, alias: str, updates: dict) -> None:
         """Merge updates into an automation found by alias. Does NOT save.
@@ -162,12 +177,8 @@ class YAMLEditor:
         Raises ValueError if the alias is not found.
         Raises TypeError if the target entry is not a dict.
         """
-        self._require_list("update automation")
-        assert isinstance(self._data, list)
-        idx = self.find_automation(alias)
-        if idx is None:
-            raise ValueError(f"Automation with alias '{alias}' not found")
-        target = self._data[idx]
+        data, idx = self._find_automation(alias, "update automation")
+        target = data[idx]
         if not isinstance(target, dict):
             raise TypeError(
                 f"Automation '{alias}' is not a dict (got {type(target).__name__})"
@@ -181,11 +192,8 @@ class YAMLEditor:
         Raises ValueError if the key is not found.
         Raises TypeError if the target entry is not a dict.
         """
-        self._require_dict("update script")
-        assert isinstance(self._data, dict)
-        if key not in self._data:
-            raise ValueError(f"Script '{key}' not found")
-        target = self._data[key]
+        data = self._find_script(key, "update script")
+        target = data[key]
         if not isinstance(target, dict):
             raise TypeError(
                 f"Script '{key}' is not a dict (got {type(target).__name__})"
@@ -198,12 +206,8 @@ class YAMLEditor:
         Raises TypeError if data is not a list.
         Raises ValueError if the alias is not found.
         """
-        self._require_list("remove automation")
-        assert isinstance(self._data, list)
-        idx = self.find_automation(alias)
-        if idx is None:
-            raise ValueError(f"Automation with alias '{alias}' not found")
-        self._data.pop(idx)
+        data, idx = self._find_automation(alias, "remove automation")
+        data.pop(idx)
 
     def remove_script(self, key: str) -> None:
         """Remove a script entry. Does NOT save.
@@ -211,8 +215,5 @@ class YAMLEditor:
         Raises TypeError if data is not a dict.
         Raises ValueError if the key is not found.
         """
-        self._require_dict("remove script")
-        assert isinstance(self._data, dict)
-        if key not in self._data:
-            raise ValueError(f"Script '{key}' not found")
-        del self._data[key]
+        data = self._find_script(key, "remove script")
+        del data[key]

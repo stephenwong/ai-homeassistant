@@ -190,36 +190,7 @@ class TestPrintJson:
         assert "\n" in out
 
 
-class TestHasTransformFlags:
-    """L58: _has_transform_flags detection."""
-
-    @pytest.mark.parametrize(
-        "overrides,expected",
-        [
-            ({"first": None, "pick": None, "max_chars": None}, False),
-            ({"first": 5, "pick": None, "max_chars": None}, True),
-            ({"first": None, "pick": "a", "max_chars": None}, True),
-            ({"first": None, "pick": None, "max_chars": 100}, True),
-        ],
-    )
-    def test_flag_matrix(self, overrides, expected):
-        from argparse import Namespace
-
-        from tools.commands.curl import _has_transform_flags
-
-        base = {
-            "count": False,
-            "keys": False,
-            "first": None,
-            "raw": False,
-            "pick": None,
-            "entity": None,
-            "domain": None,
-            "max_chars": None,
-        }
-        base.update(overrides)
-        assert _has_transform_flags(Namespace(**base)) is expected
-
+class TestTruncateMarker:
     def test_only_marker_fits(self):
         """When every item is larger than max_chars, return just the marker."""
         data = [{"very_long_key_" * 50: "x"}]
