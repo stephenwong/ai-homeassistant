@@ -195,21 +195,22 @@ def _write_changelog(
     return changelog_file
 
 
+def _select_predecessor(
+    backup: BackupRecord, backups_list: list[BackupRecord]
+) -> BackupRecord | None:
+    """Return *backup*'s immediate predecessor in an oldest-first list."""
+    for index, candidate in enumerate(backups_list):
+        if candidate["filename"] == backup["filename"]:
+            return backups_list[index - 1] if index else None
+    raise ValueError(
+        f"Backup {backup['filename']} not found in the backup list — "
+        "cannot compute a predecessor"
+    )
+
+
 def generate_for_backup(backup: BackupRecord, backups_list: list[BackupRecord]) -> Path:
     """Generate changelog for a single backup, finding its predecessor."""
-    # Find previous backup
-    previous = None
-    for i, b in enumerate(backups_list):
-        if b["filename"] == backup["filename"]:
-            if i > 0:
-                previous = backups_list[i - 1]
-            break
-    else:
-        raise ValueError(
-            f"Backup {backup['filename']} not found in the backup list — "
-            "cannot compute a predecessor"
-        )
-
+    previous = _select_predecessor(backup, backups_list)
     return _write_changelog(backup, previous)
 
 
@@ -241,13 +242,13 @@ def main() -> int:
     if args.generate_all:
         generated = 0
         skipped = 0
-        for i, backup in enumerate(backups):
+        for backup in backups:
             cl_path = changelog_path_for(backup)
             if cl_path.exists() and not args.force:
                 skipped += 1
                 continue
             print(f"Generating changelog for {backup['filename']}...", file=sys.stderr)
-            previous = backups[i - 1] if i > 0 else None
+            previous = _select_predecessor(backup, backups)
             _write_changelog(backup, previous)
             generated += 1
 

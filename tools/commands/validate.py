@@ -14,8 +14,9 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from tools.cache import compute_hash, load_cache, save_cache
+from tools.cache import _compute_hash_status, load_cache, save_cache
 from tools.common import add_summary_args, resolve_summary
+from tools.validators.base import ValidatorBase, format_diagnostics
 from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.ha_official import HAOfficialValidator
 from tools.validators.references import ReferenceValidator
@@ -50,14 +51,20 @@ _VALIDATORS: list[tuple[type[Any], str]] = [
 
 def _build_diagnostic_stderr(instance: Any) -> str:
     """Build stderr from instance.errors/warnings/info for diagnostic output."""
-    lines: list[str] = []
-    for err in getattr(instance, "errors", []):
-        lines.append(f"ERROR: {err}")
-    for warn in getattr(instance, "warnings", []):
-        lines.append(f"WARN: {warn}")
-    for info in getattr(instance, "info", []):
-        lines.append(f"INFO: {info}")
-    return "\n".join(lines)
+    return format_diagnostics(
+        getattr(instance, "errors", []),
+        getattr(instance, "warnings", []),
+        getattr(instance, "info", []),
+    )
+
+
+def _validator_source_hash(cls: type) -> str:
+    """Fingerprint the concrete validator and the shared validator base."""
+    try:
+        source = "\n".join((inspect.getsource(cls), inspect.getsource(ValidatorBase)))
+        return hashlib.sha1(source.encode("utf-8")).hexdigest()
+    except OSError, TypeError:
+        return "no-source"
 
 
 def _cache_key(instance: Any, cls: type) -> str | None:
@@ -67,17 +74,14 @@ def _cache_key(instance: Any, cls: type) -> str | None:
         return None
 
     data_hash: str | None = None
+    complete = False
     with contextlib.suppress(OSError):
-        data_hash = compute_hash(instance.config_dir, file_deps)
-    if not data_hash:
+        data_hash, complete = _compute_hash_status(instance.config_dir, file_deps)
+    if not data_hash or not complete:
         return None
 
     # Fold validator source into the cache key so logic edits invalidate it.
-    try:
-        src_hash = hashlib.sha1(inspect.getsource(cls).encode("utf-8")).hexdigest()
-    except OSError, TypeError:
-        src_hash = "no-source"
-    return f"{data_hash}:{src_hash}"
+    return f"{data_hash}:{_validator_source_hash(cls)}"
 
 
 def _load_cached_result(
@@ -95,7 +99,7 @@ def _load_cached_result(
         if cached and cached["hash"] == file_hash:
             return ValidatorResult(
                 description=description,
-                passed=bool(cached["passed"]),
+                passed=cached["passed"],
                 stderr=cached.get("stderr", ""),
                 duration=cached.get("duration", 0.0),
                 cached=True,

@@ -418,7 +418,7 @@ Uses Home Assistant's own `check_config`. **"Successful config (partial)"** is t
 
 ### ⚡ Validator Caching
 
-Validators cache results in `config/.cache/validators/` keyed by SHA256 of dependent files. Unchanged files return cached results instantly.
+Validators cache results in `config/.cache/validators/` keyed by the SHA256 of dependent-file content plus validator implementation source (including shared `ValidatorBase` behavior). Unchanged files return cached results instantly; unreadable dependencies and malformed cache records are treated as cache misses.
 
 - **Automatic:** Caching is transparent — no action needed
 - **Force refresh:** `ha_cli validate --force` re-runs all validators

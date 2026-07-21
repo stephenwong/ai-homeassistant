@@ -279,16 +279,29 @@ class TestGenerateChangelog:
 
 class TestChangelogPathFor:
     def test_generates_changelog_path(self):
-        backup = {"filename": "ha_config_20260201_120000.tar.gz"}
+        backup = {
+            "path": Path("/tmp/archive/ha_config_20260201_120000.tar.gz"),
+            "filename": "ha_config_20260201_120000.tar.gz",
+        }
         with patch("tools.backup_common.BACKUP_DIR", Path("/tmp/backups")):
             result = changelog_path_for(backup)
-            assert result == Path("/tmp/backups/ha_config_20260201_120000.changelog")
+            assert result == Path("/tmp/archive/ha_config_20260201_120000.changelog")
 
     def test_generates_paired_backup_path(self):
         changelog = Path("/tmp/backups/ha_config_20260201_120000.changelog")
         with patch("tools.backup_common.BACKUP_DIR", Path("/tmp/backups")):
             result = backup_path_for_changelog(changelog)
             assert result == Path("/tmp/backups/ha_config_20260201_120000.tar.gz")
+
+    def test_pairing_does_not_use_discovery_root(self, tmp_path):
+        archive_dir = tmp_path / "archive"
+        discovery_dir = tmp_path / "discovery"
+        archive_dir.mkdir()
+        discovery_dir.mkdir()
+        archive = archive_dir / "ha_config_20260201_120000.tar.gz"
+        backup = {"path": archive, "filename": archive.name}
+        with patch("tools.backup_common.BACKUP_DIR", discovery_dir):
+            assert changelog_path_for(backup).parent == archive_dir
 
 
 class TestGenerateForBackup:
@@ -331,6 +344,20 @@ class TestGenerateForBackup:
             assert result.exists()
             content = result.read_text()
             assert "Previous:" in content
+
+    def test_predecessor_helper_returns_adjacent_oldest_first_backup(self):
+        from tools.generate_changelog import _select_predecessor
+
+        older = {"filename": "older"}
+        newer = {"filename": "newer"}
+        assert _select_predecessor(newer, [older, newer]) is older
+        assert _select_predecessor(older, [older, newer]) is None
+
+    def test_predecessor_helper_rejects_absent_backup(self):
+        from tools.generate_changelog import _select_predecessor
+
+        with pytest.raises(ValueError, match="not found in the backup list"):
+            _select_predecessor({"filename": "missing"}, [{"filename": "other"}])
 
 
 class TestMain:
@@ -571,7 +598,10 @@ class TestL62Format:
         """L62: removesuffix anchors to the suffix exactly."""
         from tools.generate_changelog import changelog_path_for
 
-        backup = {"filename": "ha_config_20260201_120000.tar.gz"}
+        backup = {
+            "path": Path("/tmp/ha_config_20260201_120000.tar.gz"),
+            "filename": "ha_config_20260201_120000.tar.gz",
+        }
         result = changelog_path_for(backup)
         assert result.name == "ha_config_20260201_120000.changelog"
 
@@ -652,7 +682,7 @@ class TestL63Gaps:
 
         with patch("tools.backup_common.BACKUP_DIR", tmp_path):
             generate_for_backup(older, backups)
-            cl_path = tmp_path / "ha_config_20260101_120000.changelog"
+            cl_path = sub / "ha_config_20260101_120000.changelog"
             content = cl_path.read_text()
             assert "Initial backup" in content
 

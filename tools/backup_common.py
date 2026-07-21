@@ -14,6 +14,7 @@ from typing import IO, TypedDict
 
 BACKUP_DIR = Path(__file__).parent.parent / "backups"
 _BACKUP_RE = re.compile(r"^ha_config_(\d{8})_(\d{6})\.tar\.gz$")
+_CHANGELOG_RE = re.compile(r"^ha_config_\d{8}_\d{6}\.changelog$")
 
 
 class BackupRecord(TypedDict):
@@ -26,12 +27,14 @@ class BackupRecord(TypedDict):
 
 def changelog_path_for(backup: BackupRecord) -> Path:
     """Return the changelog path paired with *backup* (sibling of the tarball)."""
-    return BACKUP_DIR / (backup["filename"].removesuffix(".tar.gz") + ".changelog")
+    return backup["path"].parent / (
+        backup["filename"].removesuffix(".tar.gz") + ".changelog"
+    )
 
 
 def backup_path_for_changelog(changelog: Path) -> Path:
     """Return the backup path paired with a changelog file."""
-    return BACKUP_DIR / (changelog.name.removesuffix(".changelog") + ".tar.gz")
+    return changelog.parent / (changelog.name.removesuffix(".changelog") + ".tar.gz")
 
 
 def parse_backup_filename(filename: str) -> datetime | None:
@@ -49,6 +52,20 @@ def parse_backup_filename(filename: str) -> datetime | None:
         return None
 
 
+def _is_managed_artifact(path: Path, kind: str) -> bool:
+    """Return whether *path* is a canonical, non-symlink managed artifact."""
+    if path.is_symlink() or not path.is_file():
+        return False
+    if kind == "backup":
+        return parse_backup_filename(path.name) is not None
+    if kind == "changelog":
+        if _CHANGELOG_RE.fullmatch(path.name) is None:
+            return False
+        backup_name = path.name.removesuffix(".changelog") + ".tar.gz"
+        return parse_backup_filename(backup_name) is not None
+    return False
+
+
 def get_backups() -> list[BackupRecord]:
     """Get all backup files with their timestamps."""
     if not BACKUP_DIR.exists():
@@ -56,8 +73,10 @@ def get_backups() -> list[BackupRecord]:
 
     backups: list[BackupRecord] = []
     for file in BACKUP_DIR.glob("*.tar.gz"):
+        if not _is_managed_artifact(file, "backup"):
+            continue
         timestamp = parse_backup_filename(file.name)
-        if timestamp:
+        if timestamp is not None:
             backups.append(
                 {"path": file, "filename": file.name, "timestamp": timestamp}
             )

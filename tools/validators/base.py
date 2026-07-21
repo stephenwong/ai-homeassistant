@@ -2,7 +2,7 @@
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +26,23 @@ _HA_TAGS = [
 ]
 
 _YAML_GLOB_PATTERNS = ("*.yaml", "*.yml")
+
+
+def format_diagnostics(
+    errors: Iterable[str],
+    warnings: Iterable[str],
+    info: Iterable[str] = (),
+) -> str:
+    """Format validator diagnostics in their compact, stable order.
+
+    The compact representation is shared by the in-process validator runner
+    and validators that provide their own summary output.  The rich headings
+    and icons remain the responsibility of :meth:`ValidatorBase.print_results`.
+    """
+    lines = [*(f"ERROR: {entry}" for entry in errors)]
+    lines.extend(f"WARN: {entry}" for entry in warnings)
+    lines.extend(f"INFO: {entry}" for entry in info)
+    return "\n".join(lines)
 
 
 def _make_tag_constructor(tag: str):

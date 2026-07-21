@@ -10,6 +10,7 @@ import os
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
@@ -94,25 +95,24 @@ class YAMLEditor:
     # Automation list helpers (automations.yaml and scenes.yaml)
     # ------------------------------------------------------------------
 
-    def _require_list(self, operation: str) -> list:
-        """Return the loaded list or raise TypeError for another shape."""
+    def _require_shape(self, expected_type: type, operation: str) -> list | dict:
+        """Return loaded data of *expected_type* or raise the stable shape error."""
         self._ensure_loaded()
-        if not isinstance(self._data, list):
+        if not isinstance(self._data, expected_type):
             raise TypeError(
                 f"Cannot {operation} on {self.path.name}: "
-                f"expected a list, got {type(self._data).__name__}"
+                f"expected a {expected_type.__name__}, got "
+                f"{type(self._data).__name__}"
             )
-        return self._data
+        return self._data  # type: ignore[return-value]
+
+    def _require_list(self, operation: str) -> list:
+        """Return the loaded list or raise TypeError for another shape."""
+        return cast(list, self._require_shape(list, operation))
 
     def _require_dict(self, operation: str) -> dict:
         """Return the loaded dict or raise TypeError for another shape."""
-        self._ensure_loaded()
-        if not isinstance(self._data, dict):
-            raise TypeError(
-                f"Cannot {operation} on {self.path.name}: "
-                f"expected a dict, got {type(self._data).__name__}"
-            )
-        return self._data
+        return cast(dict, self._require_shape(dict, operation))
 
     def _find_automation(self, alias: str, operation: str) -> tuple[list, int]:
         """Return the automation list and alias index, or raise its old error."""

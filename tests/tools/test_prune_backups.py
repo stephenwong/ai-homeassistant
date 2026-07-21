@@ -296,6 +296,31 @@ class TestCleanOrphanedChangelogs:
             assert count == 1
             assert orphan.exists()  # Not deleted
 
+    def test_unrelated_and_nonregular_changelogs_are_untouched(self, tmp_path):
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        unrelated = backup_dir / "notes.changelog"
+        unrelated.write_text("keep")
+        directory = backup_dir / "ha_config_20260101_120000.changelog"
+        directory.mkdir()
+        (backup_dir / "ha_config_20260101_120000.tar.gz").mkdir()
+
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
+            assert clean_orphaned_changelogs() == 0
+        assert unrelated.exists()
+        assert directory.exists()
+
+    def test_directory_named_like_backup_does_not_protect_changelog(self, tmp_path):
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        changelog = backup_dir / "ha_config_20260101_120000.changelog"
+        changelog.write_text("orphan")
+        (backup_dir / "ha_config_20260101_120000.tar.gz").mkdir()
+
+        with patch("tools.backup_common.BACKUP_DIR", backup_dir):
+            assert clean_orphaned_changelogs() == 1
+        assert not changelog.exists()
+
 
 class TestFormatSize:
     def test_bytes(self):

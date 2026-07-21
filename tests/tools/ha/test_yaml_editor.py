@@ -676,6 +676,23 @@ class TestTypeGuard:
         with pytest.raises(TypeError, match="expected a list"):
             editor.remove_automation("x")
 
+    @pytest.mark.parametrize(
+        "operation", ["add_script", "update_script", "remove_script"]
+    )
+    def test_dict_operations_on_list_raise_type_error(self, tmp_path, operation):
+        from tools.ha.yaml_editor import YAMLEditor
+
+        path = tmp_path / "automations.yaml"
+        _write_yaml(path, AUTOMATIONS_FIXTURE)
+        editor = YAMLEditor(path)
+        with pytest.raises(TypeError, match="expected a dict"):
+            if operation == "add_script":
+                editor.add_script("x", {"sequence": []})
+            elif operation == "update_script":
+                editor.update_script("x", {})
+            else:
+                editor.remove_script("x")
+
 
 # ---------------------------------------------------------------------------
 # L15: Additional round-trip and error-propagation tests

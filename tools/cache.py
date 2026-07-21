@@ -1,7 +1,9 @@
 """Validator result cache — skips re-validation when no relevant files changed."""
 
+import contextlib
 import hashlib
 import json
+import math
 import sys
 import time
 from datetime import UTC, datetime
@@ -14,13 +16,16 @@ CACHE_DIR_NAME = ".cache/validators"
 CACHE_SCHEMA_VERSION = 1
 
 
-def compute_hash(config_dir: Path, patterns: list[str]) -> str:
+def _compute_hash_status(config_dir: Path, patterns: list[str]) -> tuple[str, bool]:
     """Compute a SHA256 hash over all files matching the given glob patterns.
 
     Files are sorted for deterministic ordering. Missing files/patterns are
-    silently skipped (no error).
+    silently skipped (no error). The completeness flag is false when a
+    matched file cannot be read, because the resulting digest is not safe for
+    cache identity.
     """
     sha = hashlib.sha256()
+    complete = True
     paths: list[Path] = []
     for pattern in patterns:
         for p in config_dir.glob(pattern):
@@ -37,8 +42,15 @@ def compute_hash(config_dir: Path, patterns: list[str]) -> str:
             sha.update(p.read_bytes())
         except OSError as e:
             print(f"WARN: skipping {p} in hash: {e}", file=sys.stderr)
+            complete = False
             continue
-    return sha.hexdigest()
+    return sha.hexdigest(), complete
+
+
+def compute_hash(config_dir: Path, patterns: list[str]) -> str:
+    """Compute the public digest for matching files."""
+    digest, _complete = _compute_hash_status(config_dir, patterns)
+    return digest
 
 
 def cache_path(config_dir: Path, name: str) -> Path:
@@ -73,10 +85,31 @@ def load_cache(config_dir: Path, name: str) -> dict | None:
         return None
     if not isinstance(data, dict):
         return None
-    if "hash" not in data or "passed" not in data:
+    if type(data.get("schema")) is not int or data["schema"] != CACHE_SCHEMA_VERSION:
         return None
-    if data.get("schema") != CACHE_SCHEMA_VERSION:
+    if not isinstance(data.get("hash"), str):
         return None
+    if type(data.get("passed")) is not bool:
+        return None
+
+    if "duration" in data:
+        duration = data["duration"]
+        finite_duration = False
+        if not isinstance(duration, bool) and isinstance(duration, (int, float)):
+            with contextlib.suppress(OverflowError):
+                finite_duration = math.isfinite(duration)
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or duration < 0
+            or not finite_duration
+        ):
+            return None
+    if "stderr" in data and not isinstance(data["stderr"], str):
+        return None
+    for metadata in ("validator", "timestamp"):
+        if metadata in data and not isinstance(data[metadata], str):
+            return None
     return data
 
 

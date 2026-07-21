@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from tools.validators.base import (  # noqa: F401 — re-exported
     HAYamlLoader,
     ValidatorBase,
+    format_diagnostics,
 )
 
 DEFAULT_HA_URL = "http://homeassistant.local:8123"

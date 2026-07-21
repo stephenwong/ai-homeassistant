@@ -74,8 +74,8 @@ def _fetch_data(
         if args.entity_id:
             entity_short = args.entity_id.split(".", 1)[1]
             try:
-                rest_client = HAClient.from_env()
-                state = rest_client.get_json(f"/api/states/{args.entity_id}")
+                with HAClient.from_env() as rest_client:
+                    state = rest_client.get_json(f"/api/states/{args.entity_id}")
                 item_id = (state.get("attributes") or {}).get("id") or entity_short
             except HARequestError:
                 item_id = entity_short

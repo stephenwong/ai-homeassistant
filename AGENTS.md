@@ -131,7 +131,7 @@ PASSED 7/7 (9.69s)    FAILED 6/7 (5.02s)
 
 ### Validator Caching
 
-SHA256-hash cache in `config/.cache/validators/<ClassName>.json`. Transparent — unchanged files use cache. `--force` re-runs all. Failures always re-run. Clear with `git clean -fdX config/.cache/`.
+SHA256-hash cache in `config/.cache/validators/<ClassName>.json`. Cache keys combine dependent-file content with the concrete validator and shared `ValidatorBase` implementation source. Unchanged files use cache; unreadable matched dependencies and malformed cache records are cache misses. `--force` re-runs all. Failures always re-run. Clear with `git clean -fdX config/.cache/`.
 
 ### YAML Editing (ha_cli edit)
 

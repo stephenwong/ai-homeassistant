@@ -100,6 +100,7 @@ def mock_clients(mock_env):
     ``mock_ws.command.side_effect``.
     """
     mock_hac = MagicMock()
+    mock_hac.__enter__.return_value = mock_hac
     mock_ws = MagicMock(spec=HAWSClient)
     # Default: trace/list returns nothing (no matching traces).
     mock_ws.command.side_effect = _make_ws_command_side_effect(traces=[])

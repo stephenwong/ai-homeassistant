@@ -6,7 +6,13 @@ import tarfile
 import pytest
 
 from tests.helpers import make_tar
-from tools.backup_common import iter_tarball_file_members
+from tools.backup_common import (
+    backup_path_for_changelog,
+    changelog_path_for,
+    get_backups,
+    iter_tarball_file_members,
+    parse_backup_filename,
+)
 
 
 class TestIterTarballFileMembers:
@@ -74,3 +80,34 @@ class TestIterTarballFileMembers:
         bad.write_text("not a tar file")
         with pytest.raises((tarfile.TarError, OSError)):
             list(iter_tarball_file_members(bad))
+
+
+class TestManagedBackups:
+    def test_get_backups_only_returns_canonical_regular_files(
+        self, tmp_path, monkeypatch
+    ):
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        valid = backup_dir / "ha_config_20260721_120000.tar.gz"
+        valid.write_bytes(b"data")
+        (backup_dir / "ha_config_20260721_120001.tar.gz").mkdir()
+        (backup_dir / "ha_config_20260721_120002.tar.gz.bak").write_bytes(b"data")
+        symlink = backup_dir / "ha_config_20260721_120003.tar.gz"
+        symlink.symlink_to(valid)
+        monkeypatch.setattr("tools.backup_common.BACKUP_DIR", backup_dir)
+
+        assert [item["path"] for item in get_backups()] == [valid]
+
+    def test_pairing_is_local_to_archive_parent(self, tmp_path):
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        archive = archive_dir / "ha_config_20260721_120000.tar.gz"
+        changelog = archive_dir / "ha_config_20260721_120000.changelog"
+        record = {
+            "path": archive,
+            "filename": archive.name,
+            "timestamp": parse_backup_filename(archive.name),
+        }
+
+        assert changelog_path_for(record) == changelog
+        assert backup_path_for_changelog(changelog) == archive

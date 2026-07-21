@@ -15,6 +15,7 @@ from tools.common import (
     HAYamlLoader,
     ValidatorBase,
     _is_tty,
+    format_diagnostics,
     get_env_int,
     load_env_file,
     resolve_summary,
@@ -307,6 +308,11 @@ class _ConcreteValidator(ValidatorBase):
 
 class TestValidatorBase:
     """Test ValidatorBase class."""
+
+    def test_reexports_compact_diagnostics(self):
+        assert format_diagnostics(["error"], ["warning"], ["info"]) == (
+            "ERROR: error\nWARN: warning\nINFO: info"
+        )
 
     def test_validatorbase_cannot_be_instantiated(self):
         """L33: ValidatorBase is abstract — direct instantiation must fail."""

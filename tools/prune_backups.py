@@ -111,8 +111,10 @@ def clean_orphaned_changelogs(dry_run: bool = False) -> int:
         return 0
     orphans = []
     for changelog in backup_common.BACKUP_DIR.glob("*.changelog"):
+        if not backup_common._is_managed_artifact(changelog, "changelog"):
+            continue
         tar_path = backup_common.backup_path_for_changelog(changelog)
-        if not tar_path.exists():
+        if not backup_common._is_managed_artifact(tar_path, "backup"):
             orphans.append(changelog)
     if orphans:
         print(f"\nOrphaned changelogs: {len(orphans)}", file=sys.stderr)

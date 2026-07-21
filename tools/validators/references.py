@@ -14,7 +14,7 @@ from typing import Any, NamedTuple, TypedDict
 from tools.common import add_summary_args, resolve_summary
 from tools.validators._storage import load_storage_registry
 from tools.validators._templates import is_jinja_template
-from tools.validators.base import ValidatorBase
+from tools.validators.base import ValidatorBase, format_diagnostics
 from tools.validators.entity_definitions import EntityDefinitionExtractor
 
 _TEMPLATE_PATTERNS = [
@@ -577,14 +577,15 @@ class ReferenceValidator(ValidatorBase):
         if self.summary:
             if self.errors:
                 print("FAIL Entity/device references")
-                for err in self.errors:
-                    print(f"  ERROR: {err}", file=sys.stderr)
-                for warn in self.warnings:
-                    print(f"  WARN: {warn}", file=sys.stderr)
+                diagnostics = format_diagnostics(self.errors, self.warnings)
+                if diagnostics:
+                    for line in diagnostics.splitlines():
+                        print(f"  {line}", file=sys.stderr)
             elif self.warnings:
                 print("PASS Entity/device references (with warnings)")
-                for warn in self.warnings:
-                    print(f"  WARN: {warn}", file=sys.stderr)
+                diagnostics = format_diagnostics([], self.warnings)
+                for line in diagnostics.splitlines():
+                    print(f"  {line}", file=sys.stderr)
             else:
                 print("PASS Entity/device references")
             return

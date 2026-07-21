@@ -1,6 +1,7 @@
 """Tests for tools/cache.py — validator result caching."""
 
 import json
+import math
 from unittest.mock import patch
 
 import pytest
@@ -130,6 +131,23 @@ class TestL79UnreadableFile:
         _, err = capsys.readouterr()
         assert "WARN" in err
 
+    def test_hash_status_marks_unreadable_match_incomplete(self, tmp_path, monkeypatch):
+        from tools.cache import _compute_hash_status
+
+        (tmp_path / "broken.yaml").write_text("content")
+        import pathlib
+
+        original = pathlib.Path.read_bytes
+
+        def fail_for_broken(path):
+            if path.name == "broken.yaml":
+                raise OSError("nope")
+            return original(path)
+
+        monkeypatch.setattr(pathlib.Path, "read_bytes", fail_for_broken)
+        _digest, complete = _compute_hash_status(tmp_path, ["*.yaml"])
+        assert complete is False
+
 
 class TestLoadCache:
     def test_valid_cache_returns_dict(self, tmp_path):
@@ -188,6 +206,39 @@ class TestLoadCache:
         (cache_dir / "Foo.json").write_text(json.dumps({"hash": "abc"}))
         result = load_cache(tmp_path, "Foo")
         assert result is None
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            {"schema": True},
+            {"hash": 123},
+            {"passed": 1},
+            {"duration": -1},
+            {"duration": math.inf},
+            {"duration": True},
+            {"duration": None},
+            {"stderr": []},
+            {"validator": []},
+            {"timestamp": 123},
+        ],
+    )
+    def test_malformed_record_returns_none(self, tmp_path, change):
+        from tools.cache import CACHE_SCHEMA_VERSION
+
+        record = {
+            "schema": CACHE_SCHEMA_VERSION,
+            "validator": "Foo",
+            "hash": "abc",
+            "passed": True,
+            "timestamp": "now",
+            "duration": 0.5,
+            "stderr": "",
+        }
+        record.update(change)
+        path = tmp_path / ".cache" / "validators" / "Foo.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(record, allow_nan=True))
+        assert load_cache(tmp_path, "Foo") is None
 
 
 class TestCacheSchemaVersion:

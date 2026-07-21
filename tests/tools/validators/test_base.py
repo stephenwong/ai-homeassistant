@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from tools.validators.base import ValidatorBase
+from tools.validators.base import ValidatorBase, format_diagnostics
 
 
 class _DummyValidator(ValidatorBase):
@@ -86,6 +86,16 @@ class TestRunCli:
         monkeypatch.setattr("sys.argv", ["dummy", str(dummy_config)])
         _DummyValidator.run_cli("dummy")
         assert called == [True]
+
+
+def test_format_diagnostics_preserves_severity_order_and_prefixes():
+    assert format_diagnostics(["bad"], ["careful"], ["note"]) == (
+        "ERROR: bad\nWARN: careful\nINFO: note"
+    )
+
+
+def test_format_diagnostics_empty_is_empty():
+    assert format_diagnostics([], [], []) == ""
 
     def test_validate_all_called(self, dummy_config, monkeypatch):
         called = []

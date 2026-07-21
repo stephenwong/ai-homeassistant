@@ -1,5 +1,6 @@
 """Tests for tools/commands/validate.py — in-process validator runner."""
 
+import json
 from argparse import Namespace
 from unittest.mock import patch
 
@@ -81,6 +82,42 @@ class TestRunOne:
             result = _run_one(YAMLValidator, "YAML", "config", quiet=True, force=True)
         assert result.passed is False
 
+    def test_incomplete_hash_does_not_read_or_write_cache(
+        self, config_dir, monkeypatch
+    ):
+        from tools.validators.yaml import YAMLValidator
+
+        monkeypatch.setattr(
+            validate,
+            "_compute_hash_status",
+            lambda *_args: ("digest", False),
+        )
+        with (
+            patch("tools.commands.validate.load_cache") as load,
+            patch("tools.commands.validate.save_cache") as save,
+        ):
+            result = _run_one(
+                YAMLValidator, "YAML", config_dir, quiet=True, force=False
+            )
+        assert result.cached is False
+        load.assert_not_called()
+        save.assert_not_called()
+
+    def test_malformed_cache_record_is_a_cache_miss(self, config_dir):
+        from tools.cache import cache_path
+        from tools.validators.yaml import YAMLValidator
+
+        first = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=True)
+        assert first.passed
+        path = cache_path(config_dir, YAMLValidator.__name__)
+        data = json.loads(path.read_text())
+        data["passed"] = 1
+        path.write_text(json.dumps(data))
+
+        result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=False)
+        assert result.passed
+        assert result.cached is False
+
     def test_quiet_propagated_to_validator(self, config_dir, monkeypatch):
         """_run_one forwards quiet to the validator instance."""
         (config_dir / "configuration.yaml").write_text("homeassistant:\n")
@@ -103,10 +140,15 @@ class TestRunOne:
         from tools.validators.yaml import YAMLValidator
 
         fake_source = "class YAMLValidator:\n    pass"
-        fake_src_hash = hashlib.sha1(fake_source.encode()).hexdigest()
+        fake_src_hash = hashlib.sha1(
+            "\n".join((fake_source, fake_source)).encode()
+        ).hexdigest()
         hash_val = f"abc123:{fake_src_hash}"
         with (
-            patch("tools.commands.validate.compute_hash", return_value="abc123"),
+            patch(
+                "tools.commands.validate._compute_hash_status",
+                return_value=("abc123", True),
+            ),
             patch(
                 "tools.commands.validate.inspect.getsource", return_value=fake_source
             ),
@@ -129,10 +171,15 @@ class TestRunOne:
         from tools.validators.yaml import YAMLValidator
 
         fake_source = "class YAMLValidator:\n    pass"
-        fake_src_hash = hashlib.sha1(fake_source.encode()).hexdigest()
+        fake_src_hash = hashlib.sha1(
+            "\n".join((fake_source, fake_source)).encode()
+        ).hexdigest()
         hash_val = f"abc123:{fake_src_hash}"
         with (
-            patch("tools.commands.validate.compute_hash", return_value="abc123"),
+            patch(
+                "tools.commands.validate._compute_hash_status",
+                return_value=("abc123", True),
+            ),
             patch(
                 "tools.commands.validate.inspect.getsource", return_value=fake_source
             ),
@@ -157,7 +204,10 @@ class TestRunOne:
         from tools.validators.yaml import YAMLValidator
 
         with (
-            patch("tools.commands.validate.compute_hash", return_value="newhash"),
+            patch(
+                "tools.commands.validate._compute_hash_status",
+                return_value=("newhash", True),
+            ),
             patch(
                 "tools.commands.validate.load_cache",
                 return_value={"hash": "oldhash", "passed": True, "duration": 0.1},
@@ -173,7 +223,10 @@ class TestRunOne:
         from tools.validators.yaml import YAMLValidator
 
         with (
-            patch("tools.commands.validate.compute_hash", return_value="abc"),
+            patch(
+                "tools.commands.validate._compute_hash_status",
+                return_value=("abc", True),
+            ),
             patch(
                 "tools.commands.validate.load_cache",
                 return_value={"hash": "abc", "passed": False, "duration": 0.1},
@@ -203,11 +256,16 @@ class TestRunOne:
         from tools.validators.yaml import YAMLValidator
 
         fake_source = "class YAMLValidator:\n    pass"
-        fake_src_hash = hashlib.sha1(fake_source.encode()).hexdigest()
+        fake_src_hash = hashlib.sha1(
+            "\n".join((fake_source, fake_source)).encode()
+        ).hexdigest()
         file_hash = "hash123"
         combined_hash = f"{file_hash}:{fake_src_hash}"
         with (
-            patch("tools.commands.validate.compute_hash", return_value=file_hash),
+            patch(
+                "tools.commands.validate._compute_hash_status",
+                return_value=(file_hash, True),
+            ),
             patch(
                 "tools.commands.validate.inspect.getsource", return_value=fake_source
             ),
@@ -249,7 +307,7 @@ class TestRunOne:
         (tmp_path / "configuration.yaml").write_text("a: 1")
         monkeypatch.setattr(
             mod,
-            "compute_hash",
+            "_compute_hash_status",
             lambda *a, **k: (_ for _ in ()).throw(ValueError("bug")),
         )
         result = mod._run_one(YAMLValidator, "YAML", str(tmp_path), True, True)
@@ -263,7 +321,9 @@ class TestRunOne:
         from tools.validators.yaml import YAMLValidator
 
         (tmp_path / "configuration.yaml").write_text("a: 1")
-        monkeypatch.setattr(mod, "compute_hash", lambda *a, **k: "fakehash")
+        monkeypatch.setattr(
+            mod, "_compute_hash_status", lambda *a, **k: ("fakehash", True)
+        )
         monkeypatch.setattr(mod, "load_cache", lambda *a, **k: None)
         monkeypatch.setattr(
             mod,
@@ -314,6 +374,32 @@ class TestRunOne:
         monkeypatch.setattr(vmod.inspect, "getsource", fake_getsource)
         r3 = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=False)
         assert not r3.cached, "validator source change must invalidate cache"
+
+    def test_validator_base_source_change_invalidates_cache(
+        self, config_dir, monkeypatch
+    ):
+        """Changes to shared validator behavior must invalidate each cache."""
+        import tools.commands.validate as vmod
+        from tools.validators.base import ValidatorBase
+        from tools.validators.yaml import YAMLValidator
+
+        first = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=False)
+        assert first.passed
+        assert _run_one(
+            YAMLValidator, "YAML", config_dir, quiet=True, force=False
+        ).cached
+
+        original_getsource = vmod.inspect.getsource
+
+        def fake_getsource(obj):
+            source = original_getsource(obj)
+            if obj is ValidatorBase:
+                source += "\n# shared behavior changed"
+            return source
+
+        monkeypatch.setattr(vmod.inspect, "getsource", fake_getsource)
+        result = _run_one(YAMLValidator, "YAML", config_dir, quiet=True, force=False)
+        assert result.cached is False
 
     def test_save_cache_failure_does_not_crash(self, config_dir):
         """If saving cache throws, validation result is still returned."""
@@ -387,7 +473,10 @@ class TestRunValidators:
         monkeypatch.setattr(HAOfficialValidator, "validate_all", lambda self: True)
         monkeypatch.setattr(HAOfficialValidator, "file_deps", lambda self: [])
         with (
-            patch("tools.commands.validate.compute_hash", return_value="hash"),
+            patch(
+                "tools.commands.validate._compute_hash_status",
+                return_value=("hash", True),
+            ),
             patch(
                 "tools.commands.validate.load_cache",
                 return_value={

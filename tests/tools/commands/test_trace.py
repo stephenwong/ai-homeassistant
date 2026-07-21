@@ -58,9 +58,17 @@ def make_args(**overrides):
 
 @pytest.fixture
 def mock_client():
-    with patch("tools.commands.trace.HAWSClient.from_env") as mock_from_env:
+    with (
+        patch("tools.commands.trace.HAWSClient.from_env") as mock_from_env,
+        patch("tools.commands.trace.HAClient.from_env") as mock_rest_from_env,
+    ):
         client = MagicMock()
+        rest_client = MagicMock()
+        rest_client.__enter__.return_value = rest_client
+        rest_client.get_json.return_value = {"attributes": {}}
         mock_from_env.return_value = client
+        mock_rest_from_env.return_value = rest_client
+        client.rest_client = rest_client
         yield client
 
 
@@ -305,6 +313,22 @@ class TestRun:
             "item_id": "morning_routine",
             "run_id": "abc123",
         }
+
+    def test_single_entity_rest_lookup_closes_after_success(self, mock_client, capsys):
+        mock_client.command.side_effect = [
+            SAMPLE_TRACES,
+            {"trace": {}, "item_id": "morning_routine"},
+        ]
+        args = make_args(entity_id="automation.morning_routine")
+        assert trace_cmd.run(args) == 0
+        mock_client.rest_client.__exit__.assert_called_once()
+
+    def test_single_entity_rest_lookup_closes_after_failure(self, mock_client, capsys):
+        mock_client.rest_client.get_json.side_effect = HARequestError("missing")
+        mock_client.command.return_value = []
+        args = make_args(entity_id="automation.morning_routine")
+        assert trace_cmd.run(args) == 1
+        mock_client.rest_client.__exit__.assert_called_once()
 
     def test_single_entity_not_found_returns_1(self, mock_client, capsys):
         mock_client.command.return_value = SAMPLE_TRACES

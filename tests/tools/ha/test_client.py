@@ -228,6 +228,14 @@ def test_client_context_manager_closes_session():
     session.close.assert_called_once()
 
 
+def test_client_context_manager_closes_session_on_exception():
+    session = MagicMock()
+    client = HAClient("http://ha.local", "tok", session=session)
+    with pytest.raises(RuntimeError), client:
+        raise RuntimeError("boom")
+    session.close.assert_called_once()
+
+
 def test_client_close_method_closes_session():
     """M6: close() method must close the underlying session."""
     session = MagicMock()
