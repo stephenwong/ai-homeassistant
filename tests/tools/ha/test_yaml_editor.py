@@ -743,3 +743,46 @@ def test_unicode_alias_round_trip(tmp_path):
     e2 = YAMLEditor(path)
     e2.load()
     assert e2.find_automation("☕ Coffee ☕") is not None
+
+
+def test_lazy_empty_file_is_loaded_once(tmp_path, monkeypatch):
+    from tools.ha.yaml_editor import YAMLEditor
+
+    path = tmp_path / "empty.yaml"
+    path.write_text("", encoding="utf-8")
+    editor = YAMLEditor(path)
+    original_load = editor.load
+    calls = 0
+
+    def load_once():
+        nonlocal calls
+        calls += 1
+        return original_load()
+
+    monkeypatch.setattr(editor, "load", load_once)
+    assert editor.find_automation("missing") is None
+    assert editor.find_automation("missing") is None
+    assert calls == 1
+
+
+def test_lazy_missing_file_stays_save_noop_until_add(tmp_path, monkeypatch):
+    from tools.ha.yaml_editor import YAMLEditor
+
+    path = tmp_path / "automations.yaml"
+    editor = YAMLEditor(path)
+    original_load = editor.load
+    calls = 0
+
+    def load_once():
+        nonlocal calls
+        calls += 1
+        return original_load()
+
+    monkeypatch.setattr(editor, "load", load_once)
+    assert editor.find_automation("missing") is None
+    editor.save()
+    assert not path.exists()
+    editor.add_automation({"alias": "New"})
+    editor.save()
+    assert path.exists()
+    assert calls == 1

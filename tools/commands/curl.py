@@ -14,7 +14,6 @@ Token-efficiency flags for agents:
 """
 
 import argparse
-import contextlib
 import json
 import sys
 from dataclasses import dataclass
@@ -273,7 +272,38 @@ def _emit_output(
     summary: bool,
 ) -> int:
     """Dispatch output processing based on CLI flags. Returns exit code."""
-    # 7. Bare endpoint guardrail
+    # Keep this sequence explicit: these are intentionally ordered side effects.
+    guardrail_result = _handle_guardrail(args, request, data, summary)
+    if guardrail_result is not None:
+        return guardrail_result
+
+    _validate_json_output_flags(args, data, is_json)
+    _emit_output_warnings(args, summary)
+
+    effective_max_chars = _effective_max_chars(args, summary)
+    early_result = _handle_early_output(
+        args, data, raw_text, summary, effective_max_chars
+    )
+    if early_result is not None:
+        return early_result
+
+    data = _filter_domain(data, args.domain, summary)
+
+    if args.first is not None and not summary:
+        _warn_first_overcount(data, args.first)
+
+    data = _shape_output(data, args, effective_max_chars)
+    _render_output(data, raw_text, args.pretty)
+    return 0
+
+
+def _handle_guardrail(
+    args: argparse.Namespace,
+    request: _CurlRequest,
+    data: Any,
+    summary: bool,
+) -> int | None:
+    """Handle the compact-mode bare ``/api/states`` guardrail."""
     if (
         request.method == "GET"
         and request.endpoint == "/api/states"
@@ -289,8 +319,13 @@ def _emit_output(
             file=sys.stderr,
         )
         return count_result
+    return None
 
-    # 8. Validate output flag against JSON-ness
+
+def _validate_json_output_flags(
+    args: argparse.Namespace, data: Any, is_json: bool
+) -> None:
+    """Reject JSON-only output transforms for a non-JSON response."""
     requires_json = args.keys or (args.first is not None) or bool(args.pick)
     if requires_json and data is None and not is_json:
         flag = "keys" if args.keys else ("first" if args.first is not None else "pick")
@@ -298,63 +333,77 @@ def _emit_output(
             f"Cannot use --{flag} on non-JSON response (Content-Type: unknown)"
         )
 
-    # 9. Pretty-warning for --keys
+
+def _emit_output_warnings(args: argparse.Namespace, summary: bool) -> None:
+    """Emit output-mode warnings that are suppressed in summary mode."""
     if args.pretty and not summary and args.keys:
         print(
             "\u26a0\ufe0f  --pretty has no effect with --keys",
             file=sys.stderr,
         )
 
-    # 10. Dispatch by output flag (early-exit handlers)
-    effective_max_chars = (
-        None
-        if args.no_guard and args.max_chars is None
-        else resolve_max_chars(args, summary)
-    )
+
+def _effective_max_chars(args: argparse.Namespace, summary: bool) -> int | None:
+    """Resolve the output cap, including the ``--no-guard`` override."""
+    if args.no_guard and args.max_chars is None:
+        return None
+    return resolve_max_chars(args, summary)
+
+
+def _handle_early_output(
+    args: argparse.Namespace,
+    data: Any,
+    raw_text: str,
+    summary: bool,
+    max_chars: int | None,
+) -> int | None:
+    """Handle output flags that intentionally bypass filtering and shaping."""
     if args.count:
         return _handle_count(data)
     if args.keys:
-        return _handle_keys(data, summary=summary, max_chars=effective_max_chars)
+        return _handle_keys(data, summary=summary, max_chars=max_chars)
     if args.raw:
         print(raw_text, end="")
         return 0
+    return None
 
-    # 11. Apply --domain (client-side list filter)
-    if args.domain and isinstance(data, list):
-        prefix = f"{args.domain}."
-        filtered = [
-            i
-            for i in data
-            if isinstance(i, dict)
-            and isinstance(i.get("entity_id"), str)
-            and i["entity_id"].startswith(prefix)
-        ]
-        if not summary and len(filtered) < len(data):
-            print(
-                f"# domain {args.domain!r}: {len(filtered)}/{len(data)} items matched",
-                file=sys.stderr,
-            )
-        data = filtered
 
-    # 12. Warn on --first overcount (verbose mode only)
-    if args.first is not None and not summary:
-        _warn_first_overcount(data, args.first)
+def _filter_domain(data: Any, domain: str | None, summary: bool) -> Any:
+    """Filter list responses by the requested entity domain."""
+    if not domain or not isinstance(data, list):
+        return data
+    prefix = f"{domain}."
+    filtered = [
+        item
+        for item in data
+        if isinstance(item, dict)
+        and isinstance(item.get("entity_id"), str)
+        and item["entity_id"].startswith(prefix)
+    ]
+    if not summary and len(filtered) < len(data):
+        print(
+            f"# domain {domain!r}: {len(filtered)}/{len(data)} items matched",
+            file=sys.stderr,
+        )
+    return filtered
 
-    # 13-15. Apply shared output shaping (first -> pick -> max_chars)
-    data = apply_output_shape(
+
+def _shape_output(data: Any, args: argparse.Namespace, max_chars: int | None) -> Any:
+    """Apply the shared first → pick → max-chars output shape."""
+    return apply_output_shape(
         data,
         first=args.first,
         pick=args.pick,
-        max_chars=effective_max_chars,
+        max_chars=max_chars,
     )
 
-    # 16. Dump JSON
+
+def _render_output(data: Any, raw_text: str, pretty: bool) -> None:
+    """Render parsed JSON, falling back to the original response body."""
     if data is not None:
-        print_json(data, pretty=args.pretty)
+        print_json(data, pretty=pretty)
     else:
         print(raw_text, end="")
-
-    return 0
 
 
 # ====================================================================
@@ -381,8 +430,12 @@ def run(args: argparse.Namespace) -> int:
         )
         data = None
         if is_json:
-            with contextlib.suppress(ValueError, TypeError, json.JSONDecodeError):
+            try:  # noqa: SIM105 - preserve a narrow, explicit parser boundary
                 data = resp.json()
+            except ValueError:
+                # Keep the content-type/shape detection separate from parsing:
+                # an invalid JSON body still falls back to its raw text.
+                pass
 
         return _emit_output(args, request, data, raw_text, is_json, summary)
     except _CurlError as e:
@@ -403,38 +456,42 @@ def _handle_count(data: Any) -> int:
     return 0
 
 
+def _collect_key_names(data: Any) -> tuple[list[str] | None, str]:
+    """Normalize list/dict key collection and return its diagnostic kind."""
+    if isinstance(data, list):
+        if not data:
+            return [], "empty"
+        all_keys: set[str] = set()
+        for item in data:
+            if isinstance(item, dict):
+                all_keys.update(item.keys())
+        if not all_keys:
+            return [], "non-dict"
+        return sorted(all_keys), "list"
+    if isinstance(data, dict):
+        return list(data.keys()), "dict"
+    return None, "scalar"
+
+
+def _print_key_names(keys: list[str], max_chars: int | None) -> None:
+    """Shape and print normalized key names as compact JSON."""
+    shaped = apply_output_shape(keys, max_chars=max_chars)
+    print(json.dumps(shaped, separators=(",", ":")))
+
+
 def _handle_keys(data, summary: bool = False, max_chars: int | None = None) -> int:
     """Print unique JSON key names (metadata to stderr, keys to stdout)."""
-    if isinstance(data, list):
-        count = len(data)
-        if count == 0:
-            print("# empty list", file=sys.stderr)
-            print("[]")
-        else:
-            all_keys: set[str] = set()
-            for item in data:
-                if isinstance(item, dict):
-                    all_keys.update(item.keys())
-            keys = sorted(all_keys)
-            if keys:
-                if summary:
-                    print(f"# {count} items, {len(keys)} keys", file=sys.stderr)
-                else:
-                    print(
-                        f"# {count} items, {len(keys)} unique keys: {', '.join(keys)}",
-                        file=sys.stderr,
-                    )
-                keys = apply_output_shape(keys, max_chars=max_chars)
-                print(json.dumps(keys, separators=(",", ":")))
-            else:
-                print(f"# {count} items (non-dict, no keys available)", file=sys.stderr)
-                print("[]")
-    elif isinstance(data, dict):
-        keys = list(data.keys())
-        print(f"# {len(keys)} keys", file=sys.stderr)
-        keys = apply_output_shape(keys, max_chars=max_chars)
-        print(json.dumps(keys, separators=(",", ":")))
-    else:
+    keys, kind = _collect_key_names(data)
+    if kind == "empty":
+        print("# empty list", file=sys.stderr)
+        _print_key_names([], max_chars)
+    elif kind == "non-dict":
+        print(
+            f"# {len(data)} items (non-dict, no keys available)",
+            file=sys.stderr,
+        )
+        _print_key_names([], max_chars)
+    elif kind == "scalar":
         print("# not a JSON object or list", file=sys.stderr)
         printable = (
             json.dumps(data, separators=(",", ":"), ensure_ascii=False)
@@ -442,6 +499,21 @@ def _handle_keys(data, summary: bool = False, max_chars: int | None = None) -> i
             else "null"
         )
         print(printable)
+    elif kind == "list":
+        count = len(data)
+        assert keys is not None
+        if summary:
+            print(f"# {count} items, {len(keys)} keys", file=sys.stderr)
+        else:
+            print(
+                f"# {count} items, {len(keys)} unique keys: {', '.join(keys)}",
+                file=sys.stderr,
+            )
+        _print_key_names(keys, max_chars)
+    else:
+        assert keys is not None
+        print(f"# {len(keys)} keys", file=sys.stderr)
+        _print_key_names(keys, max_chars)
     return 0
 
 

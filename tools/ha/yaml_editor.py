@@ -5,7 +5,6 @@ Works with both list-based (automations.yaml, scenes.yaml) and dict-based
 (scripts.yaml) Home Assistant YAML files.
 """
 
-import contextlib
 import os
 import tempfile
 from collections.abc import Callable
@@ -29,6 +28,7 @@ class YAMLEditor:
         self._yaml.preserve_quotes = True
         self._yaml.indent(mapping=2, sequence=4, offset=2)
         self._data: list | dict | None = None
+        self._loaded = False
 
     def load(self):
         """Load a YAML file, preserving structure.
@@ -39,6 +39,7 @@ class YAMLEditor:
         """
         with open(self.path, encoding="utf-8") as f:
             self._data = self._yaml.load(f)
+        self._loaded = True
         return self._data
 
     def _ensure_loaded(self):
@@ -46,9 +47,15 @@ class YAMLEditor:
 
         If the file does not exist, ``self._data`` stays ``None``.
         """
-        if self._data is None:
-            with contextlib.suppress(FileNotFoundError):
-                self.load()
+        if self._loaded:
+            return
+        try:
+            self.load()
+        except FileNotFoundError:
+            # A missing file is a valid lazy state for new-file additions.
+            # Mark the attempted load so repeated read-only operations do not
+            # keep hitting the filesystem, while explicit load() still raises.
+            self._loaded = True
 
     def save(self, validator: Callable[[Path], bool] | None = None) -> None:
         """Save in-memory state to the original file, atomically.

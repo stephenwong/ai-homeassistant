@@ -32,6 +32,16 @@ class TestValidatorResult:
 
 
 class TestRunOne:
+    def test_run_validator_returns_internal_execution_result(self, config_dir):
+        from tools.commands.validate import _run_validator, _ValidatorExecutionResult
+
+        instance = YAMLValidator(config_dir, quiet=True, summary=True)
+        result = _run_validator(instance, "YAML", 0.0)
+        assert isinstance(result, _ValidatorExecutionResult)
+        assert result.passed is True
+        assert result.cached is False
+        assert result.duration is not None
+
     def test_successful_validator(self, config_dir):
         """A validator that passes returns passed=True."""
         from tools.validators.yaml import YAMLValidator

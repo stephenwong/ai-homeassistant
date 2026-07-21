@@ -61,6 +61,66 @@ def _validate_args(args: argparse.Namespace, summary: bool) -> int | None:
     return None
 
 
+class _TraceNotFoundError(Exception):
+    """Raised when an automation has no trace-list entries."""
+
+
+def _fetch_single_trace(ws_client: HAWSClient, entity_id: str) -> dict:
+    """Resolve an automation entity and fetch its newest trace run."""
+    entity_short = entity_id.split(".", 1)[1]
+    try:
+        with HAClient.from_env() as rest_client:
+            state = rest_client.get_json(f"/api/states/{entity_id}")
+        item_id = (state.get("attributes") or {}).get("id") or entity_short
+    except HARequestError:
+        item_id = entity_short
+
+    traces = ws_client.command("trace/list", domain="automation", item_id=item_id)
+    matching = [trace for trace in traces if trace.get("item_id") == item_id]
+    if not matching:
+        raise _TraceNotFoundError(entity_id)
+    matching.sort(
+        key=lambda trace: trace.get("timestamp", {}).get("start", ""),
+        reverse=True,
+    )
+    latest = matching[0]
+    return ws_client.command(
+        "trace/get",
+        domain="automation",
+        item_id=latest["item_id"],
+        run_id=latest["run_id"],
+    )
+
+
+def _summarize_trace_list(traces: list[dict]) -> list[dict]:
+    """Project, sort, deduplicate, and count a trace-list response."""
+    compact = [
+        {
+            "item_id": trace.get("item_id"),
+            "state": trace.get("state"),
+            "trigger": trace.get("trigger"),
+            "timestamp": (trace.get("timestamp") or {}).get("start"),
+        }
+        for trace in traces
+    ]
+    compact.sort(key=lambda entry: entry.get("timestamp") or "", reverse=True)
+
+    seen: dict[str, dict] = {}
+    run_counts: dict[str, int] = {}
+    for entry in compact:
+        item_id = entry.get("item_id") or ""
+        run_counts[item_id] = run_counts.get(item_id, 0) + 1
+        if item_id not in seen:
+            seen[item_id] = entry
+
+    data = list(seen.values())
+    for entry in data:
+        runs = run_counts.get(entry.get("item_id") or "", 1)
+        if runs > 1:
+            entry["runs"] = runs
+    return data
+
+
 def _fetch_data(
     ws_client: HAWSClient,
     args: argparse.Namespace,
@@ -72,58 +132,14 @@ def _fetch_data(
     """
     try:
         if args.entity_id:
-            entity_short = args.entity_id.split(".", 1)[1]
             try:
-                with HAClient.from_env() as rest_client:
-                    state = rest_client.get_json(f"/api/states/{args.entity_id}")
-                item_id = (state.get("attributes") or {}).get("id") or entity_short
-            except HARequestError:
-                item_id = entity_short
-            traces = ws_client.command(
-                "trace/list", domain="automation", item_id=item_id
-            )
-            matching = [t for t in traces if t.get("item_id") == item_id]
-            if not matching:
+                data = _fetch_single_trace(ws_client, args.entity_id)
+            except _TraceNotFoundError:
                 return None, fail_stderr(f"No traces found for {args.entity_id}")
-            matching.sort(
-                key=lambda t: t.get("timestamp", {}).get("start", ""),
-                reverse=True,
-            )
-            latest = matching[0]
-            data = ws_client.command(
-                "trace/get",
-                domain="automation",
-                item_id=latest["item_id"],
-                run_id=latest["run_id"],
-            )
         else:
             data = ws_client.command("trace/list", domain="automation")
             if summary and not args.pretty:
-                compact = [
-                    {
-                        "item_id": t.get("item_id"),
-                        "state": t.get("state"),
-                        "trigger": t.get("trigger"),
-                        "timestamp": (t.get("timestamp") or {}).get("start"),
-                    }
-                    for t in data
-                ]
-                compact.sort(
-                    key=lambda x: x.get("timestamp") or "",
-                    reverse=True,
-                )
-                seen: dict[str, dict] = {}
-                run_counts: dict[str, int] = {}
-                for entry in compact:
-                    iid = entry.get("item_id") or ""
-                    run_counts[iid] = run_counts.get(iid, 0) + 1
-                    if iid not in seen:
-                        seen[iid] = entry
-                data = list(seen.values())
-                for entry in data:
-                    n = run_counts.get(entry.get("item_id") or "", 1)
-                    if n > 1:
-                        entry["runs"] = n
+                data = _summarize_trace_list(data)
     except HARequestError as e:
         return None, fail_stderr(str(e))
     return data, None

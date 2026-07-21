@@ -154,6 +154,89 @@ def reload_service(client: HAClient, service: str) -> tuple[str, bool, str | Non
         return (service, False, f"{type(e).__name__}: {e}")
 
 
+def _execute_reload_plan(
+    client: HAClient, services: set[str]
+) -> list[tuple[str, bool, str | None]]:
+    """Execute core first, then sorted domain reloads with shared concurrency."""
+    core_service = CORE_RELOAD_SERVICE
+    domain_services = services - {core_service}
+    results: list[tuple[str, bool, str | None]] = []
+
+    if core_service in services:
+        results.append(reload_service(client, core_service))
+
+    # Domain reloads depend on helpers and integrations loaded by core config.
+    core_ok = all(ok for _service, ok, _error in results)
+    if domain_services and core_ok:
+        # NOTE: requests.Session is shared across workers — safe per urllib3's
+        # thread-safe connection pool, but not guaranteed by requests' docs.
+        # If a future requests version breaks this, switch to per-worker sessions.
+        with ThreadPoolExecutor() as executor:
+            results.extend(
+                executor.map(
+                    functools.partial(reload_service, client),
+                    sorted(domain_services),
+                )
+            )
+    return results
+
+
+def _render_reload_results(
+    results: list[tuple[str, bool, str | None]],
+    services: set[str],
+    summary: bool,
+    elapsed: float,
+) -> bool:
+    """Render reload outcomes and return whether every attempted reload passed."""
+    core_failed = any(
+        service == CORE_RELOAD_SERVICE and not ok for service, ok, _error in results
+    )
+    if core_failed and services - {CORE_RELOAD_SERVICE} and not summary:
+        print(
+            "⚠️  Skipping domain reloads because core config failed "
+            "(fix configuration.yaml first)",
+            file=sys.stderr,
+        )
+
+    all_ok = True
+    for service, ok, error in results:
+        label = SERVICE_LABELS.get(service, service)
+        if ok:
+            if not summary:
+                print(f"  ✅ {label} reloaded", file=sys.stderr)
+        else:
+            suffix = f" ({error[:80]})" if error else ""
+            if not summary:
+                print(f"  ❌ {label} failed to reload{suffix}", file=sys.stderr)
+            all_ok = False
+
+    if summary:
+        total = len(results)
+        passed = sum(1 for _service, ok, _error in results if ok)
+        if all_ok:
+            labels = ", ".join(
+                sorted(
+                    SERVICE_LABELS.get(service, service) for service, _, _ in results
+                )
+            )
+            print(f"RELOADED {passed}/{total} ({labels}) {elapsed:.1f}s")
+        else:
+            failed_labels = ", ".join(
+                sorted(
+                    SERVICE_LABELS.get(service, service)
+                    for service, ok, _ in results
+                    if not ok
+                )
+            )
+            print(f"FAILED {passed}/{total} ({failed_labels} FAILED) {elapsed:.1f}s")
+    elif all_ok:
+        print("✅ All reloads completed successfully!", file=sys.stderr)
+    else:
+        print("❌ Some reloads failed", file=sys.stderr)
+
+    return all_ok
+
+
 def reload_config(summary: bool = False) -> bool:
     """Reload Home Assistant configuration via API."""
     start = time.time()
@@ -196,70 +279,8 @@ def reload_config(summary: bool = False) -> bool:
         labels = sorted(SERVICE_LABELS.get(s, s) for s in services)
         print(f"🔄 Reloading: {', '.join(labels)}", file=sys.stderr)
 
-    # reload_core_config must run before domain reloads — automations/scripts
-    # reference helpers and integrations that core config sets up.
-    core_service = CORE_RELOAD_SERVICE
-    domain_services = services - {core_service}
-    results = []
-
-    if core_service in services:
-        core_result = reload_service(client, core_service)
-        results.append(core_result)
-
-    # M15: if core config failed, skip domain reloads — they depend on helpers
-    # and integrations that core sets up, so they'd just cascade the failure.
-    core_ok = all(ok for _svc, ok, _err in results)
-
-    if domain_services and core_ok:
-        # NOTE: requests.Session is shared across workers — safe per urllib3's
-        # thread-safe connection pool, but not guaranteed by requests' docs.
-        # If a future requests version breaks this, switch to per-worker sessions.
-        with ThreadPoolExecutor() as executor:
-            results.extend(
-                executor.map(
-                    functools.partial(reload_service, client),
-                    sorted(domain_services),
-                )
-            )
-    elif domain_services and not core_ok and not summary:
-        print(
-            "⚠️  Skipping domain reloads because core config failed "
-            "(fix configuration.yaml first)",
-            file=sys.stderr,
-        )
-
-    all_ok = True
-    for service, ok, error in results:
-        label = SERVICE_LABELS.get(service, service)
-        if ok:
-            if not summary:
-                print(f"  ✅ {label} reloaded", file=sys.stderr)
-        else:
-            suffix = f" ({error[:80]})" if error else ""
-            if not summary:
-                print(f"  ❌ {label} failed to reload{suffix}", file=sys.stderr)
-            all_ok = False
-
-    elapsed = time.time() - start
-
-    if summary:
-        total = len(results)
-        passed = sum(1 for _, ok, _ in results if ok)
-        if all_ok:
-            labels = ", ".join(sorted(SERVICE_LABELS.get(s, s) for s, _, _ in results))
-            print(f"RELOADED {passed}/{total} ({labels}) {elapsed:.1f}s")
-        else:
-            failed_labels = ", ".join(
-                sorted(SERVICE_LABELS.get(s, s) for s, ok, _ in results if not ok)
-            )
-            print(f"FAILED {passed}/{total} ({failed_labels} FAILED) {elapsed:.1f}s")
-    else:
-        if all_ok:
-            print("✅ All reloads completed successfully!", file=sys.stderr)
-        else:
-            print("❌ Some reloads failed", file=sys.stderr)
-
-    return all_ok
+    results = _execute_reload_plan(client, services)
+    return _render_reload_results(results, services, summary, time.time() - start)
 
 
 if __name__ == "__main__":

@@ -341,6 +341,25 @@ class TestHttpMethods:
         assert curl_cmd.run(args) == 0
         assert capsys.readouterr().out == ""
 
+    def test_invalid_json_content_type_falls_back_to_raw_body(
+        self, mock_client, capsys
+    ):
+        response = response_mock(
+            content_type="application/json; charset=utf-8", text="not json"
+        )
+        response.json.side_effect = ValueError("invalid JSON")
+        mock_client.get.return_value = response
+        args = make_args(endpoint="/api/")
+        assert curl_cmd.run(args) == 0
+        assert capsys.readouterr().out == "not json"
+
+    def test_unexpected_json_parser_failure_is_not_suppressed(self, mock_client):
+        response = response_mock(content_type="application/json", text="body")
+        response.json.side_effect = RuntimeError("parser bug")
+        mock_client.get.return_value = response
+        with pytest.raises(RuntimeError, match="parser bug"):
+            curl_cmd.run(make_args(endpoint="/api/"))
+
     def test_json_with_charset_in_content_type(self, mock_client, capsys):
         mock_client.get.return_value = response_mock(
             content_type="application/json; charset=utf-8",
@@ -557,6 +576,16 @@ class TestCount:
 
 
 class TestKeys:
+    def test_key_collection_normalizes_list_and_dict_shapes(self):
+        assert curl_cmd._collect_key_names([{"b": 1}, {"a": 2}]) == (
+            ["a", "b"],
+            "list",
+        )
+        assert curl_cmd._collect_key_names({"b": 1, "a": 2}) == (
+            ["b", "a"],
+            "dict",
+        )
+
     def test_keys_list_of_dicts(self, mock_client, capsys):
         mock_client.get.return_value = json_resp(
             [

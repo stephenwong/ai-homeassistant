@@ -350,6 +350,25 @@ class TestReloadConfig:
         assert call_order[0] == "homeassistant/reload_core_config"
         assert "automation/reload" in call_order[1:]
 
+    def test_execute_reload_plan_returns_core_then_sorted_domains(self):
+        from tools.reload_config import _execute_reload_plan
+
+        client = _make_client()
+        client.post.return_value = MagicMock(status_code=200)
+        results = _execute_reload_plan(
+            client,
+            {
+                "script/reload",
+                "homeassistant/reload_core_config",
+                "automation/reload",
+            },
+        )
+        assert [service for service, _ok, _error in results] == [
+            "homeassistant/reload_core_config",
+            "automation/reload",
+            "script/reload",
+        ]
+
     def test_reload_timeout_overrides_client_timeout(self):
         """Reload-specific timeout (HA_RELOAD_TIMEOUT) overrides the client default."""
         with (

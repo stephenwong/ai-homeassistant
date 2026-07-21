@@ -37,6 +37,16 @@ class ValidatorResult:
     cached: bool = False
 
 
+@dataclass(frozen=True)
+class _ValidatorExecutionResult:
+    """Internal validator outcome before the public description is attached."""
+
+    passed: bool
+    stderr: str = ""
+    cached: bool = False
+    duration: float | None = None
+
+
 # (module_class, description) tuples for each validator in the default suite.
 _VALIDATORS: list[tuple[type[Any], str]] = [
     (YAMLValidator, "YAML Syntax Validation"),
@@ -90,15 +100,14 @@ def _load_cached_result(
     description: str,
     file_hash: str | None,
     force: bool,
-) -> ValidatorResult | None:
+) -> _ValidatorExecutionResult | None:
     """Return a matching cached result, or ``None`` on a cache miss."""
     if force or file_hash is None:
         return None
     try:
         cached = load_cache(instance.config_dir, name)
         if cached and cached["hash"] == file_hash:
-            return ValidatorResult(
-                description=description,
+            return _ValidatorExecutionResult(
                 passed=cached["passed"],
                 stderr=cached.get("stderr", ""),
                 duration=cached.get("duration", 0.0),
@@ -111,7 +120,7 @@ def _load_cached_result(
 
 def _run_validator(
     instance: Any, description: str, start: float
-) -> tuple[bool, str] | ValidatorResult:
+) -> _ValidatorExecutionResult:
     """Execute one validator and translate its expected failure boundaries."""
     try:
         passed = bool(instance.validate_all())
@@ -123,13 +132,16 @@ def _run_validator(
             or f"Validator raised SystemExit({e.code!r})"
         )
     except Exception as e:
-        return ValidatorResult(
-            description=description,
+        return _ValidatorExecutionResult(
             passed=False,
             stderr=f"Failed to run validator: {e}",
             duration=time.time() - start,
         )
-    return passed, stderr
+    return _ValidatorExecutionResult(
+        passed=passed,
+        stderr=stderr,
+        duration=time.time() - start,
+    )
 
 
 def _save_success_cache(
@@ -189,25 +201,39 @@ def _run_one(
         # --- cache check (skip when --force or when file_deps is empty) ---
         cached_result = _load_cached_result(instance, name, description, fhash, force)
         if cached_result is not None:
-            return cached_result
+            return ValidatorResult(
+                description=description,
+                passed=cached_result.passed,
+                stderr=cached_result.stderr,
+                duration=cached_result.duration or 0.0,
+                cached=cached_result.cached,
+            )
 
         # --- cache miss or forced — actually run the validator ---
         execution = _run_validator(instance, description, start)
-        if isinstance(execution, ValidatorResult):
-            return execution
-        passed, stderr = execution
-
-        duration = time.time() - start
+        duration = (
+            execution.duration
+            if execution.duration is not None
+            else time.time() - start
+        )
 
         # --- save to cache (only on success; failures always re-run) ---
-        if passed:
-            _save_success_cache(instance, name, description, fhash, duration, stderr)
+        if execution.passed:
+            _save_success_cache(
+                instance,
+                name,
+                description,
+                fhash,
+                duration,
+                execution.stderr,
+            )
 
         return ValidatorResult(
             description=description,
-            passed=passed,
-            stderr=stderr,
+            passed=execution.passed,
+            stderr=execution.stderr,
             duration=duration,
+            cached=execution.cached,
         )
     except Exception as e:
         return ValidatorResult(

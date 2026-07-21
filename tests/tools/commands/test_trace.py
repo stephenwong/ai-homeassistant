@@ -222,6 +222,33 @@ class TestRun:
         # Ensure full-field keys are absent in summary mode
         assert {"script_execution", "last_step", "domain"}.isdisjoint(parsed[0].keys())
 
+    def test_summarize_trace_list_projects_and_deduplicates(self):
+        from tools.commands.trace import _summarize_trace_list
+
+        traces = [
+            {
+                "item_id": "same",
+                "state": "stopped",
+                "trigger": "old",
+                "timestamp": {"start": "2026-01-01"},
+            },
+            {
+                "item_id": "same",
+                "state": "stopped",
+                "trigger": "new",
+                "timestamp": {"start": "2026-01-02"},
+            },
+        ]
+        assert _summarize_trace_list(traces) == [
+            {
+                "item_id": "same",
+                "state": "stopped",
+                "trigger": "new",
+                "timestamp": "2026-01-02",
+                "runs": 2,
+            }
+        ]
+
     def test_summary_dedupes_by_item_id(self, mock_client, capsys):
         """Summary mode dedupes trace list to one entry per item_id + runs field."""
         mock_client.command.return_value = DUPLICATE_TRACES

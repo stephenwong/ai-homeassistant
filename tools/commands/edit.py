@@ -129,19 +129,23 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         if args.add is not None:
+            # Keep JSON parsing and add-specific validation ahead of shape
+            # resolution and the shared mutation boundary.
             return _run_add(editor, args.add, quiet)
+
+        file_type = _resolve_file_type(editor)
 
         # --show (or default), --set, --remove
         if args.show or not any([args.set, args.remove]):
-            return _run_show(editor, args.alias)
+            return _run_show(editor, args.alias, file_type=file_type)
 
         alias: str = args.alias  # type: ignore[assignment]
 
         if args.set:
-            return _run_set(editor, alias, args.set, quiet)
+            return _run_set(editor, alias, args.set, quiet, file_type=file_type)
 
         if args.remove:
-            return _run_remove(editor, alias, quiet)
+            return _run_remove(editor, alias, quiet, file_type=file_type)
 
         return 1  # pragma: no cover  # unreachable; satisfies type checker
 
@@ -161,6 +165,15 @@ def _detect_file_type(editor: YAMLEditor) -> str:
     return "unknown"  # pragma: no cover
 
 
+def _resolve_file_type(editor: YAMLEditor, *, for_add: bool = False) -> str:
+    """Resolve an editor's shape once, with the new-file script fallback."""
+    if editor.path.exists():
+        return _detect_file_type(editor)
+    if for_add and editor.path.name == "scripts.yaml":
+        return "dict"
+    return "list"
+
+
 def _dispatch_by_filetype[T](
     editor: YAMLEditor,
     alias: str,
@@ -170,13 +183,20 @@ def _dispatch_by_filetype[T](
     on_list: Callable[[YAMLEditor, str], T],
 ) -> T:
     """Run the mapping callback, or the list fallback for other file shapes."""
-    if (file_type if file_type is not None else _detect_file_type(editor)) == "dict":
+    resolved_type = file_type if file_type is not None else _resolve_file_type(editor)
+    if resolved_type == "dict":
         return on_dict(editor, alias)
     return on_list(editor, alias)
 
 
-def _run_show(editor: YAMLEditor, alias: str | None) -> int:
-    data = editor.load()
+def _run_show(
+    editor: YAMLEditor, alias: str | None, *, file_type: str | None = None
+) -> int:
+    if file_type is None:
+        data = editor.load()
+    else:
+        editor._ensure_loaded()
+        data = editor._data
     if data is None:
         print("(empty file)", file=sys.stderr)
         return 0
@@ -202,7 +222,13 @@ def _run_show(editor: YAMLEditor, alias: str | None) -> int:
     return 0
 
 
-def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
+def _run_add(
+    editor: YAMLEditor,
+    json_str: str,
+    quiet: bool,
+    *,
+    file_type: str | None = None,
+) -> int:
     try:
         entry = json.loads(json_str)
     except json.JSONDecodeError as e:
@@ -210,35 +236,41 @@ def _run_add(editor: YAMLEditor, json_str: str, quiet: bool) -> int:
     if not isinstance(entry, dict):
         return fail_stderr("--add value must be a JSON object")
 
-    if editor.path.exists():
-        ftype = _detect_file_type(editor)
-    else:
-        # Infer type from file basename for new files
-        ftype = "dict" if editor.path.name == "scripts.yaml" else "list"
-    try:
+    ftype = (
+        file_type if file_type is not None else _resolve_file_type(editor, for_add=True)
+    )
 
-        def add_script(ed: YAMLEditor) -> str:
-            key = str(entry.get("id") or entry.get("alias") or "")
-            if not key:
-                raise ValueError("--add requires 'id' or 'alias' key for script files")
-            ed.add_script(key, entry)
-            return key
+    def add_script(ed: YAMLEditor) -> str:
+        key = str(entry.get("id") or entry.get("alias") or "")
+        if not key:
+            raise ValueError("--add requires 'id' or 'alias' key for script files")
+        ed.add_script(key, entry)
+        return key
 
-        def add_automation(ed: YAMLEditor) -> str:
-            ed.add_automation(entry)
-            return str(entry.get("alias") or entry.get("id") or "(no alias)")
+    def add_automation(ed: YAMLEditor) -> str:
+        ed.add_automation(entry)
+        return str(entry.get("alias") or entry.get("id") or "(no alias)")
 
-        add_entry: Callable[[YAMLEditor], str] = (
-            add_script if ftype == "dict" else add_automation
-        )
-        label = add_entry(editor)
-    except (TypeError, ValueError) as e:
-        return fail_stderr(str(e))
+    add_entry: Callable[[YAMLEditor], str] = (
+        add_script if ftype == "dict" else add_automation
+    )
 
-    return _save_and_report(editor, f"Added: {label}", quiet)
+    return _run_mutation(
+        editor,
+        lambda: add_entry(editor),
+        lambda result: f"Added: {result}",
+        quiet,
+    )
 
 
-def _run_set(editor: YAMLEditor, alias: str, kvs: list[str], quiet: bool) -> int:
+def _run_set(
+    editor: YAMLEditor,
+    alias: str,
+    kvs: list[str],
+    quiet: bool,
+    *,
+    file_type: str | None = None,
+) -> int:
     updates: dict = {}
     for kv in kvs:
         if "=" not in kv:
@@ -257,6 +289,7 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str], quiet: bool) -> int
         lambda: _dispatch_by_filetype(
             editor,
             alias,
+            file_type=file_type,
             on_dict=lambda ed, al: ed.update_script(al, updates),
             on_list=lambda ed, al: ed.update_automation(al, updates),
         ),
@@ -268,16 +301,17 @@ def _run_set(editor: YAMLEditor, alias: str, kvs: list[str], quiet: bool) -> int
 def _run_mutation(
     editor: YAMLEditor,
     operation: Callable[[], object],
-    success_message: str,
+    success_message: str | Callable[[object], str],
     quiet: bool,
 ) -> int:
     """Execute, save, and report a mutating edit operation."""
     try:
-        operation()
+        result = operation()
     except (ValueError, TypeError) as e:
         return fail_stderr(str(e))
 
-    return _save_and_report(editor, success_message, quiet)
+    message = success_message(result) if callable(success_message) else success_message
+    return _save_and_report(editor, message, quiet)
 
 
 def _save_and_report(editor: YAMLEditor, success_message: str, quiet: bool) -> int:
@@ -291,12 +325,19 @@ def _save_and_report(editor: YAMLEditor, success_message: str, quiet: bool) -> i
     return 0
 
 
-def _run_remove(editor: YAMLEditor, alias: str, quiet: bool) -> int:
+def _run_remove(
+    editor: YAMLEditor,
+    alias: str,
+    quiet: bool,
+    *,
+    file_type: str | None = None,
+) -> int:
     return _run_mutation(
         editor,
         lambda: _dispatch_by_filetype(
             editor,
             alias,
+            file_type=file_type,
             on_dict=lambda ed, al: ed.remove_script(al),
             on_list=lambda ed, al: ed.remove_automation(al),
         ),
