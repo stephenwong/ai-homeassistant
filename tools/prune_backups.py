@@ -134,7 +134,7 @@ def _clean_orphaned_changelogs(dry_run: bool = False) -> list[Path]:
                     orphan.unlink()
                 except OSError as e:
                     print(
-                        f"⚠️ failed to delete orphaned changelog {orphan.name}: {e}",
+                        f"WARN: failed to delete orphaned changelog {orphan.name}: {e}",
                         file=sys.stderr,
                     )
                 else:
@@ -200,14 +200,14 @@ def _validate_deletion_safety(
     """Return an error message if the deletion plan is unsafe, else None."""
     if len(to_delete) >= len(backups):
         return (
-            "❌ Refusing to delete: would remove all backups "
+            "ERROR: Refusing to delete: would remove all backups "
             f"(len(to_delete)={len(to_delete)} >= len(backups)={len(backups)}). "
             "Check retention settings."
         )
     remaining = len(backups) - len(to_delete)
     if remaining < min_keep:
         return (
-            f"❌ Refusing to delete: would leave {remaining} "
+            f"ERROR: Refusing to delete: would leave {remaining} "
             f"backup(s), below --min-keep {min_keep}."
         )
     return None
@@ -220,7 +220,7 @@ def _delete_backups(to_delete: list[BackupRecord]) -> int:
         try:
             backup["path"].unlink()
         except OSError as e:
-            print(f"⚠️ failed to delete {backup['filename']}: {e}", file=sys.stderr)
+            print(f"WARN: failed to delete {backup['filename']}: {e}", file=sys.stderr)
             errors += 1
             continue
         try:
@@ -228,7 +228,7 @@ def _delete_backups(to_delete: list[BackupRecord]) -> int:
             changelog_path.unlink(missing_ok=True)
         except OSError as e:
             print(
-                f"⚠️ failed to delete changelog for {backup['filename']}: {e}",
+                f"WARN: failed to delete changelog for {backup['filename']}: {e}",
                 file=sys.stderr,
             )
             errors += 1

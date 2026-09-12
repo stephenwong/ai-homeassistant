@@ -14,11 +14,13 @@ Structured workflow for creating and modifying Home Assistant automations and sc
 **NEVER read these files directly:**
 - `config/.storage/core.entity_registry` (1.7MB JSON)
 - `config/.storage/core.device_registry` (96KB JSON)
-- `config/automations.yaml` (large runtime snapshot — targeted grep only)
+- `config/automations.yaml` (large runtime snapshot — use `ha_cli edit` or targeted AST extraction, not large line-range `view_file` calls)
 
 ### Common mistakes
 
-**Anti-pattern:** running `ha_search` and `uv run python tools/ha_cli.py curl /api/states/<id>` for the same entity — MCP already returns state. If MCP misses, use `grep` against the registry directly.
+**Anti-pattern:** running `ha_search` and `uv run python tools/ha_cli.py curl /api/states/<id>` for the same entity — MCP already returns state. If MCP misses, use targeted `grep` against the registry directly.
+
+**Anti-pattern:** Grepping `.storage/core.*_registry` for opaque 32-character `device_id` hashes. The giant JSON lines dump thousands of tokens into context. Instead, search automations by target action/entity IDs (`switch.office_*`) or query `ha_search`.
 
 **Entity lookup fallback ladder (live HA):**
 1. **`ha_search` MCP** — one call searches entity registry AND automation/script/scene/helper configs.

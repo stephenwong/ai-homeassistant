@@ -24,7 +24,7 @@ YELLOW = \033[1;33m
 RED = \033[0;31m
 NC = \033[0m # No Color
 
-.PHONY: help pull push validate backup backup-search changelog changelog-all clean setup test status reload format-yaml lint check-env test-ssh
+.PHONY: help pull push validate backup backup-search changelog changelog-all clean setup test test-coverage pre-commit pre-commit-all update-deps status reload format-yaml lint check-env test-ssh
 
 # Default target
 help:
@@ -36,7 +36,8 @@ help:
 	@echo "  $(YELLOW)validate$(NC) - Run all validation tests"
 	@echo "  $(YELLOW)backup$(NC)   - Create timestamped backup of current config"
 	@echo "  $(YELLOW)setup$(NC)    - Set up Python environment and dependencies"
-	@echo "  $(YELLOW)test$(NC)     - Run validation tests (alias for validate)"
+	@echo "  $(YELLOW)test$(NC)     - Run the pytest test suite"
+	@echo "  $(YELLOW)test-coverage$(NC) - Run pytest with coverage report"
 	@echo "  $(YELLOW)status$(NC)   - Show configuration status and validation summary"
 	@echo "  $(YELLOW)reload$(NC)   - Reload Home Assistant configuration (without pushing)"
 	@echo "  $(YELLOW)format-yaml$(NC) - Format YAML files (usage: make format-yaml [FILES='file1.yaml file2.yaml'])"
@@ -73,7 +74,7 @@ push: check-env
 	fi
 	@echo "$(GREEN)Configuration pushed successfully!$(NC)"
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
-	@$(UV_RUN) python $(TOOLS_PATH)/reload_config.py
+	@$(UV_RUN) python $(TOOLS_PATH)/ha_cli.py reload
 	@echo "$(GREEN)Configuration deployment complete!$(NC)"
 
 # Run all validation tests
@@ -81,8 +82,30 @@ validate: check-setup
 	@echo "$(GREEN)Running Home Assistant configuration validation...$(NC)"
 	@$(UV_RUN) python $(TOOLS_PATH)/ha_cli.py validate
 
-# Alias for validate
-test: validate
+# Run the pytest test suite
+test: check-setup
+	@echo "$(GREEN)Running pytest test suite...$(NC)"
+	@$(UV_RUN) pytest tests/
+
+# Run pytest with coverage report
+test-coverage: check-setup
+	@echo "$(GREEN)Running pytest with coverage...$(NC)"
+	@$(UV_RUN) pytest tests/ --cov=tools --cov-report=html --cov-report=term-missing
+	@echo "$(GREEN)Coverage report generated in htmlcov/$(NC)"
+
+# Install and run pre-commit hooks
+pre-commit: check-setup
+	@$(UV_RUN) pre-commit install
+	@$(UV_RUN) pre-commit run
+
+# Run pre-commit hooks on all files
+pre-commit-all: check-setup
+	@$(UV_RUN) pre-commit run --all-files
+
+# Update development dependencies
+update-deps:
+	@echo "$(GREEN)Updating development dependencies...$(NC)"
+	@uv sync --group dev --upgrade
 
 # Create backup of current configuration
 backup:
@@ -160,12 +183,12 @@ status: check-setup
 	fi
 	@echo ""
 	@echo "$(YELLOW)Entity Summary:$(NC)"
-	@$(UV_RUN) python -m tools.validators.references --no-summary 2>/dev/null | grep "Examples:" -A 1 -B 1 | head -20
+	@$(UV_RUN) python -m tools.validators.references --no-summary
 
 # Reload Home Assistant configuration via API
 reload: check-setup
 	@echo "$(GREEN)Reloading Home Assistant configuration...$(NC)"
-	@$(UV_RUN) python $(TOOLS_PATH)/reload_config.py
+	@$(UV_RUN) python $(TOOLS_PATH)/ha_cli.py reload
 
 # Format YAML files (specific files or all in config directory)
 format-yaml:
@@ -215,6 +238,7 @@ clean:
 	@find . -name "*.pyc" -delete
 	@find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 	@find . -name "*.log" -delete 2>/dev/null || true
+	@rm -rf config/.cache/validators/ .pytest_cache/ .ruff_cache/ .mypy_cache/ htmlcov/ .coverage
 	@echo "$(GREEN)Cleanup complete!$(NC)"
 
 # Check if setup is complete

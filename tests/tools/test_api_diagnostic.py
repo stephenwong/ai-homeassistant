@@ -30,7 +30,7 @@ def test_get_config_keeps_timeout_warning_on_stdout(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert captured.out == (
-        "⚠️  HA_REQUEST_TIMEOUT must be an integer, got 'not-a-number'; using 10\n"
+        "WARN: HA_REQUEST_TIMEOUT must be an integer, got 'not-a-number'; using 10\n"
     )
     assert captured.err == ""
 

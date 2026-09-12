@@ -12,6 +12,7 @@ from typing import Any
 
 import yaml
 
+from tools.common import is_valid_entity_id
 from tools.validators._storage import _load_storage_data
 from tools.validators.base import HAYamlLoader
 
@@ -119,18 +120,6 @@ class EntityDefinitionExtractor:
         """Check if a string is a valid HA object ID."""
         return bool(_OBJECT_ID_RE.fullmatch(value))
 
-    @classmethod
-    def _is_valid_entity_id(cls, value: str) -> bool:
-        """Check if a string is a valid HA entity ID (domain.object_id)."""
-        if "." not in value:
-            return False
-        domain, object_id = value.split(".", 1)
-        return (
-            bool(domain)
-            and cls._is_valid_object_id(domain)
-            and cls._is_valid_object_id(object_id)
-        )
-
     # ------------------------------------------------------------------
     # Restore state loading
     # ------------------------------------------------------------------
@@ -166,7 +155,7 @@ class EntityDefinitionExtractor:
             if not isinstance(state, dict):
                 continue
             entity_id = state.get("entity_id")
-            if isinstance(entity_id, str) and self._is_valid_entity_id(entity_id):
+            if isinstance(entity_id, str) and is_valid_entity_id(entity_id):
                 entities.add(entity_id)
 
         self._restore_entities = entities
@@ -409,7 +398,7 @@ class EntityDefinitionExtractor:
                     if default_entity_id:
                         default_entity_id = str(default_entity_id)
                         if "." in default_entity_id:
-                            if self._is_valid_entity_id(default_entity_id):
+                            if is_valid_entity_id(default_entity_id):
                                 entities.add(default_entity_id)
                         elif self._is_valid_object_id(default_entity_id):
                             entities.add(f"{entity_type}.{default_entity_id}")

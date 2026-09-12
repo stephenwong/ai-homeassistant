@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-PULL_EXCLUDES = Path(__file__).parent.parent / ".rsync-excludes-pull"
-PUSH_EXCLUDES = Path(__file__).parent.parent / ".rsync-excludes-push"
+PULL_EXCLUDES = Path(__file__).parent.parent.parent / ".rsync-excludes-pull"
+PUSH_EXCLUDES = Path(__file__).parent.parent.parent / ".rsync-excludes-push"
 
 pytestmark = pytest.mark.skipif(not shutil.which("rsync"), reason="rsync not installed")
 

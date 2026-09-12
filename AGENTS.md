@@ -45,16 +45,23 @@ make backup         Verified mode-600 local config snapshot (attempts changelog 
 make changelog-search Search diff changelogs for changes (usage: make changelog-search PATTERN='text' [DAYS=7] [LIMIT=5])
 make backup-search  Search archive contents for text (usage: make backup-search PATTERN='text' [DAYS=7] [LIMIT=5])
 make validate       Run all validators
+make test           Run the pytest test suite
+make test-coverage  Run pytest with coverage report (htmlcov/)
 make reload         Reload HA config via API
 make status         Config/filesystem status + entity-reference summary
 make lint           Ruff format + check and mypy type check
 make lint-fix       Auto-fix Ruff format and lint issues only
+make pre-commit     Install and run pre-commit hooks
+make pre-commit-all Run pre-commit hooks on all files
+make update-deps    Update development dependencies (uv sync --group dev --upgrade)
 make test-ssh       Test SSH connection
-make clean          Remove Python bytecode and log files
+make clean          Remove Python bytecode, logs, and tool caches
 ```
 
 CLI: `uv run python tools/ha_cli.py {validate|reload|curl|edit|stale-sensors|trace}`
-Flags are subcommand-specific: `--summary` (compact output, auto for agents/pipes), `--no-summary` (force verbose), and `validate --force` (bypass validator caches).
+Flags are subcommand-specific: `--summary` (compact output, auto for agents/pipes), `--no-summary` (force verbose), `--pretty` (JSON indent=2; shared), and `validate --force` (bypass validator caches).
+
+**Output convention:** user-facing errors use `ERROR: <msg>` and warnings use `WARN: <msg>` (ASCII, greppable); validator result lines are produced by the shared `common.status_line()` helper (`PASS`/`FAIL`, duration or `(cached)`), so summary and verbose modes cannot drift.
 
 ### HA API Access — Pick ONE per task (don't double-call)
 
@@ -208,6 +215,9 @@ from tools.validators.entity_definitions import EntityDefinitionExtractor
 
 - **`contextlib.redirect_stdout` is NOT thread-safe** — mutates `sys.stdout` globally. For parallel validators, read `instance.errors`/`warnings`/`info` lists directly.
 - **Removed backward-compat shims:** legacy `tools/*_validator.py` paths no longer exist. `test_shims_missing.py` asserts each raises `ImportError` — keep it updated when retiring compat layers.
+- **Shared CLI UX helpers (`tools/common.py`):** `status_line()` is the single validator PASS/FAIL formatter (used by both `validate` and `stale-sensors`); `add_pretty_arg()` owns `--pretty`; `add_output_shape_args()`/`add_summary_args()` own the token-reduction flags. Do not re-declare these flags per subcommand — divergence is the failure mode this prevents.
+- **Single entity-ID validator:** `tools/common.is_valid_entity_id()` is the one implementation; `entity_definitions.py` imports it rather than re-implementing the regex.
+- **Do not re-add `_atomic_replace`:** the compat alias was removed; call `atomic_replace()` directly.
 - **`load_env_file()` in tests:** Reads `.env` only for variables not already present, but patch it to prevent file-based test leakage when environment isolation matters. Patch `tools.ha.client.load_env_file` (and `tools.validators.stale_sensors.load_env_file` if testing stale sensors); the autouse `_stub_load_env_file` fixture in `tests/conftest.py` covers both.
 - **`main()` returns `int`:** Validator/command `main()` returns 0 (pass) or 1 (fail). `__main__` blocks use `raise SystemExit(main())`.
 - **Stream separation:** Results/summaries → stdout; diagnostics/errors/warnings/verbose → stderr. Tests assert `captured.out` vs `captured.err`.
@@ -215,6 +225,7 @@ from tools.validators.entity_definitions import EntityDefinitionExtractor
 - **Narrow `except`:** Prefer `except OSError` over bare `except Exception`. Check the specific error hierarchy before widening.
 - **Subclass `__init__` kwarg forwarding:** Every subclass overriding `__init__` must accept+forward new kwargs (`quiet`, `summary`) via `super().__init__()`. Check ALL subclasses.
 - **Python 3.14 `except A, B, C:`** is canonical (no parens). `ruff format` targeting `py314` removes them. Not a bug.
+- **Ruff vs E501 on short strings:** `ruff format` rejoins implicitly concatenated adjacent string literals when they fit, so splitting a message purely to stay under 88 chars can flap (`format` joins it back → `check` flags E501). Shorten the message or restructure instead.
 - **Boolean/int collision:** `bool` subclasses `int`; `isinstance(val, (int,float))` matches `True`. Guard with `isinstance(val, bool)` first for epoch timestamps.
 - **Naive vs timezone-aware datetimes:** Enforce UTC via `dt.replace(tzinfo=timezone.utc)` if `dt.tzinfo is None`.
 - **Registry concurrency:** Stale-sensor registry loading retries after 100ms when atomic `.storage/` writes cause a transient `JSONDecodeError`; scope any similar retry to the loader that needs it.
@@ -296,9 +307,10 @@ Zone tuning: increase `inertia`/`loitering_time` for false alerts. After changes
 **Zigbee command timing:** Add 250ms delays between commands to the same device. Applies to `select.select_option`, `switch.turn_on/off`, `number.set_value`, etc.
 
 **Searching config files (Harness `grep_search` vs `.gitignore`):** Because `config/` is untracked in `.gitignore`, agent harness search tools (`grep_search`, `find_by_name`) silently ignore files inside `config/` and `.storage/`. Never rely on harness `grep_search` for `config/` queries (it returns 0 matches). Instead use:
-- **Entities & Config Bodies:** MCP `ha_search` (covers entity registry + automation/script/scene/helper YAML).
+- **Entities & Config Bodies:** MCP `ha_search` (covers entity registry + automation/script/scene/helper YAML in a single call — preferred).
 - **Zigbee Devices:** Direct lookup in `config/zigbee2mqtt/configuration.yaml` for friendly names, IEEE addresses, and descriptions.
 - **Local Automations/Scripts:** `uv run python tools/ha_cli.py edit automations "<alias>"` or `ha_config_get_automation`.
+- **Targeted Local AST Search (Context-Efficient):** Avoid reading hundreds of lines of `automations.yaml` or grepping `.storage/core.*_registry` (giant JSON lines blow up context). For device triggers with opaque hex `device_id`s, search by target/action entities (`switch.office_*`) or extract matched automation YAML via a Python one-liner (`uv run python -c "import yaml; ..."`).
 - **Shell search:** `rg --no-ignore "<pattern>" config/` or `grep` via terminal.
 - **Diffs & regressions:** `make changelog-search PATTERN='<text>' [DAYS=7]` (searches plain-text changelog diffs).
 - **Historical snapshots:** `make backup-search PATTERN='<text>' [LIMIT=5]` (searches archive contents).

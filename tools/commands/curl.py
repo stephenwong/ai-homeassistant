@@ -24,6 +24,7 @@ import requests
 from tools.common import (
     HARequestError,
     add_output_shape_args,
+    add_pretty_arg,
     add_summary_args,
     fail_stderr,
     is_valid_entity_id,
@@ -146,11 +147,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     add_output_shape_args(parser, first=False)
 
     # ---- output formatting ----
-    parser.add_argument(
-        "--pretty",
-        action="store_true",
-        help="Pretty-print JSON with indent=2 (default: compact)",
-    )
+    add_pretty_arg(parser)
 
     add_summary_args(parser)
 
@@ -200,7 +197,7 @@ def _validate_args(args: argparse.Namespace, summary: bool) -> _CurlRequest:
             )
         if method != "GET" and not summary:
             print(
-                "\u26a0\ufe0f  --entity forces GET method (ignoring --method)",
+                "WARN: --entity forces GET method (ignoring --method)",
                 file=sys.stderr,
             )
         endpoint = f"/api/states/{args.entity}"
@@ -233,7 +230,7 @@ def _parse_json_body(method: str, args: argparse.Namespace, summary: bool) -> An
             except (json.JSONDecodeError, TypeError) as e:
                 raise _CurlError(f"Invalid JSON in --data: {e}") from e
     elif args.data is not None and not summary:
-        print(f"\u26a0\ufe0f  --data ignored for {method} requests", file=sys.stderr)
+        print(f"WARN: --data ignored for {method} requests", file=sys.stderr)
     return json_data
 
 
@@ -309,7 +306,7 @@ def _handle_guardrail(
         and not args.no_guard
     ):
         if not json_parsed:
-            print("Error: /api/states response was not valid JSON", file=sys.stderr)
+            print("ERROR: /api/states response was not valid JSON", file=sys.stderr)
             return 1
         count_result = _handle_count(data)
         print(
@@ -337,7 +334,7 @@ def _emit_output_warnings(args: argparse.Namespace, summary: bool) -> None:
     """Emit output-mode warnings that are suppressed in summary mode."""
     if args.pretty and not summary and args.keys:
         print(
-            "\u26a0\ufe0f  --pretty has no effect with --keys",
+            "WARN: --pretty has no effect with --keys",
             file=sys.stderr,
         )
 

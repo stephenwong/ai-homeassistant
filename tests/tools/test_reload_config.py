@@ -426,7 +426,7 @@ class TestReloadConfig:
         ):
             reload_config()
         out, err = capsys.readouterr()
-        assert "🔄 Reloading: automations" in err
+        assert "Reloading: automations" in err
 
     def test_prints_success_per_service(self, capsys):
         with patch(
@@ -435,7 +435,7 @@ class TestReloadConfig:
         ):
             reload_config()
         out, err = capsys.readouterr()
-        assert "✅ automations reloaded" in err
+        assert "OK automations reloaded" in err
 
     def test_prints_failure_per_service(self, capsys):
         self._mock_client.post.return_value = make_response(status=500)
@@ -445,7 +445,7 @@ class TestReloadConfig:
         ):
             reload_config()
         out, err = capsys.readouterr()
-        assert "❌ scripts failed to reload" in err
+        assert "FAIL scripts failed to reload" in err
 
     def test_core_config_reloads_before_domain_services(self):
         """reload_core_config must run before any domain services in the same call."""

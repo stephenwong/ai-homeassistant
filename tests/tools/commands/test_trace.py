@@ -268,7 +268,7 @@ class TestRun:
         mock_client.command.return_value = {"not": "a list"}
 
         assert trace_cmd.run(make_args()) == 1
-        assert capsys.readouterr().err == "\u274c Invalid trace/list response\n"
+        assert capsys.readouterr().err == "ERROR: Invalid trace/list response\n"
 
     def test_trace_list_transport_error_preserves_cli_rendering(
         self, mock_client, capsys
@@ -276,7 +276,7 @@ class TestRun:
         mock_client.command.side_effect = HARequestError("trace/list failed")
 
         assert trace_cmd.run(make_args()) == 1
-        assert capsys.readouterr().err == "\u274c trace/list failed\n"
+        assert capsys.readouterr().err == "ERROR: trace/list failed\n"
 
     def test_malformed_trace_get_response_returns_error(self, mock_client, capsys):
         mock_client.command.side_effect = [
@@ -285,7 +285,7 @@ class TestRun:
         ]
         args = make_args(entity_id="automation.morning_routine")
         assert trace_cmd.run(args) == 1
-        assert capsys.readouterr().err == "\u274c Invalid trace/get response\n"
+        assert capsys.readouterr().err == "ERROR: Invalid trace/get response\n"
 
     def test_trace_get_transport_error_preserves_cli_rendering(
         self, mock_client, capsys
@@ -297,7 +297,7 @@ class TestRun:
         args = make_args(entity_id="automation.morning_routine")
 
         assert trace_cmd.run(args) == 1
-        assert capsys.readouterr().err == "\u274c trace/get failed\n"
+        assert capsys.readouterr().err == "ERROR: trace/get failed\n"
 
     def test_summary_dedupes_by_item_id(self, mock_client, capsys):
         """Summary mode dedupes trace list to one entry per item_id + runs field."""
@@ -448,7 +448,7 @@ class TestRun:
         assert trace_cmd.run(args) == 1
         assert (
             capsys.readouterr().err
-            == "\u274c No traces found for automation.nonexistent\n"
+            == "ERROR: No traces found for automation.nonexistent\n"
         )
 
     def test_single_entity_trace_get_failure(self, mock_client, capsys):

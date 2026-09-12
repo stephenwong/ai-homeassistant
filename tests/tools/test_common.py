@@ -17,6 +17,7 @@ from tools.common import (
     ValidatorBase,
     _is_tty,
     add_output_shape_args,
+    add_pretty_arg,
     add_summary_args,
     atomic_write_text,
     fail_stderr,
@@ -29,6 +30,7 @@ from tools.common import (
     positive_int,
     resolve_max_chars,
     resolve_summary,
+    status_line,
     validate_ha_url,
 )
 
@@ -116,7 +118,8 @@ class TestGetHAConfig:
 
         assert get_ha_config(warning_stream=warning_stream)[2] == 10
         assert warning_stream.getvalue() == (
-            "⚠️  HA_REQUEST_TIMEOUT must be an integer, got 'not-a-number'; using 10\n"
+            "WARN: HA_REQUEST_TIMEOUT must be an integer, "
+            "got 'not-a-number'; using 10\n"
         )
 
 
@@ -603,23 +606,58 @@ class TestAtomicWriteText:
         assert str(target) in captured.err
 
 
+class TestStatusLine:
+    """Pin the shared status_line formatter."""
+
+    def test_pass_with_duration(self):
+        assert (
+            status_line("YAML Syntax Validation", passed=True, duration=2.5)
+            == "PASS YAML Syntax Validation (2.50s)"
+        )
+
+    def test_pass_cached_omits_duration(self):
+        assert (
+            status_line("YAML Syntax Validation", passed=True, cached=True)
+            == "PASS YAML Syntax Validation (cached)"
+        )
+
+    def test_fail_with_duration(self):
+        assert (
+            status_line("YAML Syntax Validation", passed=False, duration=3.0)
+            == "FAIL YAML Syntax Validation (3.00s)"
+        )
+
+    def test_pass_without_duration_or_cached(self):
+        assert status_line("Stale sensor", passed=True) == "PASS Stale sensor"
+
+
+class TestAddPrettyArg:
+    """Pin the shared --pretty flag."""
+
+    def test_attaches_pretty_flag(self):
+        parser = argparse.ArgumentParser()
+        add_pretty_arg(parser)
+        assert parser.parse_args(["--pretty"]).pretty is True
+        assert parser.parse_args([]).pretty is False
+
+
 class TestFailStderr:
     """Pin the fail_stderr helper."""
 
-    def test_prints_emoji_message_to_stderr(self, capsys):
+    def test_prints_error_prefix_to_stderr(self, capsys):
 
         result = fail_stderr("network unreachable")
         captured = capsys.readouterr()
         assert result == 1
-        assert "\u274c network unreachable" in captured.err
+        assert "ERROR: network unreachable" in captured.err
         assert captured.out == ""
 
-    def test_empty_message_still_prints_emoji(self, capsys):
+    def test_empty_message_still_prints_error_prefix(self, capsys):
 
         result = fail_stderr("")
         captured = capsys.readouterr()
         assert result == 1
-        assert captured.err.startswith("\u274c")
+        assert captured.err.startswith("ERROR:")
 
 
 class TestIterYamlPayloads:

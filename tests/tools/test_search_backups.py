@@ -412,7 +412,7 @@ class TestSearchBackupsCLIOptions:
     def test_main_days_filter(self, tmp_path, capsys, monkeypatch):
         from datetime import timedelta
 
-        now = datetime(2026, 8, 18, 20, 0, 0).astimezone()
+        now = datetime.now().astimezone()
         tar1 = tmp_path / "ha_config_20260818_120000.tar.gz"
         tar1.write_bytes(b"dummy")
         tar2 = tmp_path / "ha_config_20260801_120000.tar.gz"
@@ -444,9 +444,15 @@ class TestSearchBackupsCLIOptions:
             assert mock_search.call_count == 2
 
     def test_main_empty_after_filter_returns_zero(self, tmp_path, capsys, monkeypatch):
+        from datetime import timedelta
+
         tar1 = tmp_path / "ha_config_20260801_120000.tar.gz"
         tar1.write_bytes(b"dummy")
-        b1 = make_backup_record(tar1, tar1.name, datetime(2026, 8, 1).astimezone())
+        b1 = make_backup_record(
+            tar1,
+            tar1.name,
+            datetime.now().astimezone() - timedelta(days=2),
+        )
 
         assert _run_main(monkeypatch, [b1], "--days", "1", "pattern") == 0
         captured = capsys.readouterr()

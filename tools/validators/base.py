@@ -169,23 +169,23 @@ class ValidatorBase(ABC):
             return
 
         sections = (
-            ("INFO:", self.info, "\U0001f5c8\ufe0f "),
-            ("ERRORS:", self.errors, "\u274c"),
-            ("WARNINGS:", self.warnings, "\u26a0\ufe0f "),
+            ("INFO:", self.info, "INFO:"),
+            ("ERRORS:", self.errors, "ERROR:"),
+            ("WARNINGS:", self.warnings, "WARN:"),
         )
-        for header, items, emoji in sections:
+        for header, items, prefix in sections:
             if items:
                 print(header, file=sys.stderr)
                 for item in items:
-                    print(f"  {emoji} {item}", file=sys.stderr)
+                    print(f"  {prefix} {item}", file=sys.stderr)
                 print(file=sys.stderr)
 
         if not self.errors and not self.warnings:
-            print(f"\u2705 {self.validator_name} is valid!")
+            print(f"PASS {self.validator_name} is valid!")
         elif not self.errors:
-            print(f"\u2705 {self.validator_name} is valid (with warnings)")
+            print(f"PASS {self.validator_name} is valid (with warnings)")
         else:
-            print(f"\u274c {self.validator_name} validation failed", file=sys.stderr)
+            print(f"FAIL {self.validator_name} validation failed", file=sys.stderr)
 
     @classmethod
     def run_cli(

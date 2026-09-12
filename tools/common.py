@@ -89,7 +89,7 @@ def get_ha_config(*, warning_stream: TextIO | None = None) -> tuple[str, str, in
     token = os.getenv("HA_TOKEN", "")
     timeout, warning = get_env_int("HA_REQUEST_TIMEOUT", DEFAULT_HA_TIMEOUT)
     if warning and warning_stream is not None:
-        print(f"⚠️  {warning}", file=warning_stream)
+        print(f"WARN: {warning}", file=warning_stream)
     return url, token, timeout
 
 
@@ -235,6 +235,36 @@ def add_summary_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_pretty_arg(parser: argparse.ArgumentParser) -> None:
+    """Attach the standard ``--pretty`` JSON indentation flag to *parser*."""
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="Pretty-print JSON with indent=2 (default: compact)",
+    )
+
+
+def status_line(
+    description: str,
+    *,
+    passed: bool,
+    duration: float | None = None,
+    cached: bool = False,
+) -> str:
+    """Format one validator result as a consistent ``PASS``/``FAIL`` line.
+
+    Shared by summary and verbose output so the two modes cannot drift.
+    """
+    status = "PASS" if passed else "FAIL"
+    if passed and cached:
+        suffix = " (cached)"
+    elif duration is not None:
+        suffix = f" ({duration:.2f}s)"
+    else:
+        suffix = ""
+    return f"{status} {description}{suffix}"
+
+
 def add_config_dir_arg(parser: argparse.ArgumentParser, *, help: str) -> None:
     """Attach the shared ``--config``/``-c`` directory option to a command."""
     parser.add_argument(
@@ -283,10 +313,6 @@ def atomic_replace(
                 tmp_path.unlink(missing_ok=True)
 
 
-# Backwards compatibility alias
-_atomic_replace = atomic_replace
-
-
 def atomic_write_text(path: Path, content: str) -> bool:
     """Write *content* to *path* atomically via temp file + ``os.replace``.
 
@@ -306,7 +332,7 @@ def atomic_write_text(path: Path, content: str) -> bool:
             os.fsync(f.fileno())
 
     try:
-        _atomic_replace(
+        atomic_replace(
             path,
             write_temp,
             temp_path=tmp,
@@ -331,6 +357,6 @@ class MissingTokenError(HARequestError):
 
 
 def fail_stderr(msg: str) -> int:
-    """Print ``\u274c <msg>`` to stderr and return exit code 1."""
-    print(f"\u274c {msg}", file=sys.stderr)
+    """Print ``ERROR: <msg>`` to stderr and return exit code 1."""
+    print(f"ERROR: {msg}", file=sys.stderr)
     return 1

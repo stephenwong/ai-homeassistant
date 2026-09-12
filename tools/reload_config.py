@@ -160,10 +160,10 @@ def _resolve_reload_services(
     if not detected_services:
         if not summary:
             msg = (
-                "⚠️  Could not detect config changes with git; "
+                "WARN: Could not detect config changes with git; "
                 "reloading all domains to be safe"
                 if detected_services is None
-                else "⚠️  No config changes detected, reloading all domains to be safe"
+                else "WARN: No config changes detected; reloading all domains"
             )
             print(msg, file=sys.stderr)
         return tuple(sorted(ALL_SERVICES))
@@ -234,7 +234,7 @@ def _render_reload_results(
     )
     if core_failed and service_set - {CORE_RELOAD_SERVICE} and not summary:
         print(
-            "⚠️  Skipping domain reloads because core config failed "
+            "WARN: Skipping domain reloads because core config failed "
             "(fix configuration.yaml first)",
             file=sys.stderr,
         )
@@ -244,11 +244,11 @@ def _render_reload_results(
         label = SERVICE_LABELS.get(service, service)
         if ok:
             if not summary:
-                print(f"  ✅ {label} reloaded", file=sys.stderr)
+                print(f"  OK {label} reloaded", file=sys.stderr)
         else:
             suffix = f" ({error[:80]})" if error else ""
             if not summary:
-                print(f"  ❌ {label} failed to reload{suffix}", file=sys.stderr)
+                print(f"  FAIL {label} failed to reload{suffix}", file=sys.stderr)
             all_ok = False
 
     if summary:
@@ -271,9 +271,9 @@ def _render_reload_results(
             )
             print(f"FAILED {passed}/{total} ({failed_labels} FAILED) {elapsed:.1f}s")
     elif all_ok:
-        print("✅ All reloads completed successfully!", file=sys.stderr)
+        print("All reloads completed successfully!", file=sys.stderr)
     else:
-        print("❌ Some reloads failed", file=sys.stderr)
+        print("ERROR: some reloads failed", file=sys.stderr)
 
     return all_ok
 
@@ -287,12 +287,12 @@ def reload_config(summary: bool = False) -> bool:
     if not summary:
         for warning in [git_timeout_warning, reload_timeout_warning]:
             if warning:
-                print(f"⚠️  {warning}", file=sys.stderr)
+                print(f"WARN: {warning}", file=sys.stderr)
 
     try:
         client = HAClient.from_env()
     except MissingTokenError as e:
-        print(f"\u274c Error: {e}", file=sys.stderr)
+        print(f"ERROR: {e}", file=sys.stderr)
         print(
             "   Create a .env file with: HA_TOKEN=your_long_lived_access_token",
             file=sys.stderr,
@@ -300,7 +300,7 @@ def reload_config(summary: bool = False) -> bool:
         print("   Get your token from Home Assistant Profile page", file=sys.stderr)
         return False
     except HARequestError as e:
-        print(f"\u274c Error: {e}", file=sys.stderr)
+        print(f"ERROR: {e}", file=sys.stderr)
         return False
 
     with client:
@@ -314,7 +314,7 @@ def reload_config(summary: bool = False) -> bool:
 
         if not summary:
             labels = sorted(SERVICE_LABELS.get(s, s) for s in services)
-            print(f"🔄 Reloading: {', '.join(labels)}", file=sys.stderr)
+            print(f"Reloading: {', '.join(labels)}", file=sys.stderr)
 
         results = _execute_reload_plan(client, services)
         return _render_reload_results(

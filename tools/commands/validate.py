@@ -15,7 +15,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from tools.cache import compute_hash_status, load_cache, save_cache
-from tools.common import add_config_dir_arg, add_summary_args, resolve_summary
+from tools.common import (
+    add_config_dir_arg,
+    add_summary_args,
+    resolve_summary,
+    status_line,
+)
 from tools.validators.base import ValidatorBase, format_diagnostics
 from tools.validators.duplicate_ids import DuplicateIDValidator
 from tools.validators.ha_official import HAOfficialValidator
@@ -261,7 +266,7 @@ def _print_intro(force: bool, quiet: bool, summary: bool) -> None:
     if quiet or summary:
         return
     print(
-        "\U0001f50d Running Home Assistant Configuration Validation Tests",
+        "Running Home Assistant Configuration Validation Tests",
         file=sys.stderr,
     )
     print("=" * 60, file=sys.stderr)
@@ -276,31 +281,23 @@ def _print_intro(force: bool, quiet: bool, summary: bool) -> None:
     print(file=sys.stderr)
 
 
-def _format_summary_line(r: ValidatorResult) -> str:
-    """Format one validator result in compact summary mode."""
-    if r.passed:
-        if r.cached:
-            return f"PASS {r.description} C"
-        return f"PASS {r.description} ({r.duration:.2f}s)"
-    return f"FAIL {r.description} ({r.duration:.2f}s)"
-
-
-def _format_verbose_line(r: ValidatorResult) -> str:
-    """Format one validator result in verbose mode."""
-    if r.passed:
-        suffix = " (cached)" if r.cached else f" ({r.duration:.2f}s)"
-        return f"  \u2705 {r.description}: PASSED{suffix}"
-    return f"  \u274c {r.description}: FAILED ({r.duration:.2f}s)"
-
-
 def _format_result_line(r: ValidatorResult, summary: bool, quiet: bool) -> str | None:
     """Format one validator PASS/FAIL line.
+
+    Verbose mode prefixes the shared status line with two spaces for
+    indentation; both modes otherwise use the identical ``status_line`` text.
 
     Returns the formatted string, or ``None`` if quiet mode suppresses it.
     """
     if quiet and r.passed:
         return None
-    return _format_summary_line(r) if summary else _format_verbose_line(r)
+    line = status_line(
+        r.description,
+        passed=r.passed,
+        duration=r.duration,
+        cached=r.cached,
+    )
+    return line if summary else f"  {line}"
 
 
 def _print_indented_lines(
@@ -320,9 +317,9 @@ def _print_failure_detail(results: list[ValidatorResult], summary: bool) -> None
         if summary:
             _print_indented_lines(r.stderr, indent="  ", file=sys.stderr)
         else:
-            print(f"\n\U0001f4cb {r.description}", file=sys.stderr)
+            print(f"\n{r.description}", file=sys.stderr)
             print("-" * 50, file=sys.stderr)
-            print("Status: \u274c FAILED", file=sys.stderr)
+            print("Status: FAILED", file=sys.stderr)
             print(f"Duration: {r.duration:.2f}s", file=sys.stderr)
             if r.stderr.strip():
                 print("\nErrors:", file=sys.stderr)
@@ -353,21 +350,19 @@ def _print_summary_block(
             file=sys.stderr,
         )
         print("=" * 60, file=sys.stderr)
-        print("\n\U0001f4ca TEST SUMMARY", file=sys.stderr)
+        print("\nTEST SUMMARY", file=sys.stderr)
         print("=" * 30, file=sys.stderr)
         print(f"Total tests: {total}", file=sys.stderr)
         print(f"Passed: {passed}", file=sys.stderr)
         print(f"Failed: {failed}", file=sys.stderr)
         if failed == 0:
             print(
-                "\n\U0001f389 All tests passed! Your Home Assistant"
-                " configuration is valid.",
+                "\nAll tests passed! Your Home Assistant configuration is valid.",
                 file=sys.stderr,
             )
         else:
             print(
-                f"\n\u26a0\ufe0f  {failed} test(s) failed."
-                " Please review the errors above.",
+                f"\nWARN: {failed} test(s) failed. Please review the errors above.",
                 file=sys.stderr,
             )
         print(file=sys.stderr)

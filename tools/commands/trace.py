@@ -9,6 +9,7 @@ from typing import cast
 from tools.common import (
     HARequestError,
     add_output_shape_args,
+    add_pretty_arg,
     add_summary_args,
     fail_stderr,
     is_valid_entity_id,
@@ -42,11 +43,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Automation entity ID (e.g. automation.morning_routine)",
     )
     add_output_shape_args(parser)
-    parser.add_argument(
-        "--pretty",
-        action="store_true",
-        help="Pretty-print JSON output with indent=2 (default: compact)",
-    )
+    add_pretty_arg(parser)
     add_summary_args(parser)
     parser.set_defaults(func=run)
 
@@ -59,7 +56,7 @@ def _validate_args(args: argparse.Namespace, summary: bool) -> int | None:
         return fail_stderr("--first must be >= 1")
     if args.entity_id and args.first is not None and not summary:
         print(
-            "\u26a0\ufe0f  --first is ignored when fetching a single automation trace",
+            "WARN: --first is ignored when fetching a single automation trace",
             file=sys.stderr,
         )
     return None

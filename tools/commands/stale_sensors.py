@@ -8,6 +8,7 @@ from tools.common import (
     add_summary_args,
     positive_int,
     resolve_summary,
+    status_line,
 )
 from tools.validators.base import format_diagnostics
 from tools.validators.stale_sensors import (
@@ -91,8 +92,7 @@ def run(args: argparse.Namespace) -> int:
 
     passed = validator.validate_all()
     if summary:
-        status = "PASS" if passed else "FAIL"
-        print(f"{status} {validator.validator_name}")
+        print(status_line(validator.validator_name, passed=passed))
         diagnostics = format_diagnostics(
             validator.errors, validator.warnings, validator.info
         )

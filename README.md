@@ -261,8 +261,7 @@ make push  # Validates then uploads to HA
 ├── README-DEV.md                # Development environment setup
 ├── opencode.json                # MCP server configuration for opencode
 ├── .env.example                 # Environment configuration template
-├── Makefile                     # Management commands (pull, push, validate, etc.)
-├── Makefile.dev                 # Development-specific commands
+├── Makefile                     # Management and development commands (pull, push, validate, test, etc.)
 ├── uv.lock                      # Locked dependencies
 └── pyproject.toml               # Python project configuration
 ```
@@ -326,16 +325,20 @@ uv run python tools/ha_cli.py reload
 | `make validate` | Run all validation tests |
 | `make backup` | Create and verify a mode-600 local configuration snapshot; attempt changelog generation |
 | `make setup` | Install Python dependencies via uv |
+| `make test` | Run the pytest test suite |
+| `make test-coverage` | Run pytest with an HTML coverage report |
 | `make status` | Show config/filesystem status and an entity-reference summary |
 | `make reload` | Reload HA config via API (no push) |
 | `make format-yaml` | Atomically format selected YAML files (`FILES='...'`) or the config tree |
-
 | `make lint` | Run Ruff format check, Ruff lint, and mypy |
 | `make lint-fix` | Auto-fix Ruff format and lint issues (does not run mypy) |
 | `make backup-search PATTERN='text'` | Search all backups for a pattern |
 | `make changelog BACKUP='path'` | Generate changelog for a backup |
+| `make pre-commit` | Install and run pre-commit hooks |
+| `make pre-commit-all` | Run pre-commit hooks on all files |
+| `make update-deps` | Update development dependencies |
 | `make test-ssh` | Test SSH connection to HA |
-| `make clean` | Remove Python bytecode and log files |
+| `make clean` | Remove Python bytecode, logs, and tool caches |
 
 ### 💾 Backup Pruning (`prune_backups.py`)
 

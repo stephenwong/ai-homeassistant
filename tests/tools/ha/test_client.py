@@ -89,7 +89,8 @@ class TestFromEnv:
         captured = capsys.readouterr()
         assert captured.out == ""
         assert captured.err == (
-            "⚠️  HA_REQUEST_TIMEOUT must be an integer, got 'not-a-number'; using 10\n"
+            "WARN: HA_REQUEST_TIMEOUT must be an integer, "
+            "got 'not-a-number'; using 10\n"
         )
         assert c.timeout == 10
 

@@ -6,18 +6,18 @@ This directory contains a complete Python development environment with modern to
 
 1. **Setup development environment:**
    ```bash
-   make -f Makefile.dev dev-setup
+   make setup
    ```
 
 2. **Format and check code:**
    ```bash
-   make -f Makefile.dev dev-format
-   make -f Makefile.dev dev-lint
+   make lint-fix
+   make lint
    ```
 
 3. **Run tests:**
    ```bash
-   make -f Makefile.dev dev-test
+   make test
    ```
 
 ## Development Tools Included
@@ -42,8 +42,7 @@ This directory contains a complete Python development environment with modern to
 ├── tests/                   # Test files
 ├── pyproject.toml           # Python project configuration
 ├── .pre-commit-config.yaml  # Pre-commit hook configuration
-├── Makefile                 # Main project commands
-├── Makefile.dev             # Development-specific commands
+├── Makefile                 # All project and development commands
 └── README-DEV.md            # This file
 ```
 
@@ -56,37 +55,37 @@ This directory contains a complete Python development environment with modern to
 ### Development Workflow
 ```bash
 # Complete development setup
-make -f Makefile.dev dev-setup
+make setup
 
 # Format code automatically
-make -f Makefile.dev dev-format
+make lint-fix
 
-# Run all code quality checks
-make -f Makefile.dev dev-check-all
+# Run all code quality checks (ruff format --check, ruff check, mypy)
+make lint
 
-# Run tests with coverage
-make -f Makefile.dev dev-test-coverage
+# Run tests (pytest + coverage gate)
+make test
 
-# Full development workflow
-make -f Makefile.dev dev-workflow
+# Run tests with an HTML coverage report
+make test-coverage
 ```
 
 ### Pre-commit Hooks
 ```bash
-# Install git hooks
-make -f Makefile.dev dev-pre-commit
+# Install git hooks and run them
+make pre-commit
 
 # Run hooks on all files
-make -f Makefile.dev dev-pre-commit-all
+make pre-commit-all
 ```
 
 ### Maintenance
 ```bash
 # Update dependencies
-make -f Makefile.dev dev-update-deps
+make update-deps
 
 # Clean development artifacts
-make -f Makefile.dev dev-clean-dev
+make clean
 ```
 
 ## Configuration Details
@@ -131,17 +130,17 @@ Automatically runs on git commits:
 
 1. **Always format before committing:**
    ```bash
-   make -f Makefile.dev dev-format
+   make lint
    ```
 
 2. **Run the full workflow periodically:**
    ```bash
-   make -f Makefile.dev dev-workflow
+   make lint && make test
    ```
 
 3. **Use coverage reports to identify untested code:**
    ```bash
-   make -f Makefile.dev dev-test-coverage
+   make test-coverage
    # macOS; use a browser or file manager on other platforms
    open htmlcov/index.html
    ```
@@ -157,17 +156,17 @@ Automatically runs on git commits:
 ### Dependency Issues
 ```bash
 # Update all development dependencies
-make -f Makefile.dev dev-update-deps
+make update-deps
 
 # Clean and reinstall
-make -f Makefile.dev dev-clean-dev
-make -f Makefile.dev dev-install
+make clean
+make setup
 ```
 
 ### Pre-commit Issues
 ```bash
 # Reinstall hooks
-make -f Makefile.dev dev-pre-commit
+make pre-commit
 
 # Skip hooks temporarily (not recommended)
 git commit --no-verify -m "message"

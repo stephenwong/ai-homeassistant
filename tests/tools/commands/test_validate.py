@@ -826,12 +826,11 @@ class TestRun:
             run(self._args(config_dir, quiet=False))
         lines = capsys.readouterr().out.strip().splitlines()
         assert len(lines) == 2
-        # Per-validator line: "PASS V1 C" (no duration)
-        assert lines[0].strip().endswith("C")
+        # Per-validator line: "PASS V1 (cached)" (no duration)
+        assert lines[0].strip() == "PASS V1 (cached)"
         assert "0.00s" not in lines[0]
         # Final aggregate line: "PASSED 1/1 (0.00s)" (has duration)
         assert lines[1].startswith("PASSED 1/1")
-        assert "(cached)" not in "\n".join(lines)
 
     @patch("tools.common._is_tty", return_value=False)
     def test_no_summary_flag_forces_verbose_in_pipe(self, _, config_dir, capsys):
@@ -842,7 +841,7 @@ class TestRun:
         ):
             run(self._args(config_dir, quiet=False, no_summary=True))
         out, err = capsys.readouterr()
-        assert "🔍" in err  # banner present (verbose mode)
+        assert "Running Home Assistant Configuration Validation Tests" in err
         assert "TEST SUMMARY" in err
         assert "Passed" in err
 
@@ -943,7 +942,7 @@ class TestFormatResultLine:
         r = self._result(passed=True, duration=0.0, cached=True)
         assert (
             _format_result_line(r, summary=True, quiet=False)
-            == "PASS YAML Syntax Validation C"
+            == "PASS YAML Syntax Validation (cached)"
         )
 
     def test_summary_mode_fail(self):
@@ -960,16 +959,14 @@ class TestFormatResultLine:
 
         r = self._result(passed=True, duration=1.25, cached=False)
         line = _format_result_line(r, summary=False, quiet=False)
-        assert "\u2705" in line
-        assert "PASSED" in line
-        assert "(1.25s)" in line
+        assert line == "  PASS YAML Syntax Validation (1.25s)"
 
     def test_verbose_mode_pass_cached(self):
         from tools.commands.validate import _format_result_line
 
         r = self._result(passed=True, duration=0.0, cached=True)
         line = _format_result_line(r, summary=False, quiet=False)
-        assert " (cached)" in line
+        assert line == "  PASS YAML Syntax Validation (cached)"
 
     def test_quiet_suppresses_passing_line(self):
         from tools.commands.validate import _format_result_line
