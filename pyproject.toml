@@ -28,14 +28,14 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ruff==0.16.2",
-    "mypy>=2.3.0",
-    "pre-commit>=4.6.1",
-    "pytest>=9.1.0",
-    "pytest-cov>=4.0.0",
-    "pytest-mock>=3.12.0",
-    "types-PyYAML>=6.0.0",
-    "types-requests>=2.33.0.20260712",
+    "ruff==0.17.4",
+    "mypy>=2.4.1",
+    "pre-commit>=4.7.0",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.17.0",
+    "types-PyYAML>=6.0.12.20261111",
+    "types-requests>=2.33.0.20261030",
 ]
 
 [tool.ruff]
@@ -147,15 +147,22 @@ exclude_lines = [
 [tool.uv]
 # Force patched versions over homeassistant's exact pins to resolve Dependabot alerts
 override-dependencies = [
-    "aiohttp>=3.14.3",
-    "cryptography>=50.0.0",
-    "idna>=3.15",
-    "Pillow>=12.2.0",
-    "PyJWT>=2.13.0",
-    "requests>=2.33.0",
-    "urllib3>=2.7.0",
-    "uv>=0.11.15",
-    "zeroconf>=0.149.12",
+    "aiohttp>=3.14.5",
+    "anyio>=4.16.0",
+    "certifi>=2026.10.23",
+    "cryptography>=50.0.2",
+    "filelock>=4.2.10",
+    "idna>=3.20",
+    "multidict>=6.9.1",
+    "Pillow>=13.0.0",
+    "propcache>=0.5.4",
+    "PyJWT>=2.15.1",
+    "requests>=2.34.2",
+    "urllib3>=2.8.0",
+    "uv>=0.13.7",
+    "virtualenv>=21.15.6",
+    "yarl>=1.25.1",
+    "zeroconf>=0.154.0",
 ]
 
 [tool.codespell]

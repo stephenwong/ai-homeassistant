@@ -17,21 +17,21 @@ repos:
         args: ['--fix=lf']
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.21
+    rev: v0.17.4
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix]
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.3.0
+    rev: v2.4.1
     hooks:
       - id: mypy
-        additional_dependencies: [types-PyYAML, types-requests]
+        additional_dependencies: [aiohttp, ruamel-yaml>=0.19.1, types-PyYAML, types-requests]
         exclude: ^(tests/|.*_test\.py$|tools/_dev/)
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: v2.4.3
     hooks:
       - id: codespell
         additional_dependencies: [tomli]
