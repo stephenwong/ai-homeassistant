@@ -137,3 +137,27 @@ def test_validate_all_called(dummy_config, monkeypatch):
     monkeypatch.setattr("sys.argv", ["dummy", str(dummy_config)])
     _DummyValidator.run_cli("dummy")
     assert called == [True]
+
+
+def test_try_live_closes_client_on_success_and_error(dummy_config, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from tools.common import HARequestError
+    from tools.ha.client import HAClient
+
+    validator = _DummyValidator(str(dummy_config))
+    client_ok = MagicMock(spec=HAClient)
+    monkeypatch.setattr(HAClient, "from_env", classmethod(lambda cls: client_ok))
+
+    assert validator._try_live("Check", lambda c: "ok") == "ok"
+    client_ok.close.assert_called_once_with()
+
+    client_err = MagicMock(spec=HAClient)
+    monkeypatch.setattr(HAClient, "from_env", classmethod(lambda cls: client_err))
+
+    def fail(_client):
+        raise HARequestError("boom")
+
+    assert validator._try_live("Check", fail) is None
+    client_err.close.assert_called_once_with()
+    assert validator.info == ["Check skipped: boom"]

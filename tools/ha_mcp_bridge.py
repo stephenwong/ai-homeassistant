@@ -7,6 +7,7 @@ Supports both Streamable HTTP (MCP 2024-11-05) and classic SSE GET/POST transpor
 
 import asyncio
 import codecs
+import contextlib
 import os
 import sys
 from collections.abc import Callable, Coroutine, Iterable
@@ -19,7 +20,7 @@ import aiohttp
 from tools.common import load_env_file
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SSEEvent:
     """Parsed Server-Sent Event."""
 
@@ -154,9 +155,13 @@ async def run_bridge(
                 )
                 for pending_task in pending:
                     pending_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await pending_task
 
                 if stop_event.is_set() and not read_task.done():
                     read_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await read_task
                     break
 
                 line = read_task.result()

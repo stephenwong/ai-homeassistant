@@ -28,7 +28,8 @@ _IGNORABLE_STDOUT_SUBSTRINGS = (
     "selector']['reorder']",
     "Traceback (most recent call last):",
     "could not be loaded",
-) + _BENIGN_PACKAGE_INSTALL_MARKERS
+    *_BENIGN_PACKAGE_INSTALL_MARKERS,
+)
 _IGNORABLE_STDOUT_SUBSTRINGS_LOWER = tuple(
     s.lower() for s in _IGNORABLE_STDOUT_SUBSTRINGS
 )
@@ -42,11 +43,12 @@ _STDERR_BENIGN_PHRASES = (
     "initialized",
 )
 
-_EXPLICIT_ERROR_RE = re.compile(r"^\W*(ERROR|RuntimeError)\b", re.I)
-_WARNING_RE = re.compile(r"^\W*WARNING\b", re.I)
-_ERRORS_COUNT_RE = re.compile(r"(?:found\s+)?(\d+)\s+errors?\b", re.I)
+_EXPLICIT_ERROR_RE = re.compile(r"^\W*(ERROR|RuntimeError)\b", re.IGNORECASE)
+_WARNING_RE = re.compile(r"^\W*WARNING\b", re.IGNORECASE)
+_ERRORS_COUNT_RE = re.compile(r"(?:found\s+)?(\d+)\s+errors?\b", re.IGNORECASE)
 _STDERR_WARNING_RE = re.compile(
-    r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(\.\d+)?\s+)?\W*warning\b", re.I
+    r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(\.\d+)?\s+)?\W*warning\b",
+    re.IGNORECASE,
 )
 
 
@@ -110,6 +112,7 @@ class HAOfficialValidator(ValidatorBase):
                 text=True,
                 errors="replace",
                 timeout=self.validation_timeout,
+                check=False,
             )
 
             # Parse the output
@@ -172,7 +175,7 @@ class HAOfficialValidator(ValidatorBase):
         """
         return benign_ctx and line.strip().startswith("File ") and ".py" in line
 
-    def parse_check_config_output(self, stdout: str, stderr: str):
+    def parse_check_config_output(self, stdout: str, stderr: str) -> None:
         """Parse Home Assistant check_config output."""
         benign_ctx = self._has_benign_package_context(stdout, stderr)
         self._parse_stdout(stdout, benign_ctx=benign_ctx)
@@ -185,8 +188,8 @@ class HAOfficialValidator(ValidatorBase):
         """
         if not stdout:
             return
-        for line in stdout.split("\n"):
-            line = line.strip()
+        for raw_line in stdout.split("\n"):
+            line = raw_line.strip()
             if not line:
                 continue
             if benign_ctx and (
@@ -222,8 +225,8 @@ class HAOfficialValidator(ValidatorBase):
         """Classify each stderr line. Real-error indicators override benign phrases."""
         if not stderr:
             return
-        for line in stderr.split("\n"):
-            line = line.strip()
+        for raw_line in stderr.split("\n"):
+            line = raw_line.strip()
             if not line:
                 continue
             line_lower = line.lower()

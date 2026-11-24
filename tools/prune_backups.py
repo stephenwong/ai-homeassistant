@@ -14,7 +14,7 @@ from collections import defaultdict
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import TypedDict
+from typing import TextIO, TypedDict
 
 from tools import backup_common
 from tools.backup_common import BackupRecord, changelog_path_for, get_backups
@@ -252,7 +252,7 @@ def _print_backup_list(
     line_formatter: Callable[[BackupRecord, datetime, tuple[int, int]], str],
     *,
     reverse: bool = False,
-    file=sys.stdout,
+    file: TextIO = sys.stdout,
 ) -> int:
     """Print formatted backup entries with a header and return total size in bytes."""
     print(header, file=sys.stderr)

@@ -7,6 +7,7 @@ Works with both list-based (automations.yaml, scenes.yaml) and dict-based
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
@@ -29,7 +30,7 @@ class YAMLEditor:
         self._data: list | dict | None = None
         self._loaded = False
 
-    def load(self):
+    def load(self) -> Any:
         """Load a YAML file, preserving structure.
 
         Returns:
@@ -41,7 +42,7 @@ class YAMLEditor:
         self._loaded = True
         return self._data
 
-    def _ensure_loaded(self):
+    def _ensure_loaded(self) -> None:
         """Lazy-load the file if not already loaded.
 
         If the file does not exist, ``self._data`` stays ``None``.
@@ -83,13 +84,13 @@ class YAMLEditor:
             temp_suffix=".tmp",
         )
 
-    def dump(self, data, path: Path | str) -> None:
+    def dump(self, data: Any, path: Path | str) -> None:
         """Write YAML data to a file path."""
         path = Path(path)
         with path.open("w", encoding="utf-8") as f:
             self._yaml.dump(data, f)
 
-    def dump_to(self, data, stream) -> None:
+    def dump_to(self, data: Any, stream: Any) -> None:
         """Write YAML data to an open stream (e.g. sys.stdout)."""
         self._yaml.dump(data, stream)
 
@@ -133,7 +134,7 @@ class YAMLEditor:
             raise ValueError(f"Script '{key}' not found")
         return data
 
-    def find_automation(self, alias: str) -> int | None:
+    def find_automation(self, alias: str | None) -> int | None:
         """Return the index of an automation by alias, or None if not found."""
         if alias is None:
             return None

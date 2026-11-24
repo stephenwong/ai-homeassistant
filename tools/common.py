@@ -44,9 +44,9 @@ def load_env_file(path: Path | None = None) -> None:
     env_file = path or (Path(__file__).parent.parent / ".env")
     if not env_file.exists():
         return
-    with open(env_file, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
+    with env_file.open(encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
             if line and not line.startswith("#") and "=" in line:
                 key, value = line.split("=", 1)
                 key = key.strip()
@@ -303,10 +303,10 @@ def atomic_replace(
                 tmp_path = Path(tmp.name)
         write_temp(tmp_path)
         if mode is not None:
-            os.chmod(tmp_path, mode)
+            tmp_path.chmod(mode)
         if validate is not None:
             validate(tmp_path)
-        os.replace(tmp_path, path)
+        tmp_path.replace(path)
     finally:
         if tmp_path is not None:
             with contextlib.suppress(OSError):
@@ -326,7 +326,7 @@ def atomic_write_text(path: Path, content: str) -> bool:
     tmp = path.with_suffix(path.suffix + ".tmp")
 
     def write_temp(temp_path: Path) -> None:
-        with open(temp_path, "w", encoding="utf-8") as f:
+        with temp_path.open("w", encoding="utf-8") as f:
             f.write(content)
             f.flush()
             os.fsync(f.fileno())

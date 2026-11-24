@@ -4,11 +4,12 @@
 Validates that all entity references in configuration files actually exist.
 """
 
+import argparse
 import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NamedTuple, TypedDict
+from typing import Any, ClassVar, NamedTuple, TypedDict
 
 from tools.common import add_summary_args, resolve_summary
 from tools.validators._storage import (
@@ -110,7 +111,7 @@ class ReferenceValidator(ValidatorBase):
     validator_name = "Entity/device references"
 
     # Special keywords that are not entity IDs
-    SPECIAL_KEYWORDS = {"all", "none"}
+    SPECIAL_KEYWORDS: ClassVar[frozenset[str]] = frozenset({"all", "none"})
 
     def __init__(
         self, config_dir: str = "config", quiet: bool = False, summary: bool = False
@@ -612,7 +613,7 @@ class ReferenceValidator(ValidatorBase):
 
         return summary
 
-    def print_results(self):
+    def print_results(self) -> None:
         """Print validation results with entity summary."""
         if self.quiet and not self.errors:
             return
@@ -637,7 +638,7 @@ class ReferenceValidator(ValidatorBase):
         _print_entity_summary(self.get_entity_summary())
 
 
-def _add_reference_args(parser):
+def _add_reference_args(parser: argparse.ArgumentParser) -> None:
     add_summary_args(parser)
     parser.add_argument(
         "--quiet",
@@ -646,7 +647,7 @@ def _add_reference_args(parser):
     )
 
 
-def _reference_kwargs(args):
+def _reference_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     return {"summary": resolve_summary(args), "quiet": args.quiet}
 
 

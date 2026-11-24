@@ -69,12 +69,10 @@ def _is_managed_artifact(path: Path, kind: ArtifactKind) -> bool:
         return False
     if kind == "backup":
         return parse_backup_filename(path.name) is not None
-    if kind == "changelog":
-        if _CHANGELOG_RE.fullmatch(path.name) is None:
-            return False
-        backup_name = path.name.removesuffix(".changelog") + ".tar.gz"
-        return parse_backup_filename(backup_name) is not None
-    return False
+    if _CHANGELOG_RE.fullmatch(path.name) is None:
+        return False
+    backup_name = path.name.removesuffix(".changelog") + ".tar.gz"
+    return parse_backup_filename(backup_name) is not None
 
 
 def iter_managed_artifacts(kind: ArtifactKind) -> Iterator[Path]:

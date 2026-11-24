@@ -472,7 +472,7 @@ class TestSearchBackupsCLIOptions:
         def mock_open(*args, **kwargs):
             raise OSError("permission denied")
 
-        monkeypatch.setattr("builtins.open", mock_open)
+        monkeypatch.setattr("pathlib.Path.open", mock_open)
         matches, unreadable = search_changelog(backup, re.compile(r"pattern"))
         assert unreadable is True
         assert matches == []

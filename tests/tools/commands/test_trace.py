@@ -827,7 +827,7 @@ class TestValidateArgs:
     """Direct unit tests for the extracted _validate_args helper."""
 
     def _args(self, **overrides):
-        defaults = dict(entity_id=None, first=None, pretty=False)
+        defaults = {"entity_id": None, "first": None, "pretty": False}
         defaults.update(overrides)
         return Namespace(**defaults)
 

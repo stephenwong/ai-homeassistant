@@ -9,7 +9,7 @@ output for agent consumption.
 import json
 
 type JSONValue = (
-    None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
+    bool | int | float | str | list[JSONValue] | dict[str, JSONValue] | None
 )
 
 
@@ -155,7 +155,7 @@ def _truncate_list(data: list[JSONValue], max_chars: int) -> list[JSONValue]:
         "shown": best,
         "total": original_len,
     }
-    return data[:best] + [marker]
+    return [*data[:best], marker]
 
 
 def truncate_dict_by_key_size(

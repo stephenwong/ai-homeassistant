@@ -169,7 +169,7 @@ class TestGroupByRetentionPeriod:
         groups = group_by_retention_period(backups, now)
         # Both should land in the same weekly group
         assert len(groups["weekly"]) == 1
-        week_key = list(groups["weekly"].keys())[0]
+        week_key = next(iter(groups["weekly"].keys()))
         assert len(groups["weekly"][week_key]) == 2
 
     def test_jan1_not_week_zero(self):

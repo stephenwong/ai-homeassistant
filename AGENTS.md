@@ -29,7 +29,7 @@ This repository manages Home Assistant configuration files with automated valida
 - `tools/cache.py`, `tools/common.py` — Caching; shared utilities (`common.py` re-exports from `validators/base.py`, defines `positive_int`/`non_negative_int` argparse types)
 - `tools/output_shape.py` — Shared JSON output-shaping (`apply_output_shape()` for --first/--pick/--max-chars)
 - `tools/format_yaml.py` — Atomic YAML formatting helper used by `make format-yaml`
-- `tools/_dev/api_diagnostic.py` — Dev-only (archived, excluded from lint/wheel)
+- `tools/_dev/api_diagnostic.py`, `tools/_dev/fix_entity_registry.py` — Dev-only (archived, excluded from lint/wheel)
 - `tests/conftest.py` — Shared fixtures (`config_dir`, `_stub_load_env_file`)
 
 ## Environment Setup

@@ -137,15 +137,21 @@ class TemplateValidator(ValidatorBase):
         if not found:
             return all_ok
 
-        client = self._try_live("Live template check", lambda c: c)
-        try:
-            for path, tmpl in sorted(set(found)):
-                all_ok = self._validate_template(client, path, tmpl) and all_ok
-        finally:
-            if client is not None:
-                client.close()
+        candidates = sorted(set(found))
 
-        return all_ok
+        def _validate_all_with_client(client: HAClient) -> bool:
+            ok = True
+            for path, tmpl in candidates:
+                ok = self._validate_template(client, path, tmpl) and ok
+            return ok
+
+        live_ok = self._try_live("Live template check", _validate_all_with_client)
+        if live_ok is None:
+            for path, tmpl in candidates:
+                all_ok = self._validate_template(None, path, tmpl) and all_ok
+            return all_ok
+
+        return all_ok and live_ok
 
 
 def main() -> int:

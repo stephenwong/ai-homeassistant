@@ -105,9 +105,7 @@ def search_backup(
         for display_name, extracted in iter_tarball_file_members(backup["path"]):
             try:
                 with extracted:
-                    if yaml_only and not (
-                        display_name.endswith(".yaml") or display_name.endswith(".yml")
-                    ):
+                    if yaml_only and not display_name.endswith((".yaml", ".yml")):
                         continue
                     _search_file(
                         extracted,
@@ -117,11 +115,7 @@ def search_backup(
                         matches,
                     )
             except UnicodeDecodeError:
-                if (
-                    yaml_only
-                    or display_name.endswith(".yaml")
-                    or display_name.endswith(".yml")
-                ):
+                if yaml_only or display_name.endswith((".yaml", ".yml")):
                     unreadable = True
 
     except (tarfile.TarError, OSError) as e:
@@ -143,7 +137,7 @@ def search_changelog(
 
     matches: list[_MatchResult] = []
     try:
-        with open(changelog_path, "rb") as f:
+        with changelog_path.open("rb") as f:
             _search_file(
                 f,
                 changelog_path.name,
@@ -347,7 +341,7 @@ def main() -> int:
         max_workers=max_workers,
         changelog_mode=args.changelogs,
     )
-    match_count, unreadable_count = _render_results(
+    _match_count, unreadable_count = _render_results(
         results, files_only=args.files_only, context_lines=args.context
     )
     return 1 if unreadable_count else 0

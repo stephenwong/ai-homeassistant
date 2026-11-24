@@ -37,24 +37,33 @@ def test_remove_entity_from_lovelace():
     assert {"entity": "input_select.office_scene_select"} not in entities
 
 
-def test_main_missing_args(monkeypatch):
+def test_main_missing_args(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["remove_lovelace_entity.py"])
     assert main() == 1
+    assert capsys.readouterr().err != ""
 
 
-def test_main_file_not_found(monkeypatch, tmp_path):
+def test_main_file_not_found(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
         "sys.argv",
         ["remove_lovelace_entity.py", str(tmp_path / "nonexistent.json"), "foo"],
     )
     assert main() == 1
+    assert "ERROR:" in capsys.readouterr().err
 
 
-def test_main_invalid_json(monkeypatch, tmp_path):
+def test_main_invalid_json(monkeypatch, tmp_path, capsys):
     bad_file = tmp_path / "bad.json"
     bad_file.write_text("invalid json")
     monkeypatch.setattr("sys.argv", ["remove_lovelace_entity.py", str(bad_file), "foo"])
     assert main() == 1
+    assert "ERROR:" in capsys.readouterr().err
+
+
+def test_main_help(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["remove_lovelace_entity.py", "--help"])
+    assert main() == 0
+    assert "usage:" in capsys.readouterr().out.lower()
 
 
 def test_main_success(monkeypatch, tmp_path):

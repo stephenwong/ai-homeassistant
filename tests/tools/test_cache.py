@@ -375,7 +375,7 @@ class TestM2AtomicSaveCache:
 class TestSaveCacheErrors:
     def test_save_warns_on_oserror(self, tmp_path, capsys):
         """Cache writers print WARN to stderr when file writes fail."""
-        with patch("builtins.open", side_effect=OSError("disk full")):
+        with patch("pathlib.Path.open", side_effect=OSError("disk full")):
             save_cache(tmp_path, "Foo", "Test", "hash", True, 0.5)
         _, err = capsys.readouterr()
         assert "WARN" in err

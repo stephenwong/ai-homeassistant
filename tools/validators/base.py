@@ -12,8 +12,6 @@ import yaml
 class HAYamlLoader(yaml.SafeLoader):
     """Custom YAML loader that handles Home Assistant specific tags."""
 
-    pass
-
 
 _HA_TAGS = [
     "!include",
@@ -45,10 +43,10 @@ def format_diagnostics(
     return "\n".join(lines)
 
 
-def _make_tag_constructor(tag: str):
+def _make_tag_constructor(tag: str) -> Callable[[yaml.Loader, yaml.ScalarNode], str]:
     """Return a constructor that round-trips a HA YAML tag as a plain string."""
 
-    def constructor(loader, node):
+    def constructor(loader: yaml.Loader, node: yaml.ScalarNode) -> str:
         return f"{tag} {loader.construct_scalar(node)}"
 
     return constructor
@@ -128,10 +126,17 @@ class ValidatorBase(ABC):
         from tools.ha.client import HAClient
 
         try:
-            return fn(HAClient.from_env())
+            client = HAClient.from_env()
         except (HARequestError, OSError) as e:
             self.info.append(f"{info_prefix} skipped: {e}")
             return None
+        try:
+            return fn(client)
+        except (HARequestError, OSError) as e:
+            self.info.append(f"{info_prefix} skipped: {e}")
+            return None
+        finally:
+            client.close()
 
     def load_yaml_checked(self, file_path: Path) -> tuple[Any, bool]:
         """Load YAML, recording any error to ``self.errors``.
@@ -142,7 +147,7 @@ class ValidatorBase(ABC):
             data may be None for an empty document.
         """
         try:
-            with open(file_path, encoding="utf-8") as f:
+            with file_path.open(encoding="utf-8") as f:
                 return yaml.load(f, Loader=HAYamlLoader), True
         except yaml.YAMLError as e:
             self.errors.append(f"{file_path}: YAML syntax error - {e}")
@@ -163,7 +168,7 @@ class ValidatorBase(ABC):
     def _validate(self) -> bool:
         """Subclass hook. Override instead of validate_all()."""
 
-    def print_results(self):
+    def print_results(self) -> None:
         """Print validation results."""
         if self.quiet and not self.errors:
             return
@@ -192,8 +197,8 @@ class ValidatorBase(ABC):
         cls,
         description: str,
         *,
-        add_args=None,
-        build_validator_kwargs=None,
+        add_args: Callable[[Any], None] | None = None,
+        build_validator_kwargs: Callable[[Any], dict[str, Any]] | None = None,
     ) -> int:
         """Run a validator from CLI arguments and return an exit code.
 

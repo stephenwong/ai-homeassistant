@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from tools.fix_entity_registry import (
+from tools._dev.fix_entity_registry import (
     fix_entity_registry_data,
     main,
 )

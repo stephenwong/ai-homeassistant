@@ -30,7 +30,7 @@ def _load_storage_data(storage_path: Path) -> JSONObject | list[JSONValue]:
     data: JSONObject | list[JSONValue] | None = None
     for attempt in range(2):
         try:
-            with open(storage_path, encoding="utf-8") as f:
+            with storage_path.open(encoding="utf-8") as f:
                 data = json.load(f, object_pairs_hook=_reject_duplicate_keys)
             break
         except json.JSONDecodeError:

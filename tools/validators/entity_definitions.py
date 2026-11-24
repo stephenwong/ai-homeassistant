@@ -8,7 +8,7 @@ template entities, automations, scripts, scenes, zones) vs. the entity registry.
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 
@@ -62,7 +62,7 @@ class EntityDefinitionExtractor:
     (typically ReferenceValidator), so appends land on the validator's lists.
     """
 
-    BUILTIN_ENTITIES = {"sun.sun", "zone.home"}
+    BUILTIN_ENTITIES: ClassVar[frozenset[str]] = frozenset({"sun.sun", "zone.home"})
 
     def __init__(
         self,
@@ -111,7 +111,7 @@ class EntityDefinitionExtractor:
             ``f"{domain}.{slug}"`` when slugify yields a non-empty slug,
             else ``None``.
         """
-        source = explicit_id if explicit_id else name
+        source = explicit_id or name
         object_id = cls._slugify_object_id(str(source))
         return f"{domain}.{object_id}" if object_id else None
 
@@ -231,7 +231,7 @@ class EntityDefinitionExtractor:
                 loaded.append((f, data))
         return loaded
 
-    def _resolve_include(self, tag_value: object):
+    def _resolve_include(self, tag_value: object) -> Any:
         """Resolve a ``!include* <path>`` string to merged YAML data, or None.
 
         Supports the patterns HA users actually split with:
@@ -249,7 +249,7 @@ class EntityDefinitionExtractor:
         if not self._is_safe_include_path(target):
             return None
         try:
-            if tag in ("!include",):
+            if tag == "!include":
                 if target.is_file():
                     return self._load_yaml_file(target)
                 self._record_extraction_warning(target, FileNotFoundError(str(target)))
@@ -289,7 +289,7 @@ class EntityDefinitionExtractor:
         ``FileNotFoundError`` (a subclass of ``OSError``) and gets a warning.
         """
         try:
-            with open(file, encoding="utf-8") as f:
+            with file.open(encoding="utf-8") as f:
                 return yaml.load(f, Loader=HAYamlLoader)
         except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
             self._record_extraction_warning(file, e)

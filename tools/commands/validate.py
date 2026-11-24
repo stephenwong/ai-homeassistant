@@ -31,7 +31,7 @@ from tools.validators.templates import TemplateValidator
 from tools.validators.yaml import YAMLValidator
 
 
-@dataclass
+@dataclass(slots=True)
 class ValidatorResult:
     """Outcome of running one validator."""
 
@@ -67,7 +67,7 @@ def _validator_source_hash(cls: type) -> str:
     """Fingerprint the concrete validator and the shared validator base."""
     try:
         source = "\n".join((inspect.getsource(cls), inspect.getsource(ValidatorBase)))
-        return hashlib.sha1(source.encode("utf-8")).hexdigest()
+        return hashlib.sha256(source.encode("utf-8")).hexdigest()
     except OSError, TypeError:
         return "no-source"
 
@@ -122,11 +122,7 @@ def _run_validator(instance: Any, description: str, start: float) -> ValidatorRe
     except SystemExit as e:
         passed = e.code in (0, None)
         diag = _build_diagnostic_stderr(instance)
-        stderr = (
-            diag
-            if diag
-            else ("" if passed else f"Validator raised SystemExit({e.code!r})")
-        )
+        stderr = diag or ("" if passed else f"Validator raised SystemExit({e.code!r})")
     except Exception as e:
         passed = False
         stderr = f"Failed to run validator: {e}"

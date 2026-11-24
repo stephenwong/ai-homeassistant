@@ -534,9 +534,12 @@ class TestL47Nesting:
         found = []
         ServiceValidator._extract_services(config, "automations.yaml", found)
         services = [svc for svc, _ in found]
-        assert set(
-            ["light.turn_on", "switch.turn_on", "light.turn_off", "fan.turn_on"]
-        ) <= set(services)
+        assert {
+            "light.turn_on",
+            "switch.turn_on",
+            "light.turn_off",
+            "fan.turn_on",
+        } <= set(services)
 
 
 class TestOfflineOSError:

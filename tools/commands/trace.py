@@ -258,8 +258,6 @@ def run(args: argparse.Namespace) -> int:
         data = _shape_single_entity_data(data, args, summary)
     elif isinstance(data, list):
         data = _shape_list_data(data, args, summary)
-    elif data is None:
-        data = []
 
     print_json(data, pretty=args.pretty)
     return 0

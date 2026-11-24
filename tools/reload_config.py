@@ -60,6 +60,7 @@ def _run_git_command(
             capture_output=True,
             text=True,
             timeout=timeout,
+            check=False,
         )
     except OSError, subprocess.TimeoutExpired:
         return None
@@ -78,8 +79,8 @@ def _run_git_diff(config_dir: str, git_timeout: int) -> set[str] | None:
     if result is None or result.returncode != 0:
         return None
     changed: set[str] = set()
-    for p_str in result.stdout.split("\0"):
-        p_str = p_str.strip()
+    for raw_p in result.stdout.split("\0"):
+        p_str = raw_p.strip()
         if p_str:
             rel_path = _relative_config_path(p_str, config_dir)
             if rel_path is not None:
@@ -137,7 +138,7 @@ def _classify_changed_files(filenames: set[str]) -> set[str]:
 
 
 def detect_changed_services(
-    config_dir="config", git_timeout: int = 10
+    config_dir: str = "config", git_timeout: int = 10
 ) -> set[str] | None:
     """Detect which HA reload services are needed based on git-changed files.
 
@@ -323,5 +324,4 @@ def reload_config(summary: bool = False) -> bool:
 
 
 if __name__ == "__main__":
-    SUCCESS = reload_config()
-    sys.exit(0 if SUCCESS else 1)
+    raise SystemExit(0 if reload_config() else 1)

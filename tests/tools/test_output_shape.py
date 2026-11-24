@@ -401,7 +401,7 @@ class TestTruncateDictByKeySize:
 
     def test_preserve_min_prevents_dropping_below_threshold(self):
 
-        data = {k: "v" * 100 for k in "abcde"}
+        data = dict.fromkeys("abcde", "v" * 100)
         out = truncate_dict_by_key_size(data, max_chars=50, preserve_min=3)
         actual_keys = set(out.keys()) - {"_truncated", "dropped_keys", "kept_keys"}
         assert len(actual_keys) >= 3

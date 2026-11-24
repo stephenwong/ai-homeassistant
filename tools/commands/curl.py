@@ -163,7 +163,7 @@ class _CurlError(Exception):
     """Expected curl failure translated to a CLI exit code by run."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _CurlRequest:
     """Normalized request data shared by execution and output rendering."""
 
@@ -430,7 +430,7 @@ def run(args: argparse.Namespace) -> int:
             data = None
             json_parsed = False
             if looks_like_json:
-                try:  # noqa: SIM105 - preserve a narrow, explicit parser boundary
+                try:
                     data = resp.json()
                     json_parsed = True
                 except ValueError:
@@ -480,7 +480,7 @@ def _print_key_names(keys: list[str], max_chars: int | None) -> None:
     print_json(shaped, pretty=False)
 
 
-def _handle_keys(data, summary: bool = False, max_chars: int | None = None) -> int:
+def _handle_keys(data: Any, summary: bool = False, max_chars: int | None = None) -> int:
     """Print unique JSON key names (metadata to stderr, keys to stdout)."""
     keys, kind = _collect_key_names(data)
     if kind == "empty":
@@ -513,7 +513,7 @@ def _handle_keys(data, summary: bool = False, max_chars: int | None = None) -> i
     return 0
 
 
-def _warn_first_overcount(data, n: int):
+def _warn_first_overcount(data: Any, n: int) -> None:
     """Emit a warning to stderr when ``--first`` exceeds data length (verbose)."""
     if isinstance(data, list) and n > len(data):
         print(

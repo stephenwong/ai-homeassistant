@@ -20,7 +20,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.3
       - uses: actions/setup-python@v7.1.0
         with:
-          python-version: "3.14.2"
+          python-version-file: ".python-version"
       - run: uv sync --locked
       - name: Check formatting
         run: uv run --locked ruff format --check tools/ tests/
@@ -42,6 +42,6 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.3
       - uses: actions/setup-python@v7.1.0
         with:
-          python-version: "3.14.2"
+          python-version-file: ".python-version"
       - run: uv sync --locked
       - run: uv run --locked pytest tests/

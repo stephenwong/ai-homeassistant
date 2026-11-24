@@ -7,6 +7,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from tools.common import atomic_write_text
 
@@ -27,9 +28,7 @@ def compute_hash_status(config_dir: Path, patterns: list[str]) -> tuple[str, boo
     complete = True
     paths: list[Path] = []
     for pattern in patterns:
-        for p in config_dir.glob(pattern):
-            if p.is_file():
-                paths.append(p)
+        paths.extend(p for p in config_dir.glob(pattern) if p.is_file())
     # Deduplicate in case patterns overlap
     seen: set[Path] = set()
     for p in sorted(paths):
@@ -57,7 +56,7 @@ def cache_path(config_dir: Path, name: str) -> Path:
     return config_dir / CACHE_DIR_NAME / f"{name}.json"
 
 
-def _load_json(path: Path, *, retries: int = 0):
+def _load_json(path: Path, *, retries: int = 0) -> Any:
     """Read a JSON cache file, returning ``None`` when it is unusable."""
     if not path.is_file():
         return None
@@ -76,7 +75,7 @@ def _load_json(path: Path, *, retries: int = 0):
     return None
 
 
-def _write_json(path: Path, data) -> None:
+def _write_json(path: Path, data: Any) -> None:
     """Write JSON cache data through the shared atomic text boundary."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

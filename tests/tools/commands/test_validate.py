@@ -15,7 +15,7 @@ _FAKE_VALIDATOR_SOURCE = "class YAMLValidator:\n    pass"
 
 
 def _fake_source_hash(source: str = _FAKE_VALIDATOR_SOURCE) -> str:
-    return hashlib.sha1("\n".join((source, source)).encode()).hexdigest()
+    return hashlib.sha256("\n".join((source, source)).encode()).hexdigest()
 
 
 def _raise_value_error(*_args, **_kwargs):
@@ -571,7 +571,7 @@ class TestRunValidators:
         # Second run: should be cached
         results2 = run_validators(config_dir, quiet=True, force=False)
         # Count cached for YAML (fast enough to re-run, HA official dominates)
-        yaml_result = [r for r in results2 if "YAML" in r.description][0]
+        yaml_result = next(r for r in results2 if "YAML" in r.description)
         assert yaml_result.cached is True
 
         # Touch a YAML file
@@ -583,7 +583,7 @@ class TestRunValidators:
 
         # Third run: YAML validator should re-run (no longer cached)
         results3 = run_validators(config_dir, quiet=True, force=False)
-        yaml_result3 = [r for r in results3 if "YAML" in r.description][0]
+        yaml_result3 = next(r for r in results3 if "YAML" in r.description)
         assert yaml_result3.cached is False
 
 
@@ -917,13 +917,13 @@ class TestFormatResultLine:
     """Direct unit tests for _format_result_line."""
 
     def _result(self, **kw):
-        defaults = dict(
-            description="YAML Syntax Validation",
-            passed=True,
-            stderr="",
-            duration=1.5,
-            cached=False,
-        )
+        defaults = {
+            "description": "YAML Syntax Validation",
+            "passed": True,
+            "stderr": "",
+            "duration": 1.5,
+            "cached": False,
+        }
         defaults.update(kw)
         return ValidatorResult(**defaults)
 

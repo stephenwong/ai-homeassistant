@@ -6,6 +6,8 @@ triggering and UI customization) and missing ``id`` fields.
 Also checks scripts.yaml for duplicate top-level keys (M10b).
 """
 
+from typing import Any
+
 import yaml
 
 from tools.validators.base import HAYamlLoader, ValidatorBase
@@ -18,7 +20,7 @@ class _DupKeyLoader(HAYamlLoader):
     ``safe_load`` silently keeps the last entry on collision.
     """
 
-    def construct_mapping(self, node, deep=False):
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> Any:
         seen: set = set()
         for key_node, _ in node.value:
             if key_node is not None and key_node.tag == "tag:yaml.org,2002:merge":
@@ -99,7 +101,7 @@ class DuplicateIDValidator(ValidatorBase):
         if not scripts_file.exists():
             return True
         try:
-            with open(scripts_file, encoding="utf-8") as f:
+            with scripts_file.open(encoding="utf-8") as f:
                 yaml.load(f, Loader=_DupKeyLoader)
         except yaml.constructor.ConstructorError as e:
             self.errors.append(f"{scripts_file}: {e.problem}")

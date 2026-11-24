@@ -11,9 +11,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from ruamel.yaml import YAML, YAMLError
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from tools.common import (
     add_config_dir_arg,
@@ -166,7 +167,7 @@ def run(args: argparse.Namespace) -> int:
 
         shape = _resolve_shape(editor)
 
-        alias: str = args.alias  # type: ignore[assignment]
+        alias: str = args.alias
 
         if args.set:
             return _run_set(editor, alias, args.set, quiet, shape=shape)
@@ -375,7 +376,7 @@ def _run_remove(
     )
 
 
-def _parse_value(raw: str):
+def _parse_value(raw: str) -> Any:
     """Parse a single key=value string using YAML for booleans/ints etc.
 
     Coercion table (pinned by test_parse_value_coercion):

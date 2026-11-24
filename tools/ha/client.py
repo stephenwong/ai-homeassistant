@@ -6,6 +6,7 @@ lived in `tools/reload_config.py` and `tools/ha_api_diagnostic.py`.
 
 import asyncio
 import sys
+from collections.abc import Callable
 from typing import Any, Self
 
 import aiohttp
@@ -182,8 +183,8 @@ class HAWSClient(_BaseHAClient):
         token: str,
         *,
         timeout: int = DEFAULT_HA_TIMEOUT,
-        session_factory=None,
-    ):
+        session_factory: Callable[[], Any] | None = None,
+    ) -> None:
         super().__init__(url, token, timeout=timeout)
         self._session_factory = session_factory
 
@@ -223,7 +224,7 @@ class HAWSClient(_BaseHAClient):
                 f"cannot connect to HA WebSocket at {self._ws_url}: {e}"
             ) from e
 
-    async def _authenticate(self, ws) -> None:
+    async def _authenticate(self, ws: Any) -> None:
         """Perform the WebSocket auth handshake."""
         msg = await self._receive_dict(ws, "during authentication")
         if msg.get("type") != "auth_required":
@@ -243,14 +244,14 @@ class HAWSClient(_BaseHAClient):
                 f"unexpected WebSocket message: expected auth_ok, got {msg.get('type')}"
             )
 
-    async def _receive_dict(self, ws, context: str) -> dict[str, Any]:
+    async def _receive_dict(self, ws: Any, context: str) -> dict[str, Any]:
         """Receive and validate a dictionary WebSocket message."""
         msg = await ws.receive_json()
         if not isinstance(msg, dict):
             raise HARequestError(f"Invalid WebSocket message {context}")
         return msg
 
-    async def _send_and_receive(self, ws, command_type: str, **params: Any) -> Any:
+    async def _send_and_receive(self, ws: Any, command_type: str, **params: Any) -> Any:
         """Send a command and loop until we receive the matching result."""
         msg_id = 1
         await ws.send_json({"id": msg_id, "type": command_type, **params})
